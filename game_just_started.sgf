@@ -1,0 +1,12 @@
+(;FF[4]GM[41]SZ[6]
+GN[https://hotsuki.net/pathogen/]
+;C[Setup0]
+AW[aa][ab][ad][ae][bb][bc][bf][ca][cd][ce][dc][dd][df][ea][ec][ee][fa][fb][fe][ff]
+AB[ac][af][ba][bd][be][cb][cc][cf][da][db][de][eb][ed][ef][fc][fd]
+;C[Setup1]
+AB[ab][cd][ef][bc]
+;C[Setup2Begin]W[aa]B[ac]
+;W[af]B[ad]C[Setup2End]
+;C[Setup3]
+W[ij]
+)
