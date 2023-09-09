@@ -22,9 +22,19 @@ pub fn get_rand_matrix() -> Vec<Vec<bool>> {
     let random_vec2 = random_vecs[1].clone();
     let mut random_vec3 = random_vecs[2].clone();
 
+    // Column-wise check
     for i in 0..random_vec1.len() {
         if random_vec1[i] == random_vec2[i] {
             random_vec3[i] = !random_vec1[i];
+        }
+    }
+    // final row check
+    if random_vec3[0] == random_vec3[1] && random_vec3[0] == random_vec3[2] {
+        for i in 0..random_vec1.len() {
+            if random_vec1[i] != random_vec2[i] {
+                random_vec3[i] = !random_vec3[i];
+                break;
+            }
         }
     }
 
@@ -81,6 +91,11 @@ mod tests {
     #[test]
     fn test_env() {
         let rm = get_rand_matrix();
-        assert_eq!(rm[2].get(0).map_or(true, |first| rm[2].iter().all(|item| item == first)), false)
+        assert_eq!(
+            rm[2]
+                .get(0)
+                .map_or(true, |first| rm[2].iter().all(|item| item == first)),
+            false
+        )
     }
 }
