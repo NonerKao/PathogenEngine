@@ -8,8 +8,8 @@ use std::net::TcpListener;
 use std::thread;
 use std::time::Duration;
 
-use crate::core::Game;
-mod core;
+use pathogen_engine::core::Game;
+use pathogen_engine::core::Camp;
 // XXX: no, this should be called server
 
 /// Simple program to greet a person
@@ -79,21 +79,21 @@ fn main() {
                                     let mut b: [u8; 1] = [0];
                                     stream.read(&mut b).unwrap();
                                     if b[0] == 'y' as u8 {
-                                        p.insert(core::Camp::Doctor, stream);
+                                        p.insert(Camp::Doctor, stream);
                                         args.doctor = None;
                                         break;
                                     } else if b[0] == 'n' as u8 {
-                                        p.insert(core::Camp::Plague, stream);
+                                        p.insert(Camp::Plague, stream);
                                         args.plague = None;
                                         break;
                                     }
                                 }
                             } else if args.doctor != None && args.plague == None {
-                                p.insert(core::Camp::Doctor, stream);
+                                p.insert(Camp::Doctor, stream);
                                 args.doctor = None;
                                 break;
                             } else if args.doctor == None && args.plague != None {
-                                p.insert(core::Camp::Plague, stream);
+                                p.insert(Camp::Plague, stream);
                                 args.plague = None;
                                 break;
                             }
@@ -112,10 +112,10 @@ fn main() {
         }
     }
 
-    if args.doctor != None && p.get(&core::Camp::Doctor).is_none() {
+    if args.doctor != None && p.get(&Camp::Doctor).is_none() {
         panic!("No player connected");
     };
-    if args.plague != None && p.get(&core::Camp::Plague).is_none() {
+    if args.plague != None && p.get(&Camp::Plague).is_none() {
         panic!("No player connected");
     };
 
