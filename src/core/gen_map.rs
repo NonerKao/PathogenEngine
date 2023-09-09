@@ -73,3 +73,14 @@ fn random_transform(matrix1: Vec<Vec<bool>>) -> Vec<Vec<bool>> {
         _ => unreachable!(),
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_env() {
+        let rm = get_rand_matrix();
+        assert_eq!(rm[2].get(0).map_or(true, |first| rm[2].iter().all(|item| item == first)), false)
+    }
+}

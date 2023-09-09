@@ -130,3 +130,15 @@ impl Direction {
         }
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_coord() {
+        let c = Coord::new(1, 3);
+        assert_eq!(c.x, 1);
+        assert_eq!(c.y, 3);
+    }
+}
