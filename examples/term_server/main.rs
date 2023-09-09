@@ -8,8 +8,8 @@ use std::net::TcpListener;
 use std::thread;
 use std::time::Duration;
 
-use pathogen_engine::core::Game;
 use pathogen_engine::core::Camp;
+use pathogen_engine::core::Game;
 // XXX: no, this should be called server
 
 /// Simple program to greet a person

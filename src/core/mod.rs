@@ -1,9 +1,9 @@
 mod gen_map;
 
+use gen_map::get_rand_matrix;
+use ndarray::{Array, Array3};
 use std::collections::HashMap;
 use std::ops::{Add, Sub};
-use ndarray::{Array, Array3};
-use gen_map::get_rand_matrix;
 
 const ORIGIN: Coord = Coord { x: 0, y: 0 };
 const COMPASS_OFFSET: Coord = Coord { x: 2, y: 2 };

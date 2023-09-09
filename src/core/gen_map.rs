@@ -73,4 +73,3 @@ fn random_transform(matrix1: Vec<Vec<bool>>) -> Vec<Vec<bool>> {
         _ => unreachable!(),
     }
 }
-
