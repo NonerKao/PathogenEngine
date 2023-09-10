@@ -61,6 +61,64 @@ impl Action {
         }
         return Ok(());
     }
+
+    pub fn add_lockdown(&mut self, ld: Lockdown) -> Result<(), &'static str> {
+        let mut nr: HashMap<Direction, i32> = HashMap::new();
+        let u = self.restriction.get(&Direction::Up);
+        let r = self.restriction.get(&Direction::Right);
+        let d = self.restriction.get(&Direction::Down);
+        let l = self.restriction.get(&Direction::Left);
+
+        match ld {
+            Lockdown::CC90 => {
+                if r != None {
+                    nr.insert(Direction::Up, *r.unwrap());
+                }
+                if d != None {
+                    nr.insert(Direction::Right, *d.unwrap());
+                }
+                if l != None {
+                    nr.insert(Direction::Down, *l.unwrap());
+                }
+                if u != None {
+                    nr.insert(Direction::Left, *u.unwrap());
+                }
+            }
+            Lockdown::CC180 => {
+                if d != None {
+                    nr.insert(Direction::Up, *d.unwrap());
+                }
+                if l != None {
+                    nr.insert(Direction::Right, *l.unwrap());
+                }
+                if u != None {
+                    nr.insert(Direction::Down, *u.unwrap());
+                }
+                if r != None {
+                    nr.insert(Direction::Left, *r.unwrap());
+                }
+            }
+            Lockdown::CC270 => {
+                if l != None {
+                    nr.insert(Direction::Up, *l.unwrap());
+                }
+                if u != None {
+                    nr.insert(Direction::Right, *u.unwrap());
+                }
+                if r != None {
+                    nr.insert(Direction::Down, *r.unwrap());
+                }
+                if d != None {
+                    nr.insert(Direction::Left, *d.unwrap());
+                }
+            }
+            _ => {}
+        }
+
+        self.restriction = nr;
+        self.lockdown = ld;
+        return Ok(());
+    }
 }
 
 #[cfg(test)]

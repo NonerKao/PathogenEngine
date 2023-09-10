@@ -284,65 +284,6 @@ impl Game {
         return Ok("".to_string());
     }
 
-    pub fn check_action_lockdown(&mut self, ld: Lockdown) -> Result<String, String> {
-        let mut nr: HashMap<Direction, i32> = HashMap::new();
-        let u = self.action.restriction.get(&Direction::Up);
-        let r = self.action.restriction.get(&Direction::Right);
-        let d = self.action.restriction.get(&Direction::Down);
-        let l = self.action.restriction.get(&Direction::Left);
-
-        match ld {
-            Lockdown::CC90 => {
-                if r != None {
-                    nr.insert(Direction::Up, *r.unwrap());
-                }
-                if d != None {
-                    nr.insert(Direction::Right, *d.unwrap());
-                }
-                if l != None {
-                    nr.insert(Direction::Down, *l.unwrap());
-                }
-                if u != None {
-                    nr.insert(Direction::Left, *u.unwrap());
-                }
-                self.action.restriction = nr;
-            }
-            Lockdown::CC180 => {
-                if d != None {
-                    nr.insert(Direction::Up, *d.unwrap());
-                }
-                if l != None {
-                    nr.insert(Direction::Right, *l.unwrap());
-                }
-                if u != None {
-                    nr.insert(Direction::Down, *u.unwrap());
-                }
-                if r != None {
-                    nr.insert(Direction::Left, *r.unwrap());
-                }
-                self.action.restriction = nr;
-            }
-            Lockdown::CC270 => {
-                if l != None {
-                    nr.insert(Direction::Up, *l.unwrap());
-                }
-                if u != None {
-                    nr.insert(Direction::Right, *u.unwrap());
-                }
-                if r != None {
-                    nr.insert(Direction::Down, *r.unwrap());
-                }
-                if d != None {
-                    nr.insert(Direction::Left, *d.unwrap());
-                }
-                self.action.restriction = nr;
-            }
-            _ => {}
-        }
-        self.action.lockdown = ld;
-        return Ok("".to_string());
-    }
-
     pub fn check_action_step(&mut self, to: Coord) -> Result<String, String> {
         // impossible number as a implicit assertion
         let mut from = Coord::new(-999, -999);
@@ -517,33 +458,9 @@ impl Game {
     }
     /// Check if the move is legal
     pub fn check_move(&mut self, s: &Vec<String>) -> Result<String, String> {
-        // The old sgf-coupled codes will be marked to be deleted later
-        //let ccac = self.sgf_to_compass(&s[0]);
-        //self.action.check_action_compass(self, ccac)?;
-
         // start position OK?
         let ccah = self.sgf_to_env(&s[1]);
         self.check_action_hero(ccah)?;
-
-        // check lockdown state
-        let c_end = self.sgf_to_compass(&s[0]);
-        let mut ls = Lockdown::Normal;
-        if c_end.x == 0 && c_end.y == 0 && self.turn == Camp::Doctor {
-            let l = s.len();
-            match s[l - 1].as_str() {
-                "2" => {
-                    ls = Lockdown::CC90;
-                }
-                "3" => {
-                    ls = Lockdown::CC180;
-                }
-                "4" => {
-                    ls = Lockdown::CC270;
-                }
-                _ => {}
-            }
-        }
-        self.check_action_lockdown(ls)?;
 
         for i in 2..(self.action.steps as usize) + 2 {
             let c = self.sgf_to_env(&s[i]);
