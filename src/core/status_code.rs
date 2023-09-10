@@ -15,8 +15,9 @@ pub fn str_to_full_msg(s: &'static str) -> &'static str {
     }
 
     match index {
-        513 => return "Exceed valid compass area",
-        512 => return "Collide with opponent",
+        514 => return "Invalid hero position",
+        513 => return "Invalid compass area",
+        512 => return "Invalid compass position: Collide with opponent",
         0 => return "Skip",
         _ => return "??",
     }

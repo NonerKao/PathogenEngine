@@ -269,21 +269,6 @@ impl Game {
         self.flush_action();
     }
 
-    pub fn check_action_hero(&mut self, c: Coord) -> Result<String, String> {
-        let hh = *self.hero.get(&(World::Humanity, self.turn)).unwrap();
-        let hu = *self.hero.get(&(World::Underworld, self.turn)).unwrap();
-        if c != hh && c != hu {
-            return Err("Invalid character".to_string());
-        } else if c == hh {
-            self.action.world = Some(World::Humanity);
-        } else {
-            self.action.world = Some(World::Underworld);
-        }
-        self.action.hero = Some(c);
-        self.action.trajectory.push(c);
-        return Ok("".to_string());
-    }
-
     pub fn check_action_step(&mut self, to: Coord) -> Result<String, String> {
         // impossible number as a implicit assertion
         let mut from = Coord::new(-999, -999);
@@ -459,8 +444,6 @@ impl Game {
     /// Check if the move is legal
     pub fn check_move(&mut self, s: &Vec<String>) -> Result<String, String> {
         // start position OK?
-        let ccah = self.sgf_to_env(&s[1]);
-        self.check_action_hero(ccah)?;
 
         for i in 2..(self.action.steps as usize) + 2 {
             let c = self.sgf_to_env(&s[i]);

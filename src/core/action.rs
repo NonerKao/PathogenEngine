@@ -115,8 +115,26 @@ impl Action {
             _ => {}
         }
 
+        // Update action
         self.restriction = nr;
         self.lockdown = ld;
+        return Ok(());
+    }
+
+    pub fn add_hero(&mut self, g: &Game, c: Coord) -> Result<(), &'static str> {
+        let hh = *g.hero.get(&(World::Humanity, g.turn)).unwrap();
+        let hu = *g.hero.get(&(World::Underworld, g.turn)).unwrap();
+
+        // Update action
+        if c != hh && c != hu {
+            return Err("Ex02");
+        } else if c == hh {
+            self.world = Some(World::Humanity);
+        } else {
+            self.world = Some(World::Underworld);
+        }
+        self.hero = Some(c);
+        self.trajectory.push(c);
         return Ok(());
     }
 }
