@@ -516,9 +516,9 @@ impl Game {
     }
     /// Check if the move is legal
     pub fn check_move(&mut self, s: &Vec<String>) -> Result<String, String> {
-        // compass move OK?
-        let ccac = self.sgf_to_compass(&s[0]);
-        self.action.check_action_compass(ccac)?;
+        // The old sgf-coupled codes will be marked to be deleted later
+        //let ccac = self.sgf_to_compass(&s[0]);
+        //self.action.check_action_compass(self, ccac)?;
 
         // start position OK?
         let ccah = self.sgf_to_env(&s[1]);
