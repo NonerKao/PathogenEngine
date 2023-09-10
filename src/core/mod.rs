@@ -1,6 +1,7 @@
 mod action;
 mod gen_map;
 mod grid_coord;
+mod status_code;
 
 use action::Action;
 use gen_map::get_rand_matrix;

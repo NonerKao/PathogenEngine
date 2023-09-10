@@ -28,10 +28,9 @@ impl Action {
         };
     }
 
-    pub fn add_compass_step(&mut self, g: &Game, c: Coord) -> Result<String, String> {
-        let mut ret = Ok("".to_string());
+    pub fn add_compass_step(&mut self, g: &Game, c: Coord) -> Result<(), &'static str> {
         if *g.compass.get(&g.opposite(g.turn)).unwrap() == c {
-            return Err("Collide with opponent".to_string());
+            return Err("Ex00");
         }
         if *g.compass.get(&g.turn).unwrap() == c {
             // self.game.unwrap().next();
@@ -40,27 +39,18 @@ impl Action {
             // formation causes the change of the state of Game. We should
             // avoid such an implicit behavior.
             // XXX: But then, who will do the transition?
-            return Err("Skip".to_string());
+            // Also remove the match g.phase block below because it doesn't make
+            // sense that the Plague must not skip at the 1st round.
+            return Err("Ix00");
         }
         if (g.lockdown() && g.turn == Camp::Plague) || g.turn == Camp::Doctor {
             // Plague cannot outbreak when lockdown
             if c.x < -1 || c.x > 1 || c.y < -1 || c.y > 1 {
-                return Err("Exceed valid compass area".to_string());
+                return Err("Ex01");
             }
         }
-        if *g.compass.get(&g.turn).unwrap() == c {
-            match g.phase {
-                Phase::Main(n) => {
-                    if n != 1 {
-                        ret = Ok("Skip this move".to_string());
-                    } else {
-                        // XXX: What if it cannot? Should we handle this here?
-                        return Err("Plague must start".to_string());
-                    }
-                }
-                _ => {}
-            }
-        }
+
+        // Update action
         self.compass = Some(c);
         self.restriction = c - g.compass.get(&g.opposite(g.turn)).unwrap();
         if self.steps != 0 {
@@ -69,7 +59,7 @@ impl Action {
         for (_, i) in self.restriction.iter() {
             self.steps += *i;
         }
-        return ret;
+        return Ok(());
     }
 }
 
@@ -85,7 +75,8 @@ mod tests {
         let mut a = Action::new();
         g.set_compass(Camp::Doctor, c2);
         g.set_compass(Camp::Plague, c1);
-        let e = a.add_compass_step(&g, c2);
-        assert_eq!(e, Err("Collide with opponent".to_string()));
+        if let Err(e) = a.add_compass_step(&g, c2) {
+            assert_eq!(e, "Ex00");
+        }
     }
 }
