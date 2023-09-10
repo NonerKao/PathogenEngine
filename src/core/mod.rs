@@ -1,6 +1,8 @@
+mod action;
 mod gen_map;
 mod grid_coord;
 
+use action::Action;
 use gen_map::get_rand_matrix;
 use grid_coord::*;
 use ndarray::{Array, Array3};
@@ -42,33 +44,6 @@ pub struct Game {
     pub turn: Camp,
     pub phase: Phase,
     pub action: Action,
-}
-
-#[derive(Debug)]
-pub struct Action {
-    compass: Option<Coord>,
-    pub lockdown: Lockdown,
-    hero: Option<Coord>,
-    world: Option<World>,
-    pub restriction: HashMap<Direction, i32>,
-    pub steps: i32,
-    trajectory: Vec<Coord>,
-    markers: Vec<Coord>,
-}
-
-impl Action {
-    pub fn new() -> Action {
-        return Action {
-            compass: None,
-            lockdown: Lockdown::Normal,
-            hero: None,
-            world: None,
-            restriction: HashMap::new(),
-            trajectory: Vec::new(),
-            markers: Vec::new(),
-            steps: 0,
-        };
-    }
 }
 
 pub const SIZE: i32 = 6;
@@ -291,46 +266,6 @@ impl Game {
         }
 
         self.flush_action();
-    }
-
-    pub fn check_action_compass(&mut self, c: Coord) -> Result<String, String> {
-        let mut ret = Ok("".to_string());
-        if *self.compass.get(&self.opposite(self.turn)).unwrap() == c {
-            return Err("Collide with opponent".to_string());
-        }
-        if *self.compass.get(&self.turn).unwrap() == c {
-            self.next();
-            return Err("Skip".to_string());
-        }
-        if (self.lockdown() && self.turn == Camp::Plague) || self.turn == Camp::Doctor {
-            // Plague cannot outbreak when lockdown
-            if c.x < -1 || c.x > 1 || c.y < -1 || c.y > 1 {
-                return Err("Exceed valid compass area".to_string());
-            }
-        }
-        if *self.compass.get(&self.turn).unwrap() == c {
-            match self.phase {
-                Phase::Main(n) => {
-                    if n != 1 {
-                        ret = Ok("Skip this move".to_string());
-                    } else {
-                        // XXX: What if it cannot? Should we handle this here?
-                        return Err("Plague must start".to_string());
-                    }
-                }
-                _ => {}
-            }
-        }
-        self.action.compass = Some(c);
-        let op = self.compass.get(&self.opposite(self.turn)).unwrap();
-        self.action.restriction = c - op;
-        if self.action.steps != 0 {
-            panic!("{:?}:{:?}==", self.action.steps, self.action.restriction);
-        }
-        for (_, i) in self.action.restriction.iter() {
-            self.action.steps += *i;
-        }
-        return ret;
     }
 
     pub fn check_action_hero(&mut self, c: Coord) -> Result<String, String> {
@@ -583,7 +518,7 @@ impl Game {
     pub fn check_move(&mut self, s: &Vec<String>) -> Result<String, String> {
         // compass move OK?
         let ccac = self.sgf_to_compass(&s[0]);
-        self.check_action_compass(ccac)?;
+        self.action.check_action_compass(ccac)?;
 
         // start position OK?
         let ccah = self.sgf_to_env(&s[1]);
