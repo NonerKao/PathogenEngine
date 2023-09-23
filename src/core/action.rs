@@ -91,7 +91,7 @@ impl Action {
         if cp == c {
             return Ok(());
         }
-        for i in 0..=3 {
+        for i in 0..3 {
             citer = cp.lockdown(lda[i]);
             if citer == c {
                 self.lockdown = lda[i];

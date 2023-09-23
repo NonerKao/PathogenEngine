@@ -85,6 +85,89 @@ impl Game {
         g
     }
 
+    pub fn end(&self) -> bool {
+        return self.end1() || self.end2();
+    }
+
+    fn end1(&self) -> bool {
+        let t = self.turn;
+        let dir = vec![
+            Direction::Up,
+            Direction::Down,
+            Direction::Left,
+            Direction::Right,
+        ];
+
+        fn check_path(
+            stuff: &HashMap<Coord, (Camp, Stuff)>,
+            t: Camp,
+            dir: &Vec<Direction>,
+            start_coord_fn: impl Fn(i32) -> Coord,
+            end_check_fn: impl Fn(&Coord) -> bool,
+        ) -> bool {
+            let mut v = Vec::new();
+            let mut visit: Vec<Vec<bool>> = vec![vec![false; SIZE as usize]; SIZE as usize];
+
+            for i in 0..SIZE {
+                let c = start_coord_fn(i);
+                if let Some((cc, _)) = stuff.get(&c) {
+                    if *cc == t {
+                        v.push(c);
+                        visit[c.x as usize][c.y as usize] = true;
+                    }
+                }
+            }
+
+            while let Some(c) = v.pop() {
+                if c.x < 0 || c.y < 0 || c.x > SIZE || c.y > SIZE {
+                    continue;
+                }
+                assert_eq!(visit[c.x as usize][c.y as usize], true);
+
+                if end_check_fn(&c) {
+                    return true;
+                }
+
+                for i in 0..4 {
+                    let cc = c + &dir[i];
+                    if let Some((camp, _)) = stuff.get(&cc) {
+                        if *camp == t && !visit[cc.x as usize][cc.y as usize] {
+                            v.push(cc);
+                            visit[cc.x as usize][cc.y as usize] = true;
+                        }
+                    }
+                }
+            }
+            false
+        }
+
+        if check_path(
+            &self.stuff,
+            t,
+            &dir,
+            |i| Coord::new(i, 0),
+            |c| c.x == SIZE - 1,
+        ) {
+            return true;
+        }
+
+        if check_path(
+            &self.stuff,
+            t,
+            &dir,
+            |i| Coord::new(0, i),
+            |c| c.y == SIZE - 1,
+        ) {
+            return true;
+        }
+
+        false
+    }
+
+    fn end2(&self) -> bool {
+        return false;
+    }
+
     pub fn encode(&self) -> (Array3<u8>, Array3<u8>) {
         // 9 entries: cursor, underworld, humanity, doctor hero, plague hero, doctor colony, plague colony, doctor marker, plague marker
         let mut a =
@@ -335,5 +418,56 @@ impl Game {
 
     pub fn switch(&mut self) {
         self.turn = self.opposite(self.turn);
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_end1_1() {
+        let mut g = Game::init();
+        g.turn = Camp::Doctor;
+        g.add_marker(&Coord::new(0, 0), &Camp::Doctor);
+        g.add_marker(&Coord::new(1, 0), &Camp::Doctor);
+        g.add_marker(&Coord::new(2, 0), &Camp::Doctor);
+        g.add_marker(&Coord::new(3, 0), &Camp::Doctor);
+        g.add_marker(&Coord::new(4, 0), &Camp::Doctor);
+        g.add_marker(&Coord::new(5, 0), &Camp::Doctor);
+        assert_eq!(g.end1(), true);
+    }
+
+    #[test]
+    fn test_end1_2() {
+        let mut g = Game::init();
+        g.turn = Camp::Doctor;
+        g.add_marker(&Coord::new(0, 0), &Camp::Doctor);
+        g.add_marker(&Coord::new(1, 0), &Camp::Doctor);
+        g.add_marker(&Coord::new(1, 1), &Camp::Doctor);
+        g.add_marker(&Coord::new(1, 2), &Camp::Doctor);
+        g.add_marker(&Coord::new(2, 2), &Camp::Doctor);
+        for i in 0..MAX_MARKER {
+            g.add_marker(&Coord::new(3, 2), &Camp::Doctor);
+        }
+        g.add_marker(&Coord::new(3, 3), &Camp::Doctor);
+        g.add_marker(&Coord::new(3, 4), &Camp::Doctor);
+        g.add_marker(&Coord::new(3, 5), &Camp::Doctor);
+        assert_eq!(g.end1(), true);
+    }
+
+    #[test]
+    fn test_end1_3() {
+        let mut g = Game::init();
+        g.turn = Camp::Doctor;
+        g.add_marker(&Coord::new(0, 0), &Camp::Doctor);
+        g.add_marker(&Coord::new(1, 0), &Camp::Doctor);
+        g.add_marker(&Coord::new(1, 1), &Camp::Doctor);
+        g.add_marker(&Coord::new(1, 2), &Camp::Doctor);
+        g.add_marker(&Coord::new(2, 2), &Camp::Doctor);
+        g.add_marker(&Coord::new(3, 3), &Camp::Doctor);
+        g.add_marker(&Coord::new(3, 4), &Camp::Doctor);
+        g.add_marker(&Coord::new(3, 5), &Camp::Doctor);
+        assert_eq!(g.end1(), false);
     }
 }
