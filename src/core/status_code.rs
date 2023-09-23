@@ -15,6 +15,11 @@ pub fn str_to_full_msg(s: &'static str) -> &'static str {
     }
 
     match index {
+        519 => return "Invalid move: stopping at the opponent's hero",
+        518 => return "Invalid move: going through or stopping at the opponent's colony",
+        517 => return "Invalid move along the direction",
+        516 => return "Invalid compass move",
+        515 => return "Invalid coordinate as the next step",
         514 => return "Invalid hero position",
         513 => return "Invalid compass area",
         512 => return "Invalid compass position: Collide with opponent",

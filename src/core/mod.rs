@@ -269,73 +269,6 @@ impl Game {
         self.flush_action();
     }
 
-    pub fn check_action_step(&mut self, to: Coord) -> Result<String, String> {
-        // impossible number as a implicit assertion
-        let mut from = Coord::new(-999, -999);
-        if let Some(x) = self.action.trajectory.last() {
-            from = *x;
-        }
-        let dd = to - &from;
-        let mov = self.action.restriction.clone();
-        let w = self.action.world.unwrap();
-
-        // more than 1 directions?
-        // this can happen when loading a broken SGF file
-        if dd.len() != 1 {
-            return Err("Invalid move".to_string());
-        }
-
-        for (d, _) in dd.iter() {
-            if mov.get(d) == None {
-                return Err("Invalid direction of the move".to_string());
-            }
-
-            let mut c = from;
-            loop {
-                c = c + d;
-                match self.env.get(&c) {
-                    Some(x) => {
-                        if *x == w {
-                            if c != to {
-                                return Err("Not consecutive move".to_string());
-                            } else {
-                                break;
-                            }
-                        } else if c == to {
-                            return Err("Cannot cross world".to_string());
-                        }
-                    }
-                    None => {
-                        return Err("Invalid move along the direction".to_string());
-                    }
-                }
-            }
-        }
-
-        let camp = self.opposite(self.turn);
-        match self.stuff.get(&to) {
-            Some((c, Stuff::Colony)) => {
-                if *c == camp {
-                    // XXX: this is not tested yet
-                    return Err("Cannot walk through or stop at the opponent's colony".to_string());
-                }
-            }
-            _ => {}
-        }
-
-        self.action.trajectory.push(to);
-        if self.action.trajectory.len() > self.action.steps.try_into().unwrap() {
-            // Final step: No collision?
-            let op = *self.hero.get(&(w, camp)).unwrap();
-            if op == to {
-                return Err("Collide with opponent's hero".to_string());
-            }
-        }
-
-        self.action.hero = Some(to);
-        return Ok("".to_string());
-    }
-
     pub fn check_action_marker(&mut self, t: Coord) -> Result<String, String> {
         let quota = if self.turn == Camp::Doctor {
             DOCTOR_MARKER
@@ -444,11 +377,6 @@ impl Game {
     /// Check if the move is legal
     pub fn check_move(&mut self, s: &Vec<String>) -> Result<String, String> {
         // start position OK?
-
-        for i in 2..(self.action.steps as usize) + 2 {
-            let c = self.sgf_to_env(&s[i]);
-            self.check_action_step(c)?;
-        }
 
         let end = if self.turn == Camp::Doctor {
             s.len() - 1

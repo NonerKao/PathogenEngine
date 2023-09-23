@@ -28,6 +28,8 @@ impl Action {
         };
     }
 
+    // There are various combos for the following add* functions.
+
     pub fn add_compass_step(&mut self, g: &Game, c: Coord) -> Result<(), &'static str> {
         if *g.compass.get(&g.opposite(g.turn)).unwrap() == c {
             return Err("Ex00");
@@ -135,6 +137,87 @@ impl Action {
         }
         self.hero = Some(c);
         self.trajectory.push(c);
+        return Ok(());
+    }
+
+    // This is intended to be used multiple times, and only when every single step
+    // is valid the action is complete. UIs that does not generate valid candidate
+    // routes can use this directly.
+    pub fn add_board_single_step(&mut self, g: &Game, to: Coord) -> Result<(), &'static str> {
+        // impossible number as a implicit assertion
+        let mut from = Coord::new(-999, -999);
+        if let Some(x) = self.trajectory.last() {
+            from = *x;
+        }
+
+        // more than 1 steps given the destination being "to"
+        let dd = to - &from;
+        if dd.len() != 1 {
+            return Err("Ex03");
+        }
+
+        let mov = self.restriction.clone();
+        let w = self.world.unwrap();
+        // This is expected to run only once since dd.len() == 1.
+        for (d, _) in dd.iter() {
+            if mov.get(d) == None {
+                return Err("Ex04");
+            }
+
+            let mut c = from;
+            // This is non-deterministic because of the nature of Pathogen
+            // Game board has two Worlds.
+            loop {
+                // try to move along direction d
+                c = c + d;
+                match g.env.get(&c) {
+                    Some(x) => {
+                        // the same world, a valid move
+                        if *x == w {
+                            // single step and valid, but not the destination?
+                            // return error.
+                            if c != to {
+                                return Err("Ex03");
+                            // make sense, get out of this loop
+                            } else {
+                                break;
+                            }
+                        // not the same world, but equal to the destination?
+                        // return error.
+                        } else if c == to {
+                            return Err("Ex03");
+                        }
+                    }
+                    None => {
+                        return Err("Ex05");
+                    }
+                }
+            }
+        }
+
+        let enemy_camp = g.opposite(g.turn);
+        match g.stuff.get(&to) {
+            Some((c, Stuff::Colony)) => {
+                if *c == enemy_camp {
+                    // XXX: this is not tested yet
+                    return Err("Ex06");
+                }
+            }
+            _ => {}
+        }
+
+        // Update action
+        self.trajectory.push(to);
+        // Finish taking the action steps
+        if self.trajectory.len() > self.steps.try_into().unwrap() {
+            // Final step: No collision?
+            let op = *g.hero.get(&(w, enemy_camp)).unwrap();
+            if op == to {
+                return Err("Ex07");
+            }
+        }
+
+        self.hero = Some(to);
         return Ok(());
     }
 }
