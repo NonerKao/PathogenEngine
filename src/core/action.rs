@@ -259,4 +259,42 @@ mod tests {
         assert_eq!(a.trajectory.len(), 2);
         assert_eq!(a.hero.unwrap(), cu);
     }
+
+    #[test]
+    fn test_integrate1() {
+        let mut g = Game::init();
+        // For not panic the functions
+        g.compass.insert(Camp::Doctor, Coord::new(-2, -2));
+        g.hero.insert((World::Underworld, Camp::Doctor), Coord::new(-2, -2));
+        // what really necessary
+        g.turn = Camp::Doctor;
+        g.compass.insert(Camp::Plague, Coord::new(-1, -2));
+        let ch = Coord::new(3, 4);
+        g.hero.insert((World::Humanity, Camp::Doctor), ch);
+        g.env.insert(ch, World::Humanity);
+        // A failed route
+        let cf1 = Coord::new(3, 5);
+        g.env.insert(cf1, World::Underworld);
+        // A longer, failed route
+        let clf1 = Coord::new(4, 4);
+        let clf2 = Coord::new(5, 4);
+        let clf3 = Coord::new(5, 5);
+        g.env.insert(clf1, World::Underworld);
+        g.env.insert(clf2, World::Humanity);
+        g.env.insert(clf3, World::Underworld);
+
+        let mut a = Action::new();
+        let r1 = a.add_compass_step(&g, Coord::new(0, -1));
+        assert!(r1.is_ok());
+        let r2 = a.add_hero(&g, ch);
+        assert!(r2.is_ok());
+        if let Err(e) = a.add_board_single_step(&g, cf1) {
+            assert_eq!(e, "Ex03");
+        }
+        let r4 = a.add_board_single_step(&g, clf2);
+        assert!(r4.is_ok());
+        if let Err(e) = a.add_board_single_step(&g, clf3) {
+            assert_eq!(e, "Ex03");
+        }
+    }
 }
