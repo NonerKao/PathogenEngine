@@ -343,6 +343,19 @@ mod tests {
     }
 
     #[test]
+    fn test_lockdown() {
+        let mut a = Action::new();
+        let cd = Coord::new(0, 0);
+        let cp = Coord::new(-2, -1);
+        a.restriction = cd - &cp;
+        assert_eq!(*a.restriction.get(&Direction::Right).unwrap(), 2);
+        assert_eq!(*a.restriction.get(&Direction::Down).unwrap(), 1);
+        assert!(a.add_lockdown(Lockdown::CC90).is_ok());
+        assert_eq!(*a.restriction.get(&Direction::Up).unwrap(), 2);
+        assert_eq!(*a.restriction.get(&Direction::Right).unwrap(), 1);
+    }
+
+    #[test]
     fn test_hero() {
         let mut g = Game::init();
         let ch = Coord::new(4, 4);
