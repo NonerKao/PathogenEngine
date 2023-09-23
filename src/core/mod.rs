@@ -44,7 +44,6 @@ pub struct Game {
     pub stuff: HashMap<Coord, (Camp, Stuff)>,
     pub turn: Camp,
     pub phase: Phase,
-    pub action: Action,
 }
 
 pub const SIZE: i32 = 6;
@@ -63,7 +62,6 @@ impl Game {
             stuff: HashMap::new(),
             turn: Camp::Plague,
             phase: Phase::Setup0,
-            action: Action::new(),
         };
 
         // Setup the env board for
@@ -175,6 +173,9 @@ impl Game {
         }
     }
 
+    // This is a stronger interpretation than the rule book.
+    // The rule doesn't state if it counts as lockdown state when
+    // the Doctor occupies the center of compass at the beginning.
     pub fn lockdown(&self) -> bool {
         let c = self.compass.get(&Camp::Doctor).unwrap();
         if c.x == ORIGIN.x && c.y == ORIGIN.y {
@@ -245,28 +246,19 @@ impl Game {
         return;
     }
 
-    pub fn flush_action(&mut self) {
-        self.action = Action::new();
-    }
-
-    pub fn commit_action(&mut self) {
-        if self.action.lockdown != Lockdown::Normal {
+    pub fn commit_action(&mut self, a: &Action) {
+        if a.lockdown != Lockdown::Normal {
             let c_start = *self.compass.get(&Camp::Plague).unwrap();
-            self.set_compass(Camp::Plague, c_start.lockdown(self.action.lockdown));
-            self.action.lockdown = Lockdown::Normal;
+            self.set_compass(Camp::Plague, c_start.lockdown(a.lockdown));
         }
-        self.set_compass(self.turn, self.action.compass.unwrap());
-        self.hero.insert(
-            (self.action.world.unwrap(), self.turn),
-            self.action.hero.unwrap(),
-        );
-        let m = self.action.markers.clone();
+        self.set_compass(self.turn, a.compass.unwrap());
+        self.hero
+            .insert((a.world.unwrap(), self.turn), a.hero.unwrap());
+        let m = a.markers.clone();
         let t = self.turn;
         for c in m.iter() {
             self.add_marker(c, &t);
         }
-
-        self.flush_action();
     }
 
     /// Check if the setup in setup3 is legal

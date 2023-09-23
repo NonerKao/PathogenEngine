@@ -368,7 +368,8 @@ mod tests {
         let mut g = Game::init();
         // For not panic the functions
         g.compass.insert(Camp::Doctor, Coord::new(-2, -2));
-        g.hero.insert((World::Underworld, Camp::Doctor), Coord::new(-2, -2));
+        g.hero
+            .insert((World::Underworld, Camp::Doctor), Coord::new(-2, -2));
         // what really necessary
         g.turn = Camp::Doctor;
         g.compass.insert(Camp::Plague, Coord::new(-1, -2));
