@@ -238,4 +238,25 @@ mod tests {
             assert_eq!(e, "Ex00");
         }
     }
+
+    #[test]
+    fn test_hero() {
+        let mut g = Game::init();
+        let ch = Coord::new(4, 4);
+        let cu = Coord::new(2, 3);
+        g.hero.insert((World::Humanity, Camp::Plague), ch);
+        g.hero.insert((World::Underworld, Camp::Plague), cu);
+        let mut a = Action::new();
+        let c = Coord::new(1, 5);
+        if let Err(e) = a.add_hero(&g, c) {
+            assert_eq!(e, "Ex02");
+        }
+        let r1 = a.add_hero(&g, ch);
+        assert!(r1.is_ok());
+        assert_eq!(a.trajectory.len(), 1);
+        let r2 = a.add_hero(&g, cu);
+        assert!(r2.is_ok());
+        assert_eq!(a.trajectory.len(), 2);
+        assert_eq!(a.hero.unwrap(), cu);
+    }
 }
