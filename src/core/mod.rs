@@ -165,7 +165,16 @@ impl Game {
     }
 
     fn end2(&self) -> bool {
-        return false;
+        let t = self.turn;
+        if 4 == self
+            .stuff
+            .iter()
+            .filter(|&(_, (camp, stuff))| *camp == t && *stuff == Stuff::Colony)
+            .count()
+        {
+            return true;
+        }
+        false
     }
 
     pub fn encode(&self) -> (Array3<u8>, Array3<u8>) {
@@ -469,5 +478,18 @@ mod tests {
         g.add_marker(&Coord::new(3, 4), &Camp::Doctor);
         g.add_marker(&Coord::new(3, 5), &Camp::Doctor);
         assert_eq!(g.end1(), false);
+    }
+
+    #[test]
+    fn test_end2_1() {
+        let mut g = Game::init();
+        g.turn = Camp::Plague;
+        for i in 0..=MAX_MARKER {
+            g.add_marker(&Coord::new(3, 2), &Camp::Plague);
+            g.add_marker(&Coord::new(3, 3), &Camp::Plague);
+            g.add_marker(&Coord::new(3, 4), &Camp::Plague);
+            g.add_marker(&Coord::new(3, 5), &Camp::Plague);
+        }
+        assert_eq!(g.end2(), true);
     }
 }
