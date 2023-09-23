@@ -220,6 +220,109 @@ impl Action {
         self.hero = Some(to);
         return Ok(());
     }
+
+    pub fn add_single_marker(&mut self, g: &Game, t: Coord) -> Result<(), &'static str> {
+        let quota = if g.turn == Camp::Doctor {
+            DOCTOR_MARKER
+        } else {
+            PLAGUE_MARKER
+        };
+
+        let op = g.opposite(g.turn);
+        if let Some(oph) = g.hero.get(&(self.world.unwrap(), op)) {
+            if *oph == t {
+                return Err("Ex08");
+            }
+        }
+
+        if !self.trajectory.contains(&t) {
+            return Err("Ex09");
+        }
+
+        // Update action
+        self.markers.push(t);
+        if self.markers.len() > quota.try_into().unwrap() {
+            return Err("Ex0A");
+        } else if self.markers.len() == quota.try_into().unwrap() {
+            // when all markers are given ... most checks are here
+            // 1. if there is overflow
+            // 2. (Doctor) if any plagues are ignored
+            // 3. (Plague) if distributed evenly
+            let last = self.trajectory.len() - 1;
+            self.trajectory.remove(last);
+
+            // This sort-and-traverse was for Plague only because it would be easier to calculate max/min,
+            // but now we need to check if any marker overflows to Colony. Move Plague check here as well
+            self.markers.sort_by(|a, b| {
+                let na = a.x + SIZE * a.y;
+                let nb = b.x + SIZE * b.y;
+                nb.cmp(&na)
+            });
+            let mut cur = 1;
+            let m = &self.markers;
+            let t = &mut self.trajectory;
+
+            // both side shouldn't count the grid occupied by an opponent
+            t.retain(|&y| {
+                let hh = *g.hero.get(&(World::Humanity, op)).unwrap();
+                let hu = *g.hero.get(&(World::Underworld, op)).unwrap();
+                y != hh && y != hu
+            });
+            let max = (PLAGUE_MARKER as f64 / t.len() as f64).ceil() as u8;
+            let min = (PLAGUE_MARKER as f64 / t.len() as f64).floor() as u8;
+            for i in 1..=m.len() {
+                // check the total markers under two conditions
+                // 1. all markers reside in the same position, or
+                // 2. there are different markers in this move
+                if i == m.len() || m[i - 1] != m[i] {
+                    if let Some((c, Stuff::Marker(x))) = g.stuff.get(&m[i - 1]) {
+                        if *c == g.turn && MAX_MARKER < x + cur {
+                            return Err("Ex0B");
+                        }
+                    }
+                    if g.turn == Camp::Plague && cur != max && cur != min {
+                        return Err("Ex0C");
+                    }
+                    cur = 1;
+                } else {
+                    cur += 1;
+                }
+            }
+
+            if g.turn == Camp::Doctor {
+                // need to clean the plague first
+                // priorities the marker placement
+                t.sort_by(|a, b| {
+                    let mut a_sick = false;
+                    let mut b_sick = false;
+                    if let Some((Camp::Plague, Stuff::Marker(_))) = g.stuff.get(a) {
+                        a_sick = true;
+                    }
+                    if let Some((Camp::Plague, Stuff::Marker(_))) = g.stuff.get(b) {
+                        b_sick = true;
+                    }
+                    b_sick.cmp(&a_sick)
+                });
+                // on encountering plagues, cure them
+                // so, are they cured?
+                let mut m = self.markers.clone();
+                for c in t.iter() {
+                    let before = m.len();
+                    if before == 0 {
+                        break;
+                    }
+                    if let Some((Camp::Plague, Stuff::Marker(x))) = g.stuff.get(c) {
+                        m.retain(|&y| y != *c);
+                        let after = m.len();
+                        if before - after < *x as usize && after != 0 {
+                            return Err("Ex0D");
+                        }
+                    }
+                }
+            }
+        }
+        return Ok(());
+    }
 }
 
 #[cfg(test)]

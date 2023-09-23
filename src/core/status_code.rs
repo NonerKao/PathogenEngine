@@ -15,6 +15,12 @@ pub fn str_to_full_msg(s: &'static str) -> &'static str {
     }
 
     match index {
+        525 => return "Invalid marker action: (Doctor) wrong order to cure",
+        524 => return "Invalid marker action: (Plague) not evenly distributed",
+        523 => return "Invalid marker action: more than a colony",
+        522 => return "Invalid marker action: over the quota",
+        521 => return "Invalid marker action: not in the trajectory",
+        520 => return "Invalid marker action: opponent is here",
         519 => return "Invalid move: stopping at the opponent's hero",
         518 => return "Invalid move: going through or stopping at the opponent's colony",
         517 => return "Invalid move along the direction",
