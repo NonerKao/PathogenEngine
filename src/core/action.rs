@@ -64,63 +64,42 @@ impl Action {
         return Ok(());
     }
 
-    pub fn add_lockdown(&mut self, ld: Lockdown) -> Result<(), &'static str> {
-        let mut nr: HashMap<Direction, i32> = HashMap::new();
-        let u = self.restriction.get(&Direction::Up);
-        let r = self.restriction.get(&Direction::Right);
-        let d = self.restriction.get(&Direction::Down);
-        let l = self.restriction.get(&Direction::Left);
-
-        match ld {
-            Lockdown::CC90 => {
-                if r != None {
-                    nr.insert(Direction::Up, *r.unwrap());
-                }
-                if d != None {
-                    nr.insert(Direction::Right, *d.unwrap());
-                }
-                if l != None {
-                    nr.insert(Direction::Down, *l.unwrap());
-                }
-                if u != None {
-                    nr.insert(Direction::Left, *u.unwrap());
-                }
-            }
-            Lockdown::CC180 => {
-                if d != None {
-                    nr.insert(Direction::Up, *d.unwrap());
-                }
-                if l != None {
-                    nr.insert(Direction::Right, *l.unwrap());
-                }
-                if u != None {
-                    nr.insert(Direction::Down, *u.unwrap());
-                }
-                if r != None {
-                    nr.insert(Direction::Left, *r.unwrap());
-                }
-            }
-            Lockdown::CC270 => {
-                if l != None {
-                    nr.insert(Direction::Up, *l.unwrap());
-                }
-                if u != None {
-                    nr.insert(Direction::Right, *u.unwrap());
-                }
-                if r != None {
-                    nr.insert(Direction::Down, *r.unwrap());
-                }
-                if d != None {
-                    nr.insert(Direction::Left, *d.unwrap());
-                }
-            }
-            _ => {}
+    pub fn add_lockdown_by_rotation(&mut self, g: &Game, ld: Lockdown) -> Result<(), &'static str> {
+        let o = Coord::new(0, 0);
+        if g.turn != Camp::Doctor || self.compass.unwrap() != o {
+            return Err("Ex0E");
         }
+        let mut cp = *g.compass.get(&Camp::Plague).unwrap();
+        cp = cp.lockdown(ld);
 
         // Update action
-        self.restriction = nr;
         self.lockdown = ld;
+        self.restriction = o - &cp;
         return Ok(());
+    }
+
+    pub fn add_lockdown_by_coord(&mut self, g: &Game, c: Coord) -> Result<(), &'static str> {
+        let o = Coord::new(0, 0);
+        if g.turn != Camp::Doctor || self.compass.unwrap() != o {
+            return Err("Ex0E");
+        }
+        let mut cp = *g.compass.get(&Camp::Plague).unwrap();
+        // Coord iter
+        let mut citer = cp;
+        let lda = vec![Lockdown::CC90, Lockdown::CC180, Lockdown::CC270];
+
+        if cp == c {
+            return Ok(());
+        }
+        for i in 0..=3 {
+            citer = cp.lockdown(lda[i]);
+            if citer == c {
+                self.lockdown = lda[i];
+                self.restriction = o - &citer;
+                return Ok(());
+            }
+        }
+        return Err("Ex0F");
     }
 
     pub fn add_hero(&mut self, g: &Game, c: Coord) -> Result<(), &'static str> {
@@ -344,13 +323,17 @@ mod tests {
 
     #[test]
     fn test_lockdown() {
+        let mut g = Game::init();
+        g.turn = Camp::Doctor;
+        let cp = Coord::new(-2, -1);
+        g.compass.insert(Camp::Doctor, cp);
+        g.compass.insert(Camp::Plague, cp);
         let mut a = Action::new();
         let cd = Coord::new(0, 0);
-        let cp = Coord::new(-2, -1);
-        a.restriction = cd - &cp;
+        assert!(a.add_compass_step(&g, cd).is_ok());
         assert_eq!(*a.restriction.get(&Direction::Right).unwrap(), 2);
         assert_eq!(*a.restriction.get(&Direction::Down).unwrap(), 1);
-        assert!(a.add_lockdown(Lockdown::CC90).is_ok());
+        assert!(a.add_lockdown_by_coord(&g, Coord::new(-1, 2)).is_ok());
         assert_eq!(*a.restriction.get(&Direction::Up).unwrap(), 2);
         assert_eq!(*a.restriction.get(&Direction::Right).unwrap(), 1);
     }

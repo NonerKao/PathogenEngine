@@ -15,6 +15,8 @@ pub fn str_to_full_msg(s: &'static str) -> &'static str {
     }
 
     match index {
+        527 => return "Invalid lockdown resolution",
+        526 => return "Shouldn't trigger lockdown action, check application",
         525 => return "Invalid marker action: (Doctor) wrong order to cure",
         524 => return "Invalid marker action: (Plague) not evenly distributed",
         523 => return "Invalid marker action: more than a colony",
