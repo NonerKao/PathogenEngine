@@ -65,6 +65,7 @@ impl Game {
             "(;FF[4]GM[41]SZ[6]GN[https://boardgamegeek.com/boardgame/369862/pathogen]",
         );
         let mut iter = s.trim().chars().peekable();
+        // The default SGF history starts with a common game-info node
         let mut t = TreeNode::new(&mut iter, None);
         let mut g = Game {
             env: HashMap::new(),
@@ -456,6 +457,18 @@ impl Game {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn test_start1() {
+        let g = Game::init(None);
+        assert_eq!(g.history.borrow().children[0].borrow().properties.len(), 4);
+        assert_eq!(
+            g.history.borrow().children[0].borrow().properties[3]
+                .value
+                .len(),
+            1
+        );
+    }
 
     #[test]
     fn test_end1_1() {
