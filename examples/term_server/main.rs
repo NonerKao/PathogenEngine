@@ -119,7 +119,7 @@ fn main() {
         panic!("No player connected");
     };
 
-    let g = Box::new(Game::init());
+    let g = Box::new(Game::init(None));
     let e = "".to_string();
     let mut iter = e.trim().chars().peekable();
     match args.load {

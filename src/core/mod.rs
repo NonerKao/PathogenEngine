@@ -2,12 +2,16 @@ mod action;
 mod gen_map;
 mod grid_coord;
 mod status_code;
+mod tree;
 
 use action::Action;
 use gen_map::get_rand_matrix;
 use grid_coord::*;
 use ndarray::{Array, Array3};
+use std::cell::RefCell;
 use std::collections::HashMap;
+use std::rc::Rc;
+use tree::TreeNode;
 
 #[derive(Hash, PartialEq, Eq, Debug, Clone, Copy)]
 pub enum World {
@@ -44,6 +48,8 @@ pub struct Game {
     pub stuff: HashMap<Coord, (Camp, Stuff)>,
     pub turn: Camp,
     pub phase: Phase,
+    // Given history, given empty tree for recording, or None
+    pub history: Rc<RefCell<TreeNode>>,
 }
 
 pub const SIZE: i32 = 6;
@@ -54,7 +60,12 @@ pub const PLAGUE_MARKER: i32 = 4;
 pub const MAX_MARKER: u8 = 5;
 
 impl Game {
-    pub fn init() -> Game {
+    pub fn init(file: Option<Rc<RefCell<TreeNode>>>) -> Game {
+        let s = String::from(
+            "(;FF[4]GM[41]SZ[6]GN[https://boardgamegeek.com/boardgame/369862/pathogen]",
+        );
+        let mut iter = s.trim().chars().peekable();
+        let mut t = TreeNode::new(&mut iter, None);
         let mut g = Game {
             env: HashMap::new(),
             compass: HashMap::new(),
@@ -62,8 +73,18 @@ impl Game {
             stuff: HashMap::new(),
             turn: Camp::Plague,
             phase: Phase::Setup0,
+            history: t,
         };
 
+        match file {
+            Some(x) => {
+                if x.borrow().children.len() > 0 {
+                    g.resume();
+                }
+                return g;
+            }
+            _ => {}
+        }
         // Setup the env board for
         //    1. an empty game
         //    2. the SGF file provides no setup0 info
@@ -76,14 +97,16 @@ impl Game {
                         if m[i as usize][j as usize] == false {
                             w = World::Underworld;
                         }
-                        g.env
-                            .insert(Coord::new(k * (SIZE / 2) + i, l * (SIZE / 2) + j), w);
+                        let c = Coord::new(k * (SIZE / 2) + i, l * (SIZE / 2) + j);
+                        g.env.insert(c, w);
                     }
                 }
             }
         }
         g
     }
+
+    fn resume(&mut self) {}
 
     pub fn end(&self) -> bool {
         return self.end1() || self.end2();
@@ -436,7 +459,7 @@ mod tests {
 
     #[test]
     fn test_end1_1() {
-        let mut g = Game::init();
+        let mut g = Game::init(None);
         g.turn = Camp::Doctor;
         g.add_marker(&Coord::new(0, 0), &Camp::Doctor);
         g.add_marker(&Coord::new(1, 0), &Camp::Doctor);
@@ -449,7 +472,7 @@ mod tests {
 
     #[test]
     fn test_end1_2() {
-        let mut g = Game::init();
+        let mut g = Game::init(None);
         g.turn = Camp::Doctor;
         g.add_marker(&Coord::new(0, 0), &Camp::Doctor);
         g.add_marker(&Coord::new(1, 0), &Camp::Doctor);
@@ -467,7 +490,7 @@ mod tests {
 
     #[test]
     fn test_end1_3() {
-        let mut g = Game::init();
+        let mut g = Game::init(None);
         g.turn = Camp::Doctor;
         g.add_marker(&Coord::new(0, 0), &Camp::Doctor);
         g.add_marker(&Coord::new(1, 0), &Camp::Doctor);
@@ -482,7 +505,7 @@ mod tests {
 
     #[test]
     fn test_end2_1() {
-        let mut g = Game::init();
+        let mut g = Game::init(None);
         g.turn = Camp::Plague;
         for i in 0..=MAX_MARKER {
             g.add_marker(&Coord::new(3, 2), &Camp::Plague);

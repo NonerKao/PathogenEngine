@@ -26,7 +26,7 @@ struct Args {
 fn main() -> std::io::Result<()> {
     let mut args = Args::parse();
 
-    let g = Box::new(Game::init());
+    let g = Box::new(Game::init(None));
     let e = "3333".to_string();
     let mut iter = e.trim().chars().peekable();
     let mut contents = String::new();

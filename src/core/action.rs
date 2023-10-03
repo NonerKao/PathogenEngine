@@ -310,7 +310,7 @@ mod tests {
 
     #[test]
     fn test_compass1() {
-        let mut g = Game::init();
+        let mut g = Game::init(None);
         let c1 = Coord::new(2, 4);
         let c2 = Coord::new(2, 3);
         let mut a = Action::new();
@@ -323,7 +323,7 @@ mod tests {
 
     #[test]
     fn test_lockdown() {
-        let mut g = Game::init();
+        let mut g = Game::init(None);
         g.turn = Camp::Doctor;
         let cp = Coord::new(-2, -1);
         g.compass.insert(Camp::Doctor, cp);
@@ -340,7 +340,7 @@ mod tests {
 
     #[test]
     fn test_hero() {
-        let mut g = Game::init();
+        let mut g = Game::init(None);
         let ch = Coord::new(4, 4);
         let cu = Coord::new(2, 3);
         g.hero.insert((World::Humanity, Camp::Plague), ch);
@@ -361,7 +361,7 @@ mod tests {
 
     #[test]
     fn test_integrate1() {
-        let mut g = Game::init();
+        let mut g = Game::init(None);
         // For not panic the functions
         g.compass.insert(Camp::Doctor, Coord::new(-2, -2));
         g.hero
