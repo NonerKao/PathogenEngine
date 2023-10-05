@@ -172,6 +172,8 @@ impl Game {
                         let c1 = s.as_str().to_env();
                         g.character.insert((*g.env.get(&c1).unwrap(), g.turn), c1);
                         if g.is_illegal_order_setup2() {
+                            // Since the `g.switch` above ensures the execution order
+                            // in this phase, this error is not possible to be triggered.
                             panic!("Ex18");
                         }
                         if g.is_illegal_position_setup2() {
@@ -184,29 +186,36 @@ impl Game {
                         panic!("Ex17");
                     }
                 }
-                "Setup3" => {}
-                _ => {}
-            }
-            /*
-            match g.phase {
-                Phase::Setup2 => {
-                    if g.is_illegal_setup2() {
-                        panic!("Rule violation: Should be exactly one character in Humanity and exactly one in Underworld for each side.");
-                    }
-                }
-                Phase::Setup3 => {
-                    let mut s = String::new();
-                    if t.checkpoint("Setup3".to_string()) {
-                        t.get_value("W".to_string(), &mut s);
-                        let c = g.sgf_to_map(&s);
+                "Setup3" => {
+                    if g.phase == Phase::Setup0 {
+                        panic!("Ex13");
+                    } else if g.phase == Phase::Setup1 {
+                        panic!("Ex14");
+                    } else if g.phase == Phase::Setup2 {
+                        panic!("Ex17");
+                    } else if g.phase == Phase::Setup3 {
+                        let mut s = String::new();
+                        // In theory this doesn't matter, but the existence of
+                        // this turn-aware setting may benefit future clients
+                        g.switch();
+                        t.get_value("AW".to_string(), &mut s);
+                        let c = s.as_str().to_map();
                         g.map.insert(Camp::Doctor, c);
                         // check the start()::Setup3 for why this is done here
                         g.map.insert(Camp::Plague, c);
                         g.phase = Phase::Main(1);
+                        if g.is_illegal_setup3() {
+                            panic!("Ex1b");
+                        }
+                    } else {
+                        panic!("Ex1a");
                     }
-                    if g.is_illegal_setup3() {
-                        panic!("Rule violation: Expect Doctor's marker within centor 3x3 on the map");
-                    }
+                }
+                _ => {}
+            }
+            /*
+            match g.phase {
+                Phase::Setup3 => {
                 }
                 Phase::Main(_) => {
                     let mut m: Vec<String> = Vec::new();
@@ -525,16 +534,6 @@ impl Game {
         }
     }
 
-    /// Check if the setup in setup3 is legal
-    pub fn is_illegal_setup3(&self) -> bool {
-        for (_, coord) in self.map.iter() {
-            if coord.x > 1 || coord.x < -1 || coord.y > 1 || coord.y < -1 {
-                return true;
-            }
-        }
-        return false;
-    }
-
     pub fn is_setup0_done(&self) -> bool {
         let s2 = SIZE * SIZE;
         if self.env.len() > s2 as usize {
@@ -608,6 +607,16 @@ impl Game {
     pub fn is_illegal_position_setup2(&self) -> bool {
         for ((_, _), c) in self.character.iter() {
             if self.stuff.get(c) != None {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    /// Check if the setup in setup3 is legal
+    pub fn is_illegal_setup3(&self) -> bool {
+        for (_, coord) in self.map.iter() {
+            if coord.x > 1 || coord.x < -1 || coord.y > 1 || coord.y < -1 {
                 return true;
             }
         }
@@ -765,6 +774,26 @@ mod tests {
             ;C[Setup1]AB[ab][dc][bd][ef]
             ;C[Setup2]AW[aa]
             ;C[Setup2]AW[ac]
+            "
+        .to_string();
+        let mut iter = s0.trim().chars().peekable();
+        let t = TreeNode::new(&mut iter, None);
+        let _g = Game::init(Some(t));
+    }
+
+    #[test]
+    #[should_panic(expected = "Ex1b")]
+    fn test_setup3() {
+        let s0 = "(
+            ;C[Setup0]
+            AW[aa][ab][ad][ae][bb][bc][bf][ca][cd][ce][dc][dd][df][ea][ec][ee][fa][fb][fe][ff]
+            AB[ac][af][ba][bd][be][cb][cc][cf][da][db][de][eb][ed][ef][fc][fd])
+            ;C[Setup1]AB[ab][dc][bd][ef]
+            ;C[Setup2]AW[aa]
+            ;C[Setup2]AB[ad]
+            ;C[Setup2]AW[af]
+            ;C[Setup2]AB[ac]
+            ;C[Setup3]AW[gg]
             "
         .to_string();
         let mut iter = s0.trim().chars().peekable();

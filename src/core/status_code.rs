@@ -18,8 +18,10 @@ pub fn str_to_full_msg(s: &'static str) -> &'static str {
     }
 
     match index {
+        539 => return "[Setup3] Invalid position",
+        538 => return "No need to setup",
         537 => return "[Setup2] Invalid position",
-        536 => return "",
+        536 => return "[Setup2] Invalid order",
         535 => return "[Setup2] Not finished",
         534 => return "[Setup0] out-of-board setting",
         533 => return "[Setup1] Too many markers",
