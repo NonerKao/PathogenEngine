@@ -1,3 +1,4 @@
+use super::action::*;
 use std::cell::RefCell;
 use std::iter::Peekable;
 use std::rc::Rc;
@@ -174,6 +175,12 @@ impl TreeNode {
 
     pub fn to_string(&self, buf: &mut String) {
         self.traverse(&print_node, buf);
+    }
+
+    pub fn to_action(&self) -> Action {
+        let mut a = Action::new();
+        a.steps = 1;
+        a
     }
 }
 

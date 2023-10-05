@@ -203,6 +203,7 @@ impl Game {
                         g.map.insert(Camp::Doctor, c);
                         // check the start()::Setup3 for why this is done here
                         g.map.insert(Camp::Plague, c);
+                        g.next();
                         g.phase = Phase::Main(1);
                         if g.is_illegal_setup3() {
                             panic!("Ex1b");
@@ -211,28 +212,19 @@ impl Game {
                         panic!("Ex1a");
                     }
                 }
-                _ => {}
-            }
-            /*
-            match g.phase {
-                Phase::Setup3 => {
-                }
-                Phase::Main(_) => {
-                    let mut m: Vec<String> = Vec::new();
-                    t.get_general("W".to_string(), &mut m);
-                    t.get_general("B".to_string(), &mut m);
-                    t.get_general("C".to_string(), &mut m);
-                    t.get_general("IT".to_string(), &mut m);
-                    match g.check_and_apply_move(&m) {
-                        Ok(_) => {}
-                        Err(x) => {
-                            panic!("{}", x);
-                        }
+                _ => match g.phase {
+                    Phase::Main(_) => {
+                        let a = t.to_action();
+                        g.commit_action(&a);
+                        g.next();
                     }
-                }
-                _ => {}
+                    Phase::Setup0 => { //game-info?
+                    }
+                    _ => {
+                        panic!("Ex1c");
+                    }
+                },
             }
-            */
         }
         match file {
             Some(x) => {
@@ -783,7 +775,7 @@ mod tests {
 
     #[test]
     #[should_panic(expected = "Ex1b")]
-    fn test_setup3() {
+    fn test_setup3_1() {
         let s0 = "(
             ;C[Setup0]
             AW[aa][ab][ad][ae][bb][bc][bf][ca][cd][ce][dc][dd][df][ea][ec][ee][fa][fb][fe][ff]
@@ -794,6 +786,43 @@ mod tests {
             ;C[Setup2]AW[af]
             ;C[Setup2]AB[ac]
             ;C[Setup3]AW[gg]
+            "
+        .to_string();
+        let mut iter = s0.trim().chars().peekable();
+        let t = TreeNode::new(&mut iter, None);
+        let _g = Game::init(Some(t));
+    }
+
+    #[test]
+    fn test_setup3_2() {
+        let s0 = "(
+            ;C[Setup0]
+            AW[aa][ab][ad][ae][bb][bc][bf][ca][cd][ce][dc][dd][df][ea][ec][ee][fa][fb][fe][ff]
+            AB[ac][af][ba][bd][be][cb][cc][cf][da][db][de][eb][ed][ef][fc][fd])
+            ;C[Setup1]AB[ab][dc][bd][ef]
+            ;C[Setup2]AW[aa]
+            ;C[Setup2]AB[ad]
+            ;C[Setup2]AW[af]
+            ;C[Setup2]AB[ac]
+            ;C[Setup3]AW[hh]
+            "
+        .to_string();
+        let mut iter = s0.trim().chars().peekable();
+        let t = TreeNode::new(&mut iter, None);
+        let g = Game::init(Some(t));
+        assert_eq!(g.phase, Phase::Main(1));
+        assert_eq!(g.turn, Camp::Plague);
+    }
+
+    #[test]
+    #[should_panic(expected = "Ex1c")]
+    fn test_setup_misc() {
+        let s0 = "(
+            ;C[Setup0]
+            AW[aa][ab][ad][ae][bb][bc][bf][ca][cd][ce][dc][dd][df][ea][ec][ee][fa][fb][fe][ff]
+            AB[ac][af][ba][bd][be][cb][cc][cf][da][db][de][eb][ed][ef][fc][fd])
+            ;C[Setup1]AB[ab][dc][bd][ef]
+            ;W[ii][hh][aa][ab][bb][ab][aa][aa][aa][aa]
             "
         .to_string();
         let mut iter = s0.trim().chars().peekable();

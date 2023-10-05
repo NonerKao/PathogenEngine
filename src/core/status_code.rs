@@ -18,6 +18,7 @@ pub fn str_to_full_msg(s: &'static str) -> &'static str {
     }
 
     match index {
+        540 => return "Setup not done",
         539 => return "[Setup3] Invalid position",
         538 => return "No need to setup",
         537 => return "[Setup2] Invalid position",
