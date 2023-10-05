@@ -44,16 +44,16 @@ pub enum Stuff {
 pub enum Phase {
     Setup0, // Humanity and Underworld
     Setup1, // Plague to put the 4 markers
-    Setup2, // Put heroes on the board
-    Setup3, // Doctor to put the marker on the compass
+    Setup2, // Put characteres on the board
+    Setup3, // Doctor to put the marker on the map
     Main(u32),
 }
 
 #[derive(Debug)]
 pub struct Game {
     pub env: HashMap<Coord, World>,
-    pub compass: HashMap<Camp, Coord>,
-    pub hero: HashMap<(World, Camp), Coord>,
+    pub map: HashMap<Camp, Coord>,
+    pub character: HashMap<(World, Camp), Coord>,
     pub stuff: HashMap<Coord, (Camp, Stuff)>,
     pub turn: Camp,
     pub phase: Phase,
@@ -79,8 +79,8 @@ impl Game {
         // The default SGF history starts with a common game-info node
         let mut g = Game {
             env: HashMap::new(),
-            compass: HashMap::new(),
-            hero: HashMap::new(),
+            map: HashMap::new(),
+            character: HashMap::new(),
             stuff: HashMap::new(),
             turn: Camp::Plague,
             phase: Phase::Setup0,
@@ -147,7 +147,7 @@ impl Game {
                             }
                         }
                         let c1 = g.sgf_to_env(&s);
-                        g.hero.insert((*g.env.get(&c1).unwrap(), g.turn), c1);
+                        g.character.insert((*g.env.get(&c1).unwrap(), g.turn), c1);
                         if g.is_illegal_order_setup2() {
                             panic!("Ex18");
                         }
@@ -168,21 +168,21 @@ impl Game {
             match g.phase {
                 Phase::Setup2 => {
                     if g.is_illegal_setup2() {
-                        panic!("Rule violation: Should be exactly one hero in Humanity and exactly one in Underworld for each side.");
+                        panic!("Rule violation: Should be exactly one character in Humanity and exactly one in Underworld for each side.");
                     }
                 }
                 Phase::Setup3 => {
                     let mut s = String::new();
                     if t.checkpoint("Setup3".to_string()) {
                         t.get_value("W".to_string(), &mut s);
-                        let c = g.sgf_to_compass(&s);
-                        g.compass.insert(Camp::Doctor, c);
+                        let c = g.sgf_to_map(&s);
+                        g.map.insert(Camp::Doctor, c);
                         // check the start()::Setup3 for why this is done here
-                        g.compass.insert(Camp::Plague, c);
+                        g.map.insert(Camp::Plague, c);
                         g.phase = Phase::Main(1);
                     }
                     if g.is_illegal_setup3() {
-                        panic!("Rule violation: Expect Doctor's marker within centor 3x3 on the compass");
+                        panic!("Rule violation: Expect Doctor's marker within centor 3x3 on the map");
                     }
                 }
                 Phase::Main(_) => {
@@ -325,7 +325,7 @@ impl Game {
     }
 
     pub fn encode(&self) -> (Array3<u8>, Array3<u8>) {
-        // 9 entries: cursor, underworld, humanity, doctor hero, plague hero, doctor colony, plague colony, doctor marker, plague marker
+        // 9 entries: cursor, underworld, humanity, doctor character, plague character, doctor colony, plague colony, doctor marker, plague marker
         let mut a =
             Array::from_shape_fn((SIZE as usize, SIZE as usize, 9 as usize), |(_, _, _)| {
                 0 as u8
@@ -357,7 +357,7 @@ impl Game {
                 }
             }
         }
-        for ((_, camp), c) in self.hero.iter() {
+        for ((_, camp), c) in self.character.iter() {
             if *camp == Camp::Doctor {
                 a[[c.y as usize, c.x as usize, 3 /*Doctor Hero*/]] = 1;
             } else {
@@ -369,7 +369,7 @@ impl Game {
         let mut b = Array::from_shape_fn((COMPASS_SIZE, COMPASS_SIZE, 3 as usize), |(_, _, _)| {
             0 as u8
         });
-        for (camp, c) in self.compass.iter() {
+        for (camp, c) in self.map.iter() {
             if *camp == Camp::Doctor {
                 b[[
                     (c.y + COMPASS_OFFSET.y) as usize,
@@ -416,23 +416,23 @@ impl Game {
 
     // This is a stronger interpretation than the rule book.
     // The rule doesn't state if it counts as lockdown state when
-    // the Doctor occupies the center of compass at the beginning.
+    // the Doctor occupies the center of map at the beginning.
     pub fn lockdown(&self) -> bool {
-        let c = self.compass.get(&Camp::Doctor).unwrap();
+        let c = self.map.get(&Camp::Doctor).unwrap();
         if c.x == ORIGIN.x && c.y == ORIGIN.y {
             return true;
         }
         return false;
     }
 
-    pub fn set_compass(&mut self, t: Camp, c: Coord) {
-        self.compass.insert(t, c);
+    pub fn set_map(&mut self, t: Camp, c: Coord) {
+        self.map.insert(t, c);
     }
 
     /// Check if the setup in setup3 is legal
     pub fn apply_move(&mut self, s: &Vec<String>) {
-        let c_start = *self.compass.get(&self.opposite(self.turn)).unwrap();
-        let c_end = self.sgf_to_compass(&s[0]);
+        let c_start = *self.map.get(&self.opposite(self.turn)).unwrap();
+        let c_end = self.sgf_to_map(&s[0]);
         let mut ls = Lockdown::Normal;
         if c_end.x == 0 && c_end.y == 0 && self.turn == Camp::Doctor {
             let l = s.len();
@@ -449,8 +449,8 @@ impl Game {
                 _ => {}
             }
         }
-        self.set_compass(self.turn, c_end.lockdown(ls));
-        self.set_compass(self.opposite(self.turn), c_start.lockdown(ls));
+        self.set_map(self.turn, c_end.lockdown(ls));
+        self.set_map(self.opposite(self.turn), c_start.lockdown(ls));
 
         let mov = c_end - &c_start;
         let mut index: usize = 1;
@@ -458,11 +458,11 @@ impl Game {
             index = index + *i as usize;
         }
 
-        // update hero
+        // update character
         let c_to = self.sgf_to_env(&s[index]);
         let w = self.env.get(&c_start).unwrap();
         let tuple = (*w, self.turn);
-        self.hero.insert(tuple, c_to);
+        self.character.insert(tuple, c_to);
 
         // update marker
         let t = self.turn;
@@ -489,12 +489,12 @@ impl Game {
 
     pub fn commit_action(&mut self, a: &Action) {
         if a.lockdown != Lockdown::Normal {
-            let c_start = *self.compass.get(&Camp::Plague).unwrap();
-            self.set_compass(Camp::Plague, c_start.lockdown(a.lockdown));
+            let c_start = *self.map.get(&Camp::Plague).unwrap();
+            self.set_map(Camp::Plague, c_start.lockdown(a.lockdown));
         }
-        self.set_compass(self.turn, a.compass.unwrap());
-        self.hero
-            .insert((a.world.unwrap(), self.turn), a.hero.unwrap());
+        self.set_map(self.turn, a.map.unwrap());
+        self.character
+            .insert((a.world.unwrap(), self.turn), a.character.unwrap());
         let m = a.markers.clone();
         let t = self.turn;
         for c in m.iter() {
@@ -504,7 +504,7 @@ impl Game {
 
     /// Check if the setup in setup3 is legal
     pub fn is_illegal_setup3(&self) -> bool {
-        for (_, coord) in self.compass.iter() {
+        for (_, coord) in self.map.iter() {
             if coord.x > 1 || coord.x < -1 || coord.y > 1 || coord.y < -1 {
                 return true;
             }
@@ -546,18 +546,18 @@ impl Game {
     }
 
     pub fn is_setup2_done(&self) -> bool {
-        return self.hero.len() == Camp::COUNT * World::COUNT;
+        return self.character.len() == Camp::COUNT * World::COUNT;
     }
 
     /// Check if the setup in setup2 is legal
     pub fn is_illegal_order_setup2(&self) -> bool {
         let dc = self
-            .hero
+            .character
             .iter()
             .filter(|&((_, camp), _)| *camp == Camp::Doctor)
             .count();
         let pc = self
-            .hero
+            .character
             .iter()
             .filter(|&((_, camp), _)| *camp == Camp::Plague)
             .count();
@@ -583,7 +583,7 @@ impl Game {
         }
     }
     pub fn is_illegal_position_setup2(&self) -> bool {
-        for ((_, _), c) in self.hero.iter() {
+        for ((_, _), c) in self.character.iter() {
             if self.stuff.get(c) != None {
                 return true;
             }
@@ -591,7 +591,7 @@ impl Game {
         return false;
     }
 
-    pub fn sgf_to_compass(&self, s: &String) -> Coord {
+    pub fn sgf_to_map(&self, s: &String) -> Coord {
         // row major, x as row index and y as column index
         // ghijk
         let x: i32 = s.chars().nth(1).unwrap() as i32 - 'i' as i32;

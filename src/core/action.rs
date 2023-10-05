@@ -4,9 +4,9 @@ use std::collections::HashMap;
 
 #[derive(Debug)]
 pub struct Action {
-    pub compass: Option<Coord>,
+    pub map: Option<Coord>,
     pub lockdown: Lockdown,
-    pub hero: Option<Coord>,
+    pub character: Option<Coord>,
     pub world: Option<World>,
     pub restriction: HashMap<Direction, i32>,
     pub steps: i32,
@@ -17,9 +17,9 @@ pub struct Action {
 impl Action {
     pub fn new() -> Action {
         return Action {
-            compass: None,
+            map: None,
             lockdown: Lockdown::Normal,
-            hero: None,
+            character: None,
             world: None,
             restriction: HashMap::new(),
             trajectory: Vec::new(),
@@ -30,11 +30,11 @@ impl Action {
 
     // There are various combos for the following add* functions.
 
-    pub fn add_compass_step(&mut self, g: &Game, c: Coord) -> Result<(), &'static str> {
-        if *g.compass.get(&g.opposite(g.turn)).unwrap() == c {
+    pub fn add_map_step(&mut self, g: &Game, c: Coord) -> Result<(), &'static str> {
+        if *g.map.get(&g.opposite(g.turn)).unwrap() == c {
             return Err("Ex00");
         }
-        if *g.compass.get(&g.turn).unwrap() == c {
+        if *g.map.get(&g.turn).unwrap() == c {
             // self.game.unwrap().next();
             // Previously this changes the state of Game.
             // This is not clean because it implies that a check in the action
@@ -53,8 +53,8 @@ impl Action {
         }
 
         // Update action
-        self.compass = Some(c);
-        self.restriction = c - g.compass.get(&g.opposite(g.turn)).unwrap();
+        self.map = Some(c);
+        self.restriction = c - g.map.get(&g.opposite(g.turn)).unwrap();
         if self.steps != 0 {
             panic!("{:?}:{:?}==", self.steps, self.restriction);
         }
@@ -66,10 +66,10 @@ impl Action {
 
     pub fn add_lockdown_by_rotation(&mut self, g: &Game, ld: Lockdown) -> Result<(), &'static str> {
         let o = Coord::new(0, 0);
-        if g.turn != Camp::Doctor || self.compass.unwrap() != o {
+        if g.turn != Camp::Doctor || self.map.unwrap() != o {
             return Err("Ex0E");
         }
-        let mut cp = *g.compass.get(&Camp::Plague).unwrap();
+        let mut cp = *g.map.get(&Camp::Plague).unwrap();
         cp = cp.lockdown(ld);
 
         // Update action
@@ -80,10 +80,10 @@ impl Action {
 
     pub fn add_lockdown_by_coord(&mut self, g: &Game, c: Coord) -> Result<(), &'static str> {
         let o = Coord::new(0, 0);
-        if g.turn != Camp::Doctor || self.compass.unwrap() != o {
+        if g.turn != Camp::Doctor || self.map.unwrap() != o {
             return Err("Ex0E");
         }
-        let cp = *g.compass.get(&Camp::Plague).unwrap();
+        let cp = *g.map.get(&Camp::Plague).unwrap();
         // Coord iter
         let lda = vec![Lockdown::CC90, Lockdown::CC180, Lockdown::CC270];
 
@@ -101,9 +101,9 @@ impl Action {
         return Err("Ex0F");
     }
 
-    pub fn add_hero(&mut self, g: &Game, c: Coord) -> Result<(), &'static str> {
-        let hh = *g.hero.get(&(World::Humanity, g.turn)).unwrap();
-        let hu = *g.hero.get(&(World::Underworld, g.turn)).unwrap();
+    pub fn add_character(&mut self, g: &Game, c: Coord) -> Result<(), &'static str> {
+        let hh = *g.character.get(&(World::Humanity, g.turn)).unwrap();
+        let hu = *g.character.get(&(World::Underworld, g.turn)).unwrap();
 
         // Update action
         if c != hh && c != hu {
@@ -113,7 +113,7 @@ impl Action {
         } else {
             self.world = Some(World::Underworld);
         }
-        self.hero = Some(c);
+        self.character = Some(c);
         self.trajectory.push(c);
         return Ok(());
     }
@@ -189,13 +189,13 @@ impl Action {
         // Finish taking the action steps
         if self.trajectory.len() > self.steps.try_into().unwrap() {
             // Final step: No collision?
-            let op = *g.hero.get(&(w, enemy_camp)).unwrap();
+            let op = *g.character.get(&(w, enemy_camp)).unwrap();
             if op == to {
                 return Err("Ex07");
             }
         }
 
-        self.hero = Some(to);
+        self.character = Some(to);
         return Ok(());
     }
 
@@ -207,7 +207,7 @@ impl Action {
         };
 
         let op = g.opposite(g.turn);
-        if let Some(oph) = g.hero.get(&(self.world.unwrap(), op)) {
+        if let Some(oph) = g.character.get(&(self.world.unwrap(), op)) {
             if *oph == t {
                 return Err("Ex08");
             }
@@ -242,8 +242,8 @@ impl Action {
 
             // both side shouldn't count the grid occupied by an opponent
             t.retain(|&y| {
-                let hh = *g.hero.get(&(World::Humanity, op)).unwrap();
-                let hu = *g.hero.get(&(World::Underworld, op)).unwrap();
+                let hh = *g.character.get(&(World::Humanity, op)).unwrap();
+                let hu = *g.character.get(&(World::Underworld, op)).unwrap();
                 y != hh && y != hu
             });
             let max = (PLAGUE_MARKER as f64 / t.len() as f64).ceil() as u8;
@@ -308,14 +308,14 @@ mod tests {
     use super::*;
 
     #[test]
-    fn test_compass1() {
+    fn test_map1() {
         let mut g = Game::init(None);
         let c1 = Coord::new(2, 4);
         let c2 = Coord::new(2, 3);
         let mut a = Action::new();
-        g.set_compass(Camp::Doctor, c2);
-        g.set_compass(Camp::Plague, c1);
-        if let Err(e) = a.add_compass_step(&g, c2) {
+        g.set_map(Camp::Doctor, c2);
+        g.set_map(Camp::Plague, c1);
+        if let Err(e) = a.add_map_step(&g, c2) {
             assert_eq!(e, "Ex00");
         }
     }
@@ -325,11 +325,11 @@ mod tests {
         let mut g = Game::init(None);
         g.turn = Camp::Doctor;
         let cp = Coord::new(-2, -1);
-        g.compass.insert(Camp::Doctor, cp);
-        g.compass.insert(Camp::Plague, cp);
+        g.map.insert(Camp::Doctor, cp);
+        g.map.insert(Camp::Plague, cp);
         let mut a = Action::new();
         let cd = Coord::new(0, 0);
-        assert!(a.add_compass_step(&g, cd).is_ok());
+        assert!(a.add_map_step(&g, cd).is_ok());
         assert_eq!(*a.restriction.get(&Direction::Right).unwrap(), 2);
         assert_eq!(*a.restriction.get(&Direction::Down).unwrap(), 1);
         assert!(a.add_lockdown_by_coord(&g, Coord::new(-1, 2)).is_ok());
@@ -338,38 +338,38 @@ mod tests {
     }
 
     #[test]
-    fn test_hero() {
+    fn test_character() {
         let mut g = Game::init(None);
         let ch = Coord::new(4, 4);
         let cu = Coord::new(2, 3);
-        g.hero.insert((World::Humanity, Camp::Plague), ch);
-        g.hero.insert((World::Underworld, Camp::Plague), cu);
+        g.character.insert((World::Humanity, Camp::Plague), ch);
+        g.character.insert((World::Underworld, Camp::Plague), cu);
         let mut a = Action::new();
         let c = Coord::new(1, 5);
-        if let Err(e) = a.add_hero(&g, c) {
+        if let Err(e) = a.add_character(&g, c) {
             assert_eq!(e, "Ex02");
         }
-        let r1 = a.add_hero(&g, ch);
+        let r1 = a.add_character(&g, ch);
         assert!(r1.is_ok());
         assert_eq!(a.trajectory.len(), 1);
-        let r2 = a.add_hero(&g, cu);
+        let r2 = a.add_character(&g, cu);
         assert!(r2.is_ok());
         assert_eq!(a.trajectory.len(), 2);
-        assert_eq!(a.hero.unwrap(), cu);
+        assert_eq!(a.character.unwrap(), cu);
     }
 
     #[test]
     fn test_integrate1() {
         let mut g = Game::init(None);
         // For not panic the functions
-        g.compass.insert(Camp::Doctor, Coord::new(-2, -2));
-        g.hero
+        g.map.insert(Camp::Doctor, Coord::new(-2, -2));
+        g.character
             .insert((World::Underworld, Camp::Doctor), Coord::new(-2, -2));
         // what really necessary
         g.turn = Camp::Doctor;
-        g.compass.insert(Camp::Plague, Coord::new(-1, -2));
+        g.map.insert(Camp::Plague, Coord::new(-1, -2));
         let ch = Coord::new(3, 4);
-        g.hero.insert((World::Humanity, Camp::Doctor), ch);
+        g.character.insert((World::Humanity, Camp::Doctor), ch);
         g.env.insert(ch, World::Humanity);
         // A failed route
         let cf1 = Coord::new(3, 5);
@@ -383,9 +383,9 @@ mod tests {
         g.env.insert(clf3, World::Underworld);
 
         let mut a = Action::new();
-        let r1 = a.add_compass_step(&g, Coord::new(0, -1));
+        let r1 = a.add_map_step(&g, Coord::new(0, -1));
         assert!(r1.is_ok());
-        let r2 = a.add_hero(&g, ch);
+        let r2 = a.add_character(&g, ch);
         assert!(r2.is_ok());
         if let Err(e) = a.add_board_single_step(&g, cf1) {
             assert_eq!(e, "Ex03");

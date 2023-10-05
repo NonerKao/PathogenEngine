@@ -56,7 +56,7 @@ fn main() -> std::io::Result<()> {
 
     let mut g = Game::init(Some(tn));
     let mut a = Action::new();
-    match a.add_hero(&g, Coord::new(0, 0)) {
+    match a.add_character(&g, Coord::new(0, 0)) {
         Ok(_) => {}
         Err(x) => {
             println!("{}", str_to_full_msg(x));

@@ -25,7 +25,7 @@ impl Coord {
         return s;
     }
 
-    pub fn compass_to_sgf(&self) -> String {
+    pub fn map_to_sgf(&self) -> String {
         let mut s = String::new();
         let base: i32 = 'i' as i32;
         let y: u32 = (base + self.y) as u32;
