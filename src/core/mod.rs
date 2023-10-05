@@ -20,10 +20,18 @@ pub enum World {
     Underworld,
 }
 
+impl World {
+    const COUNT: usize = 2;
+}
+
 #[derive(Hash, PartialEq, Eq, Debug, Clone, Copy)]
 pub enum Camp {
     Doctor,
     Plague,
+}
+
+impl Camp {
+    const COUNT: usize = 2;
 }
 
 #[derive(Hash, PartialEq, Eq, Debug, Copy, Clone)]
@@ -55,10 +63,12 @@ pub struct Game {
 
 pub const SIZE: i32 = 6;
 const COMPASS_SIZE: usize = 5;
+pub const QUAD_SIZE: usize = 4;
 pub const DOCTOR_MARKER: i32 = 5;
 pub const PLAGUE_MARKER: i32 = 4;
 
 pub const MAX_MARKER: u8 = 5;
+const SETUP1_MARKER: usize = 4;
 
 impl Game {
     pub fn init(file: Option<Rc<RefCell<TreeNode>>>) -> Game {
@@ -81,9 +91,9 @@ impl Game {
             if !is_front {
                 return;
             }
-            match g.phase {
-                Phase::Setup0 => {
-                    if t.checkpoint("Setup0".to_string()) {
+            match t.checkpoint() {
+                "Setup0" => {
+                    if g.phase == Phase::Setup0 {
                         let mut h: Vec<String> = Vec::new();
                         let mut u: Vec<String> = Vec::new();
                         t.get_general("AW".to_string(), &mut h);
@@ -94,40 +104,69 @@ impl Game {
                         for c in u.iter() {
                             g.env.insert(g.sgf_to_env(c), World::Underworld);
                         }
-                        g.phase = Phase::Setup1;
+                        if g.is_setup0_done() {
+                            g.phase = Phase::Setup1;
+                        }
+                    } else {
+                        panic!("Ex12");
                     }
                 }
-                /*
-                Phase::Setup1 => {
-                    if t.checkpoint("Setup1".to_string()) {
+                "Setup1" => {
+                    if g.phase == Phase::Setup0 {
+                        panic!("Ex13");
+                    } else if g.phase == Phase::Setup1 {
                         let mut m: Vec<String> = Vec::new();
                         t.get_general("AB".to_string(), &mut m);
                         for c in m.iter() {
-                            g.stuff.insert(g.sgf_to_env(c), (Camp::Plague, Stuff::Marker(1)));
+                            g.add_marker(&g.sgf_to_env(c), &Camp::Plague);
                         }
-                        if g.is_illegal_setup1() {
-                            panic!("Rule violation: The initial 4 markers can not share any rows or columns.");
+                        if g.is_setup1_done() {
+                            if g.is_illegal_setup1() {
+                                panic!("Ex11");
+                            }
+                            g.phase = Phase::Setup2;
                         }
-                        g.phase = Phase::Setup2;
                     } else {
-                        panic!("Unexpected SGF content: Setup1 not done.");
+                        panic!("Ex10");
                     }
                 }
-                Phase::Setup2 => {
-                    // with the assumption that the sequence is always D->P->D->P
-                    let mut s = String::new();
-                    if t.checkpoint("Setup2Begin".to_string()) || t.checkpoint("Setup2End".to_string()) {
-                        t.get_value("W".to_string(), &mut s);
+                "Setup2" => {
+                    if g.phase == Phase::Setup0 {
+                        panic!("Ex13");
+                    } else if g.phase == Phase::Setup1 {
+                        panic!("Ex14");
+                    } else if g.phase == Phase::Setup2 {
+                        let mut s = String::new();
+                        g.switch();
+                        match g.turn {
+                            Camp::Plague => {
+                                t.get_value("AB".to_string(), &mut s);
+                            }
+                            Camp::Doctor => {
+                                t.get_value("AW".to_string(), &mut s);
+                            }
+                        }
                         let c1 = g.sgf_to_env(&s);
-                        g.hero.insert((*g.env.get(&c1).unwrap(), Camp::Doctor), c1);
-                        s = String::from("");
-                        t.get_value("B".to_string(), &mut s);
-                        let c2 = g.sgf_to_env(&s);
-                        g.hero.insert((*g.env.get(&c2).unwrap(), Camp::Plague), c2);
+                        g.hero.insert((*g.env.get(&c1).unwrap(), g.turn), c1);
+                        if g.is_illegal_order_setup2() {
+                            panic!("Ex18");
+                        }
+                        if g.is_illegal_position_setup2() {
+                            panic!("Ex19");
+                        }
+                        if g.is_setup2_done() {
+                            g.phase = Phase::Setup3;
+                        }
+                    } else {
+                        panic!("Ex17");
                     }
-                    if t.checkpoint("Setup2End".to_string()) {
-                        g.phase = Phase::Setup3;
-                    }
+                }
+                "Setup3" => {}
+                _ => {}
+            }
+            /*
+            match g.phase {
+                Phase::Setup2 => {
                     if g.is_illegal_setup2() {
                         panic!("Rule violation: Should be exactly one hero in Humanity and exactly one in Underworld for each side.");
                     }
@@ -159,9 +198,9 @@ impl Game {
                         }
                     }
                 }
-                */
                 _ => {}
             }
+            */
         }
         match file {
             Some(x) => {
@@ -273,11 +312,12 @@ impl Game {
 
     fn end2(&self) -> bool {
         let t = self.turn;
-        if 4 == self
-            .stuff
-            .iter()
-            .filter(|&(_, (camp, stuff))| *camp == t && *stuff == Stuff::Colony)
-            .count()
+        if QUAD_SIZE
+            == self
+                .stuff
+                .iter()
+                .filter(|&(_, (camp, stuff))| *camp == t && *stuff == Stuff::Colony)
+                .count()
         {
             return true;
         }
@@ -347,6 +387,8 @@ impl Game {
         (a, b)
     }
 
+    // XXX: Need to add some restriction that each qudrant can
+    //      have one colony at most
     pub fn add_marker(&mut self, c: &Coord, camp: &Camp) {
         match self.stuff.get(c) {
             None => {
@@ -470,41 +512,81 @@ impl Game {
         return false;
     }
 
-    /// Check if the setup in setup2 is legal
-    pub fn is_illegal_setup2(&self) -> bool {
-        if self.hero.len() != 4 && self.hero.len() != 2 {
-            return true;
+    pub fn is_setup0_done(&self) -> bool {
+        let s2 = SIZE * SIZE;
+        if self.env.len() > s2 as usize {
+            panic!("Ex16");
         }
-        match self.hero.len() {
-            4 => {
-                // 4 heroes are placed, it must be legal because there are exactly 4 combinations of camp and world
-                return false;
-            }
-            2 => {
-                // temporary
-                return false;
-            }
-            _ => {
-                // weird state
-                return true;
-            }
+        return self.env.len() == s2 as usize;
+    }
+
+    pub fn is_setup1_done(&self) -> bool {
+        if self.stuff.len() > SETUP1_MARKER {
+            panic!("Ex15");
         }
+        return self.stuff.len() == SETUP1_MARKER;
     }
 
     /// Check if the setup in setup1 is legal
     pub fn is_illegal_setup1(&self) -> bool {
         let mut row: [bool; crate::core::SIZE as usize] = [false; crate::core::SIZE as usize];
         let mut col: [bool; crate::core::SIZE as usize] = [false; crate::core::SIZE as usize];
-        if self.stuff.len() != 4 {
-            return true;
-        }
+        let mut quad: [bool; crate::core::QUAD_SIZE] = [false; crate::core::QUAD_SIZE];
         for c in self.stuff.iter() {
             let coord = c.0;
-            if row[coord.x as usize] || col[coord.y as usize] {
+            let q = coord.to_quad();
+            if row[coord.x as usize] || col[coord.y as usize] || quad[q as usize] {
                 return true;
             }
             row[coord.x as usize] = true;
             col[coord.y as usize] = true;
+            quad[q as usize] = true;
+        }
+        return false;
+    }
+
+    pub fn is_setup2_done(&self) -> bool {
+        return self.hero.len() == Camp::COUNT * World::COUNT;
+    }
+
+    /// Check if the setup in setup2 is legal
+    pub fn is_illegal_order_setup2(&self) -> bool {
+        let dc = self
+            .hero
+            .iter()
+            .filter(|&((_, camp), _)| *camp == Camp::Doctor)
+            .count();
+        let pc = self
+            .hero
+            .iter()
+            .filter(|&((_, camp), _)| *camp == Camp::Plague)
+            .count();
+        match self.turn {
+            Camp::Plague => {
+                if dc == 1 && pc == 1 {
+                    return false;
+                } else if dc == 2 && pc == 2 {
+                    return false;
+                } else {
+                    return true;
+                }
+            }
+            Camp::Doctor => {
+                if dc == 1 && pc == 0 {
+                    return false;
+                } else if dc == 2 && pc == 1 {
+                    return false;
+                } else {
+                    return true;
+                }
+            }
+        }
+    }
+    pub fn is_illegal_position_setup2(&self) -> bool {
+        for ((_, _), c) in self.hero.iter() {
+            if self.stuff.get(c) != None {
+                return true;
+            }
         }
         return false;
     }
@@ -555,20 +637,132 @@ mod tests {
 
     #[test]
     fn test_start2() {
-        let s0 = "(;FF[4]GM[41]SZ[6]
-GN[https://boardgamegeek.com/boardgame/369862/pathogen]
-;C[Setup0]
-AW[aa][ab][ad][ae][bb][bc][bf][ca][cd][ce][dc][dd][df][ea][ec][ee][fa][fb][fe][ff]
-AB[ac][af][ba][bd][be][cb][cc][cf][da][db][de][eb][ed][ef][fc][fd]
-)
-"
+        let s0 = "(;FF[4]GM[41]SZ[6]GN[https://boardgamegeek.com/boardgame/369862/pathogen]
+            ;C[Setup0]
+            AW[aa][ab][ad][ae][bb][bc][bf][ca][cd][ce][dc][dd][df][ea][ec][ee][fa][fb][fe][ff]
+            AB[ac][af][ba][bd][be][cb][cc][cf][da][db][de][eb][ed][ef][fc][fd])
+            "
         .to_string();
         let mut iter = s0.trim().chars().peekable();
         let t = TreeNode::new(&mut iter, None);
         let g = Game::init(Some(t));
         assert_eq!(g.phase, Phase::Setup1);
+        // Note that the "a" in "ab" SGF notation stands for y-axis.
         assert_eq!(*g.env.get(&Coord::new(0, 5)).unwrap(), World::Humanity);
         assert_eq!(*g.env.get(&Coord::new(2, 5)).unwrap(), World::Underworld);
+    }
+
+    #[test]
+    fn test_setup0() {
+        let s0 = "(;C[Setup0]
+            AW[aa][ab][ad][ae][bb][bc][bf][ca][cd][ce][dc][dd][df][ea][ec][ee][fa][fb][fe][ff]
+            ;C[Setup0]
+            AB[ac][af][ba][bd][be][cb][cc][cf][da][db][de][eb][ed][ef][fc][fd])
+            "
+        .to_string();
+        let mut iter = s0.trim().chars().peekable();
+        let t = TreeNode::new(&mut iter, None);
+        let g = Game::init(Some(t));
+        assert_eq!(g.phase, Phase::Setup1);
+    }
+
+    #[test]
+    #[should_panic(expected = "Ex14")]
+    fn test_setup1_1() {
+        let s0 = "(;FF[4]GM[41]SZ[6]GN[https://boardgamegeek.com/boardgame/369862/pathogen]
+            ;C[Setup0]
+            AW[aa][ab][ad][ae][bb][bc][bf][ca][cd][ce][dc][dd][df][ea][ec][ee][fa][fb][fe][ff]
+            AB[ac][af][ba][bd][be][cb][cc][cf][da][db][de][eb][ed][ef][fc][fd])
+            ;C[Setup2]
+            "
+        .to_string();
+        let mut iter = s0.trim().chars().peekable();
+        let t = TreeNode::new(&mut iter, None);
+        let g = Game::init(Some(t));
+    }
+
+    #[test]
+    #[should_panic(expected = "Ex11")]
+    fn test_setup1_2() {
+        let s0 = "(;FF[4]GM[41]SZ[6]GN[https://boardgamegeek.com/boardgame/369862/pathogen]
+            ;C[Setup0]
+            AW[aa][ab][ad][ae][bb][bc][bf][ca][cd][ce][dc][dd][df][ea][ec][ee][fa][fb][fe][ff]
+            AB[ac][af][ba][bd][be][cb][cc][cf][da][db][de][eb][ed][ef][fc][fd])
+            ;C[Setup1]
+            AB[ab][cd][ef][bc]
+            "
+        .to_string();
+        let mut iter = s0.trim().chars().peekable();
+        let t = TreeNode::new(&mut iter, None);
+        let g = Game::init(Some(t));
+        assert_eq!(g.phase, Phase::Setup2);
+    }
+
+    #[test]
+    fn test_setup1_3() {
+        let s0 = "(;FF[4]GM[41]SZ[6]GN[https://boardgamegeek.com/boardgame/369862/pathogen]
+            ;C[Setup0]
+            AW[aa][ab][ad][ae][bb][bc][bf][ca][cd][ce][dc][dd][df][ea][ec][ee][fa][fb][fe][ff]
+            AB[ac][af][ba][bd][be][cb][cc][cf][da][db][de][eb][ed][ef][fc][fd])
+            ;C[Setup1]AB[ab]
+            ;C[Setup1]AB[dc][bd]
+            "
+        .to_string();
+        let mut iter = s0.trim().chars().peekable();
+        let t = TreeNode::new(&mut iter, None);
+        let g = Game::init(Some(t));
+        assert_eq!(g.phase, Phase::Setup1);
+        assert_eq!(g.stuff.len(), 3);
+    }
+
+    #[test]
+    #[should_panic(expected = "Ex15")]
+    fn test_setup1_4() {
+        let s0 = "(;FF[4]GM[41]SZ[6]GN[https://boardgamegeek.com/boardgame/369862/pathogen]
+            ;C[Setup0]
+            AW[aa][ab][ad][ae][bb][bc][bf][ca][cd][ce][dc][dd][df][ea][ec][ee][fa][fb][fe][ff]
+            AB[ac][af][ba][bd][be][cb][cc][cf][da][db][de][eb][ed][ef][fc][fd])
+            ;C[Setup1]AB[ab]
+            ;C[Setup1]AB[dc][bd]
+            ;C[Setup1]AB[dd][be]
+            "
+        .to_string();
+        let mut iter = s0.trim().chars().peekable();
+        let t = TreeNode::new(&mut iter, None);
+        let g = Game::init(Some(t));
+    }
+
+    #[test]
+    #[should_panic(expected = "Ex19")]
+    fn test_setup2_position() {
+        let s0 = "(
+            ;C[Setup0]
+            AW[aa][ab][ad][ae][bb][bc][bf][ca][cd][ce][dc][dd][df][ea][ec][ee][fa][fb][fe][ff]
+            AB[ac][af][ba][bd][be][cb][cc][cf][da][db][de][eb][ed][ef][fc][fd])
+            ;C[Setup1]AB[ab][dc][bd][ef]
+            ;C[Setup2]AW[ab]
+            "
+        .to_string();
+        let mut iter = s0.trim().chars().peekable();
+        let t = TreeNode::new(&mut iter, None);
+        let g = Game::init(Some(t));
+    }
+
+    #[test]
+    #[should_panic]
+    fn test_setup2_order() {
+        let s0 = "(
+            ;C[Setup0]
+            AW[aa][ab][ad][ae][bb][bc][bf][ca][cd][ce][dc][dd][df][ea][ec][ee][fa][fb][fe][ff]
+            AB[ac][af][ba][bd][be][cb][cc][cf][da][db][de][eb][ed][ef][fc][fd])
+            ;C[Setup1]AB[ab][dc][bd][ef]
+            ;C[Setup2]AW[aa]
+            ;C[Setup2]AW[ac]
+            "
+        .to_string();
+        let mut iter = s0.trim().chars().peekable();
+        let t = TreeNode::new(&mut iter, None);
+        let g = Game::init(Some(t));
     }
 
     #[test]
@@ -628,5 +822,18 @@ AB[ac][af][ba][bd][be][cb][cc][cf][da][db][de][eb][ed][ef][fc][fd]
             g.add_marker(&Coord::new(3, 5), &Camp::Plague);
         }
         assert_eq!(g.end2(), true);
+    }
+
+    #[test]
+    fn test_add_marker() {
+        let mut g = Game::init(None);
+        let mut g2 = Game::init(None);
+        g2.turn = Camp::Doctor;
+        g.add_marker(&Coord::new(3, 2), &g2.turn);
+        g2.turn = Camp::Plague;
+        assert_eq!(
+            g.stuff.get(&Coord::new(3, 2)),
+            Some(&(Camp::Doctor, Stuff::Marker(1)))
+        );
     }
 }

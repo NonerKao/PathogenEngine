@@ -142,13 +142,13 @@ impl TreeNode {
         f(self, false, state);
     }
 
-    pub fn checkpoint(&self, key: String) -> bool {
+    pub fn checkpoint(&self) -> &str {
         for p in self.properties.iter() {
-            if p.ident == "C".to_string() && p.value[0] == key {
-                return true;
+            if p.ident == "C".to_string() {
+                return p.value[0].as_str();
             }
         }
-        return false;
+        return "";
     }
 
     pub fn get_value(&self, key: String, v: &mut String) {

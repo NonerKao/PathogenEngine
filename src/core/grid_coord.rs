@@ -52,6 +52,20 @@ impl Coord {
             },
         }
     }
+
+    pub fn to_quad(&self) -> i32 {
+        if self.x < crate::core::SIZE / 2 && self.y < crate::core::SIZE / 2 {
+            0
+        } else if self.x >= crate::core::SIZE / 2 && self.y < crate::core::SIZE / 2 {
+            1
+        } else if self.x < crate::core::SIZE / 2 && self.y >= crate::core::SIZE / 2 {
+            2
+        } else if self.x >= crate::core::SIZE / 2 && self.y >= crate::core::SIZE / 2 {
+            3
+        } else {
+            -1
+        }
+    }
 }
 
 #[derive(PartialEq, Copy, Clone, Debug)]

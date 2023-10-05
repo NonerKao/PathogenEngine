@@ -15,6 +15,16 @@ pub fn str_to_full_msg(s: &'static str) -> &'static str {
     }
 
     match index {
+        537 => return "[Setup2] Invalid position",
+        536 => return "",
+        535 => return "[Setup2] Not finished",
+        534 => return "[Setup0] out-of-board setting",
+        533 => return "[Setup1] Too many markers",
+        532 => return "[Setup1] Not finished",
+        531 => return "[Setup0] Not finished",
+        530 => return "Invalid checkpoint: Setup0",
+        529 => return "[Setup1] Shouldn't share any row, column, and quandrant",
+        528 => return "Invalid checkpoint: Setup1",
         527 => return "Invalid lockdown resolution",
         526 => return "Shouldn't trigger lockdown action, check application",
         525 => return "Invalid marker action: (Doctor) wrong order to cure",
