@@ -1,6 +1,7 @@
 mod action;
 mod gen_map;
 mod grid_coord;
+mod setup;
 mod status_code;
 mod tree;
 
@@ -66,7 +67,6 @@ impl Game {
         );
         let mut iter = s.trim().chars().peekable();
         // The default SGF history starts with a common game-info node
-        let mut t = TreeNode::new(&mut iter, None);
         let mut g = Game {
             env: HashMap::new(),
             compass: HashMap::new(),
@@ -74,40 +74,123 @@ impl Game {
             stuff: HashMap::new(),
             turn: Camp::Plague,
             phase: Phase::Setup0,
-            history: t,
+            history: TreeNode::new(&mut iter, None),
         };
 
+        fn load_history(t: &TreeNode, is_front: bool, g: &mut Game) {
+            if !is_front {
+                return;
+            }
+            match g.phase {
+                Phase::Setup0 => {
+                    if t.checkpoint("Setup0".to_string()) {
+                        let mut h: Vec<String> = Vec::new();
+                        let mut u: Vec<String> = Vec::new();
+                        t.get_general("AW".to_string(), &mut h);
+                        t.get_general("AB".to_string(), &mut u);
+                        for c in h.iter() {
+                            g.env.insert(g.sgf_to_env(c), World::Humanity);
+                        }
+                        for c in u.iter() {
+                            g.env.insert(g.sgf_to_env(c), World::Underworld);
+                        }
+                        g.phase = Phase::Setup1;
+                    }
+                }
+                /*
+                Phase::Setup1 => {
+                    if t.checkpoint("Setup1".to_string()) {
+                        let mut m: Vec<String> = Vec::new();
+                        t.get_general("AB".to_string(), &mut m);
+                        for c in m.iter() {
+                            g.stuff.insert(g.sgf_to_env(c), (Camp::Plague, Stuff::Marker(1)));
+                        }
+                        if g.is_illegal_setup1() {
+                            panic!("Rule violation: The initial 4 markers can not share any rows or columns.");
+                        }
+                        g.phase = Phase::Setup2;
+                    } else {
+                        panic!("Unexpected SGF content: Setup1 not done.");
+                    }
+                }
+                Phase::Setup2 => {
+                    // with the assumption that the sequence is always D->P->D->P
+                    let mut s = String::new();
+                    if t.checkpoint("Setup2Begin".to_string()) || t.checkpoint("Setup2End".to_string()) {
+                        t.get_value("W".to_string(), &mut s);
+                        let c1 = g.sgf_to_env(&s);
+                        g.hero.insert((*g.env.get(&c1).unwrap(), Camp::Doctor), c1);
+                        s = String::from("");
+                        t.get_value("B".to_string(), &mut s);
+                        let c2 = g.sgf_to_env(&s);
+                        g.hero.insert((*g.env.get(&c2).unwrap(), Camp::Plague), c2);
+                    }
+                    if t.checkpoint("Setup2End".to_string()) {
+                        g.phase = Phase::Setup3;
+                    }
+                    if g.is_illegal_setup2() {
+                        panic!("Rule violation: Should be exactly one hero in Humanity and exactly one in Underworld for each side.");
+                    }
+                }
+                Phase::Setup3 => {
+                    let mut s = String::new();
+                    if t.checkpoint("Setup3".to_string()) {
+                        t.get_value("W".to_string(), &mut s);
+                        let c = g.sgf_to_compass(&s);
+                        g.compass.insert(Camp::Doctor, c);
+                        // check the start()::Setup3 for why this is done here
+                        g.compass.insert(Camp::Plague, c);
+                        g.phase = Phase::Main(1);
+                    }
+                    if g.is_illegal_setup3() {
+                        panic!("Rule violation: Expect Doctor's marker within centor 3x3 on the compass");
+                    }
+                }
+                Phase::Main(_) => {
+                    let mut m: Vec<String> = Vec::new();
+                    t.get_general("W".to_string(), &mut m);
+                    t.get_general("B".to_string(), &mut m);
+                    t.get_general("C".to_string(), &mut m);
+                    t.get_general("IT".to_string(), &mut m);
+                    match g.check_and_apply_move(&m) {
+                        Ok(_) => {}
+                        Err(x) => {
+                            panic!("{}", x);
+                        }
+                    }
+                }
+                */
+                _ => {}
+            }
+        }
         match file {
             Some(x) => {
-                if x.borrow().children.len() > 0 {
-                    g.resume();
-                }
-                return g;
+                x.borrow().traverse(&load_history, &mut g);
             }
             _ => {}
         }
-        // Setup the env board for
-        //    1. an empty game
-        //    2. the SGF file provides no setup0 info
-        for k in 0..=1 {
-            for l in 0..=1 {
-                let m = get_rand_matrix();
-                for i in 0..SIZE / 2 {
-                    for j in 0..SIZE / 2 {
-                        let mut w = World::Humanity;
-                        if m[i as usize][j as usize] == false {
-                            w = World::Underworld;
+        if g.phase == Phase::Setup0 {
+            // Setup the env board for
+            //    1. an empty game
+            //    2. the SGF file provides no setup0 info
+            for k in 0..=1 {
+                for l in 0..=1 {
+                    let m = get_rand_matrix();
+                    for i in 0..SIZE / 2 {
+                        for j in 0..SIZE / 2 {
+                            let mut w = World::Humanity;
+                            if m[i as usize][j as usize] == false {
+                                w = World::Underworld;
+                            }
+                            let c = Coord::new(k * (SIZE / 2) + i, l * (SIZE / 2) + j);
+                            g.env.insert(c, w);
                         }
-                        let c = Coord::new(k * (SIZE / 2) + i, l * (SIZE / 2) + j);
-                        g.env.insert(c, w);
                     }
                 }
             }
         }
         g
     }
-
-    fn resume(&mut self) {}
 
     pub fn end(&self) -> bool {
         return self.end1() || self.end2();
@@ -471,6 +554,24 @@ mod tests {
     }
 
     #[test]
+    fn test_start2() {
+        let s0 = "(;FF[4]GM[41]SZ[6]
+GN[https://boardgamegeek.com/boardgame/369862/pathogen]
+;C[Setup0]
+AW[aa][ab][ad][ae][bb][bc][bf][ca][cd][ce][dc][dd][df][ea][ec][ee][fa][fb][fe][ff]
+AB[ac][af][ba][bd][be][cb][cc][cf][da][db][de][eb][ed][ef][fc][fd]
+)
+"
+        .to_string();
+        let mut iter = s0.trim().chars().peekable();
+        let t = TreeNode::new(&mut iter, None);
+        let g = Game::init(Some(t));
+        assert_eq!(g.phase, Phase::Setup1);
+        assert_eq!(*g.env.get(&Coord::new(0, 5)).unwrap(), World::Humanity);
+        assert_eq!(*g.env.get(&Coord::new(2, 5)).unwrap(), World::Underworld);
+    }
+
+    #[test]
     fn test_end1_1() {
         let mut g = Game::init(None);
         g.turn = Camp::Doctor;
@@ -492,7 +593,7 @@ mod tests {
         g.add_marker(&Coord::new(1, 1), &Camp::Doctor);
         g.add_marker(&Coord::new(1, 2), &Camp::Doctor);
         g.add_marker(&Coord::new(2, 2), &Camp::Doctor);
-        for i in 0..MAX_MARKER {
+        for _ in 0..MAX_MARKER {
             g.add_marker(&Coord::new(3, 2), &Camp::Doctor);
         }
         g.add_marker(&Coord::new(3, 3), &Camp::Doctor);
@@ -520,7 +621,7 @@ mod tests {
     fn test_end2_1() {
         let mut g = Game::init(None);
         g.turn = Camp::Plague;
-        for i in 0..=MAX_MARKER {
+        for _ in 0..=MAX_MARKER {
             g.add_marker(&Coord::new(3, 2), &Camp::Plague);
             g.add_marker(&Coord::new(3, 3), &Camp::Plague);
             g.add_marker(&Coord::new(3, 4), &Camp::Plague);

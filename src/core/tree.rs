@@ -172,7 +172,7 @@ impl TreeNode {
         }
     }
 
-    pub fn toString(&self, buf: &mut String) {
+    pub fn to_string(&self, buf: &mut String) {
         self.traverse(&print_node, buf);
     }
 }
@@ -264,11 +264,29 @@ mod tests {
         let s = String::from("(;FF[4][5][6])");
         let mut iter = s.trim().chars().peekable();
         let tree = TreeNode::new(&mut iter, None);
+        let tree2 = tree.borrow().children[0].clone();
         assert_eq!(tree.borrow().properties.len(), 0);
-        assert_eq!(tree.borrow().children[0].borrow().properties.len(), 1);
+        assert_eq!(tree2.borrow().properties.len(), 1);
+        assert_eq!(tree2.borrow().properties[0].value.len(), 3);
+    }
+
+    #[test]
+    fn test_new6() {
+        let s = String::from("(;FF[4][5][6];EE[1][2])");
+        let mut iter = s.trim().chars().peekable();
+        let tree = TreeNode::new(&mut iter, None);
+        assert_eq!(tree.borrow().properties.len(), 0);
         assert_eq!(
             tree.borrow().children[0].borrow().properties[0].value.len(),
             3
+        );
+        assert_eq!(
+            tree.borrow().children[0].borrow().children[0]
+                .borrow()
+                .properties[0]
+                .value
+                .len(),
+            2
         );
     }
 }
