@@ -83,16 +83,15 @@ impl Action {
         if g.turn != Camp::Doctor || self.compass.unwrap() != o {
             return Err("Ex0E");
         }
-        let mut cp = *g.compass.get(&Camp::Plague).unwrap();
+        let cp = *g.compass.get(&Camp::Plague).unwrap();
         // Coord iter
-        let mut citer = cp;
         let lda = vec![Lockdown::CC90, Lockdown::CC180, Lockdown::CC270];
 
         if cp == c {
             return Ok(());
         }
         for i in 0..3 {
-            citer = cp.lockdown(lda[i]);
+            let citer = cp.lockdown(lda[i]);
             if citer == c {
                 self.lockdown = lda[i];
                 self.restriction = o - &citer;

@@ -1,9 +1,9 @@
-mod action;
+pub mod action;
 mod gen_map;
-mod grid_coord;
+pub mod grid_coord;
 mod setup;
-mod status_code;
-mod tree;
+pub mod status_code;
+pub mod tree;
 
 use action::Action;
 use gen_map::get_rand_matrix;
@@ -678,7 +678,7 @@ mod tests {
         .to_string();
         let mut iter = s0.trim().chars().peekable();
         let t = TreeNode::new(&mut iter, None);
-        let g = Game::init(Some(t));
+        let _g = Game::init(Some(t));
     }
 
     #[test]
@@ -729,7 +729,7 @@ mod tests {
         .to_string();
         let mut iter = s0.trim().chars().peekable();
         let t = TreeNode::new(&mut iter, None);
-        let g = Game::init(Some(t));
+        let _g = Game::init(Some(t));
     }
 
     #[test]
@@ -745,7 +745,7 @@ mod tests {
         .to_string();
         let mut iter = s0.trim().chars().peekable();
         let t = TreeNode::new(&mut iter, None);
-        let g = Game::init(Some(t));
+        let _g = Game::init(Some(t));
     }
 
     #[test]
@@ -762,7 +762,7 @@ mod tests {
         .to_string();
         let mut iter = s0.trim().chars().peekable();
         let t = TreeNode::new(&mut iter, None);
-        let g = Game::init(Some(t));
+        let _g = Game::init(Some(t));
     }
 
     #[test]

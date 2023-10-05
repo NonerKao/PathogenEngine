@@ -119,9 +119,9 @@ fn main() {
         panic!("No player connected");
     };
 
-    let g = Box::new(Game::init(None));
+    let _g = Box::new(Game::init(None));
     let e = "".to_string();
-    let mut iter = e.trim().chars().peekable();
+    let _iter = e.trim().chars().peekable();
     match args.load {
         Some(filename) => {
             // Ideally, this should be the pure "view mode", where we read the games(s).
@@ -130,7 +130,7 @@ fn main() {
             let mut contents = String::new();
             file.read_to_string(&mut contents)
                 .expect("Failed to read file");
-            let mut iter = contents.trim().chars().peekable();
+            let _iter = contents.trim().chars().peekable();
         }
         None => {}
     }

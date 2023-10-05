@@ -1,10 +1,13 @@
 pub fn str_to_full_msg(s: &'static str) -> &'static str {
-    let r = u32::from_str_radix(&s[1..], 16);
-    let mut index = 0;
+    // The indexing is tricky. It should skip the 'x', so from 2.
+    let r = u32::from_str_radix(&s[2..], 16);
+    let mut index = u32::default();
 
     match r {
-        Ok(n) => index = n,
-        Err(_) => panic!("Invalid status code encountered. No number."),
+        Ok(n) => index += n,
+        Err(e) => {
+            panic!("{} {}", e, "Invalid status code encountered. No number.")
+        }
     }
 
     match s.chars().next() {
@@ -43,5 +46,15 @@ pub fn str_to_full_msg(s: &'static str) -> &'static str {
         512 => return "Invalid compass position: Collide with opponent",
         0 => return "Skip",
         _ => return "??",
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_msg() {
+        assert_eq!(str_to_full_msg("Ix00"), "Skip");
     }
 }

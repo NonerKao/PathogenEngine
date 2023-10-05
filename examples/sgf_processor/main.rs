@@ -1,14 +1,14 @@
 use clap::Parser;
-use std::boxed::Box;
-use std::collections::HashMap;
+
 use std::fs::File;
 use std::io::Read;
 use std::io::Write;
 
-mod tree;
-use pathogen_engine::core::Camp;
+use pathogen_engine::core::action::Action;
+use pathogen_engine::core::grid_coord::Coord;
+use pathogen_engine::core::status_code::str_to_full_msg;
+use pathogen_engine::core::tree::TreeNode;
 use pathogen_engine::core::Game;
-use tree::TreeNode;
 
 /// Simple program to greet a person
 #[derive(Parser, Debug)]
@@ -24,9 +24,8 @@ struct Args {
 }
 
 fn main() -> std::io::Result<()> {
-    let mut args = Args::parse();
+    let args = Args::parse();
 
-    let g = Box::new(Game::init(None));
     let e = "3333".to_string();
     let mut iter = e.trim().chars().peekable();
     let mut contents = String::new();
@@ -45,17 +44,25 @@ fn main() -> std::io::Result<()> {
     // main
     let tn = TreeNode::new(&mut iter, None);
     let mut buffer = String::new();
-    tn.borrow().toString(&mut buffer);
+    tn.borrow().to_string(&mut buffer);
 
     match args.save {
         Some(filename) => {
-            // Ideally, this should be the pure "view mode", where we read the games(s).
-            // In reality, I need this to bridge the gap before all phases are treated equal.
             let mut file = File::create(filename.as_str())?;
-            write!(file, "{}", buffer);
+            write!(file, "{}", buffer)?;
         }
         None => {}
     }
+
+    let mut g = Game::init(Some(tn));
+    let mut a = Action::new();
+    match a.add_hero(&g, Coord::new(0, 0)) {
+        Ok(_) => {}
+        Err(x) => {
+            println!("{}", str_to_full_msg(x));
+        }
+    }
+    g.commit_action(&a);
 
     Ok(())
 }
