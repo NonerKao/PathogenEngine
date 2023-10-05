@@ -49,6 +49,29 @@ pub enum Phase {
     Main(u32),
 }
 
+trait SGFCoord {
+    fn to_map(&self) -> Coord;
+    fn to_env(&self) -> Coord;
+}
+
+impl SGFCoord for str {
+    fn to_map(&self) -> Coord {
+        // row major, x as row index and y as column index
+        // ghijk
+        let x: i32 = self.chars().nth(1).unwrap() as i32 - 'i' as i32;
+        let y: i32 = self.chars().nth(0).unwrap() as i32 - 'i' as i32;
+        Coord::new(x, y)
+    }
+
+    fn to_env(&self) -> Coord {
+        // row major, x as row index and y as column index
+        // abcdef
+        let x: i32 = self.chars().nth(1).unwrap() as i32 - 'a' as i32;
+        let y: i32 = self.chars().nth(0).unwrap() as i32 - 'a' as i32;
+        Coord::new(x, y)
+    }
+}
+
 #[derive(Debug)]
 pub struct Game {
     pub env: HashMap<Coord, World>,
@@ -99,10 +122,10 @@ impl Game {
                         t.get_general("AW".to_string(), &mut h);
                         t.get_general("AB".to_string(), &mut u);
                         for c in h.iter() {
-                            g.env.insert(g.sgf_to_env(c), World::Humanity);
+                            g.env.insert(c.to_env(), World::Humanity);
                         }
                         for c in u.iter() {
-                            g.env.insert(g.sgf_to_env(c), World::Underworld);
+                            g.env.insert(c.to_env(), World::Underworld);
                         }
                         if g.is_setup0_done() {
                             g.phase = Phase::Setup1;
@@ -118,7 +141,7 @@ impl Game {
                         let mut m: Vec<String> = Vec::new();
                         t.get_general("AB".to_string(), &mut m);
                         for c in m.iter() {
-                            g.add_marker(&g.sgf_to_env(c), &Camp::Plague);
+                            g.add_marker(&c.as_str().to_env(), &Camp::Plague);
                         }
                         if g.is_setup1_done() {
                             if g.is_illegal_setup1() {
@@ -146,7 +169,7 @@ impl Game {
                                 t.get_value("AW".to_string(), &mut s);
                             }
                         }
-                        let c1 = g.sgf_to_env(&s);
+                        let c1 = s.as_str().to_env();
                         g.character.insert((*g.env.get(&c1).unwrap(), g.turn), c1);
                         if g.is_illegal_order_setup2() {
                             panic!("Ex18");
@@ -432,7 +455,7 @@ impl Game {
     /// Check if the setup in setup3 is legal
     pub fn apply_move(&mut self, s: &Vec<String>) {
         let c_start = *self.map.get(&self.opposite(self.turn)).unwrap();
-        let c_end = self.sgf_to_map(&s[0]);
+        let c_end = s[0].as_str().to_map();
         let mut ls = Lockdown::Normal;
         if c_end.x == 0 && c_end.y == 0 && self.turn == Camp::Doctor {
             let l = s.len();
@@ -459,7 +482,7 @@ impl Game {
         }
 
         // update character
-        let c_to = self.sgf_to_env(&s[index]);
+        let c_to = s[index].as_str().to_env();
         let w = self.env.get(&c_start).unwrap();
         let tuple = (*w, self.turn);
         self.character.insert(tuple, c_to);
@@ -473,7 +496,7 @@ impl Game {
             s.len()
         };
         for i in index + 1..end {
-            let c = self.sgf_to_env(&s[i]);
+            let c = s[i].as_str().to_env();
             self.add_marker(&c, &t);
         }
     }
@@ -589,22 +612,6 @@ impl Game {
             }
         }
         return false;
-    }
-
-    pub fn sgf_to_map(&self, s: &String) -> Coord {
-        // row major, x as row index and y as column index
-        // ghijk
-        let x: i32 = s.chars().nth(1).unwrap() as i32 - 'i' as i32;
-        let y: i32 = s.chars().nth(0).unwrap() as i32 - 'i' as i32;
-        Coord::new(x, y)
-    }
-
-    pub fn sgf_to_env(&self, s: &String) -> Coord {
-        // row major, x as row index and y as column index
-        // abcdef
-        let x: i32 = s.chars().nth(1).unwrap() as i32 - 'a' as i32;
-        let y: i32 = s.chars().nth(0).unwrap() as i32 - 'a' as i32;
-        Coord::new(x, y)
     }
 
     pub fn opposite(&self, c: Camp) -> Camp {
