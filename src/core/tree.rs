@@ -211,6 +211,30 @@ impl TreeNode {
         }
         return t;
     }
+
+    fn append(&self, t: Rc<RefCell<TreeNode>>) {
+        let head = self.get_tail();
+        head.borrow_mut().children.push(t.clone());
+        t.borrow().children[0].borrow_mut().parent = Some(head.clone());
+    }
+
+    fn to_sgf_node(&self) -> Rc<RefCell<TreeNode>> {
+        let mut buffer = String::new();
+        if self.properties.len() > 0 {
+            buffer.push_str("(;");
+        }
+        for i in self.properties.iter() {
+            buffer.push_str(&i.ident);
+            for v in i.value.iter() {
+                buffer.push('[');
+                buffer.push_str(v);
+                buffer.push(']');
+            }
+        }
+        buffer.push(')');
+        let mut iter = buffer.trim().chars().peekable();
+        TreeNode::new(&mut iter, None)
+    }
 }
 
 pub fn print_node(t: &TreeNode, is_front: bool, buffer: &mut String) {
@@ -346,5 +370,53 @@ mod tests {
         tree0.borrow().traverse(&print_node, &mut buffer);
 
         assert_eq!(buffer, s);
+    }
+
+    #[test]
+    fn test_append() {
+        let s = String::from("(;FF[4][5][6];EE[1][2];DD[0][uuu];CCC[A])");
+        let h = String::from("(;FF[4][5][6];EE[1][2];DD[0][uuu])");
+        let t = String::from("(;CCC[A])");
+        let mut iter = h.trim().chars().peekable();
+        let th = TreeNode::new(&mut iter, None);
+        iter = t.trim().chars().peekable();
+        let tt = TreeNode::new(&mut iter, None);
+        th.borrow().append(tt.clone());
+        let mut buffer = String::new();
+        th.borrow().traverse(&print_node, &mut buffer);
+        assert_eq!(buffer, s);
+    }
+
+    #[test]
+    fn test_sgf_node() {
+        let s = String::from("(;FF[4][5][6];EE[1][2];DD[0][uuu];CCC[A])");
+        let mut iter = s.trim().chars().peekable();
+        let t = TreeNode::new(&mut iter, None);
+        let n = t.borrow().children[0].borrow().children[0]
+            .borrow()
+            .children[0]
+            .borrow()
+            .to_sgf_node();
+        let mut buffer = String::new();
+        n.borrow().traverse(&print_node, &mut buffer);
+        let ns = String::from("(;DD[0][uuu])");
+        assert_eq!(buffer, ns);
+    }
+
+    #[test]
+    fn test_sgf_node2() {
+        let s_final = String::from("(;FF[4][5][6];EE[1][2];DD[0][uuu];CCC[A];DD[0][uuu])");
+        let s = String::from("(;FF[4][5][6];EE[1][2];DD[0][uuu];CCC[A])");
+        let mut iter = s.trim().chars().peekable();
+        let t = TreeNode::new(&mut iter, None);
+        let n = t.borrow().children[0].borrow().children[0]
+            .borrow()
+            .children[0]
+            .borrow()
+            .to_sgf_node();
+        let mut buffer = String::new();
+        t.borrow().append(n.clone());
+        t.borrow().traverse(&print_node, &mut buffer);
+        assert_eq!(buffer, s_final);
     }
 }
