@@ -957,4 +957,57 @@ mod tests {
             Some(&(Camp::Doctor, Stuff::Marker(1)))
         );
     }
+
+    #[test]
+    fn test_action_to_sgf() {
+        let s0 = "(
+            ;C[Setup0]
+            AW[aa][ab][ad][ae][bb][bc][bf][ca][cd][ce][dc][dd][df][ea][ec][ee][fa][fb][fe][ff]
+            AB[ac][af][ba][bd][be][cb][cc][cf][da][db][de][eb][ed][ef][fc][fd]
+            ;C[Setup1]AB[ab][cd][ef][da]
+            ;C[Setup2]AW[aa]
+            ;C[Setup2]AB[ac]
+            ;C[Setup2]AW[af]
+            ;C[Setup2]AB[ad]
+            ;C[Setup3]AW[ij]
+            ;B[jj][ad][cd][ad][ad][ad][ad]
+            )"
+        .to_string();
+        let mut iter = s0.trim().chars().peekable();
+        let t = TreeNode::new(&mut iter, None);
+        let g = Game::init(Some(t));
+        let s1 = "(;W[ii][hh][aa][ab][bb][ab][aa][aa][aa][aa])";
+        iter = s1.trim().chars().peekable();
+        let t2 = TreeNode::new(&mut iter, None);
+        match t2.borrow().children[0].borrow().to_action(&g) {
+            Ok(a) => assert_eq!(a.to_sgf_string(&g), s1),
+            Err(x) => panic!("{}", x),
+        };
+    }
+
+    #[test]
+    fn test_action_to_sgf2() {
+        let s0 = "(
+            ;C[Setup0]
+            AW[aa][ab][ad][ae][bb][bc][bf][ca][cd][ce][dc][dd][df][ea][ec][ee][fa][fb][fe][ff]
+            AB[ac][af][ba][bd][be][cb][cc][cf][da][db][de][eb][ed][ef][fc][fd]
+            ;C[Setup1]AB[ab][cd][ef][da]
+            ;C[Setup2]AW[aa]
+            ;C[Setup2]AB[ac]
+            ;C[Setup2]AW[af]
+            ;C[Setup2]AB[ad]
+            ;C[Setup3]AW[ij]
+            )"
+        .to_string();
+        let mut iter = s0.trim().chars().peekable();
+        let t = TreeNode::new(&mut iter, None);
+        let g = Game::init(Some(t));
+        let s1 = "(;B[jj][ad][cd][ad][ad][ad][ad])";
+        iter = s1.trim().chars().peekable();
+        let t2 = TreeNode::new(&mut iter, None);
+        match t2.borrow().children[0].borrow().to_action(&g) {
+            Ok(a) => assert_eq!(a.to_sgf_string(&g), s1),
+            Err(x) => panic!("{}", x),
+        };
+    }
 }

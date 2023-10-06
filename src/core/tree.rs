@@ -195,11 +195,9 @@ impl TreeNode {
             vi = vi + 1;
         }
         for _ in vi..self.properties[0].value.len() {
-            println!("{:?},", self.properties[0].value[vi].as_str().to_env());
             a.add_single_marker(g, self.properties[0].value[vi].as_str().to_env())?;
             vi = vi + 1;
         }
-        println!("==");
         Ok(a)
     }
 

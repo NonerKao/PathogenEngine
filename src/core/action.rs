@@ -301,6 +301,39 @@ impl Action {
         }
         return Ok(());
     }
+
+    pub fn to_sgf_string(&self, g: &Game) -> String {
+        let mut v = Vec::<String>::new();
+        let m = if g.turn == Camp::Doctor { "(;W" } else { "(;B" };
+        // map
+        let temp = self.map.unwrap();
+        v.push(temp.map_to_sgf());
+
+        // lockdown
+        if self.lockdown != Lockdown::Normal {
+            let mut cp = *g.map.get(&Camp::Plague).unwrap();
+            cp = cp.lockdown(self.lockdown);
+            v.push(cp.map_to_sgf());
+        }
+
+        // trajectory: in reverse order
+        let mut i = self.steps - 1;
+        while i >= 0 {
+            v.push(self.trajectory[i as usize].env_to_sgf());
+            i = i - 1;
+        }
+        // character
+        let ch = self.character.unwrap();
+        v.push(ch.env_to_sgf());
+
+        // markers
+        for c in self.markers.iter() {
+            v.push(c.env_to_sgf());
+        }
+
+        let s = String::from(m) + "[" + &v.join("][") + "])";
+        return s;
+    }
 }
 
 #[cfg(test)]
