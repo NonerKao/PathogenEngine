@@ -202,6 +202,15 @@ impl TreeNode {
         println!("==");
         Ok(a)
     }
+
+    fn get_tail(&self) -> Rc<RefCell<TreeNode>> {
+        let mut t = self.children[0].clone();
+        while t.borrow().children.len() > 0 {
+            let temp = t.borrow().children[0].clone();
+            t = temp.clone();
+        }
+        return t;
+    }
 }
 
 pub fn print_node(t: &TreeNode, is_front: bool, buffer: &mut String) {
@@ -315,5 +324,27 @@ mod tests {
                 .len(),
             2
         );
+    }
+
+    #[test]
+    fn test_get_tail() {
+        let s = String::from("(;FF[4][5][6];EE[1][2])");
+
+        let s0 = String::from("(;FF[4][5][6])");
+        let s1 = String::from("(;EE[1][2])");
+        let mut iter = s0.trim().chars().peekable();
+        let tree0 = TreeNode::new(&mut iter, None);
+        let tree0_tail = tree0.borrow().get_tail();
+        iter = s1.trim().chars().peekable();
+        let tree1 = TreeNode::new(&mut iter, None);
+        tree0_tail
+            .borrow_mut()
+            .children
+            .push(tree1.borrow().children[0].clone());
+        tree1.borrow().children[0].borrow_mut().parent = Some(tree0_tail.clone());
+        let mut buffer = String::new();
+        tree0.borrow().traverse(&print_node, &mut buffer);
+
+        assert_eq!(buffer, s);
     }
 }
