@@ -214,8 +214,12 @@ impl Game {
                 }
                 _ => match g.phase {
                     Phase::Main(_) => {
-                        let a = t.to_action();
-                        g.commit_action(&a);
+                        match t.to_action(&g) {
+                            Ok(a) => g.commit_action(&a),
+                            Err(x) => {
+                                panic!("{}", x);
+                            }
+                        }
                         g.next();
                     }
                     Phase::Setup0 => { //game-info?
@@ -680,9 +684,9 @@ mod tests {
         let s0 = "(;FF[4]GM[41]SZ[6]GN[https://boardgamegeek.com/boardgame/369862/pathogen]
             ;C[Setup0]
             AW[aa][ab][ad][ae][bb][bc][bf][ca][cd][ce][dc][dd][df][ea][ec][ee][fa][fb][fe][ff]
-            AB[ac][af][ba][bd][be][cb][cc][cf][da][db][de][eb][ed][ef][fc][fd])
+            AB[ac][af][ba][bd][be][cb][cc][cf][da][db][de][eb][ed][ef][fc][fd]
             ;C[Setup2]
-            "
+            )"
         .to_string();
         let mut iter = s0.trim().chars().peekable();
         let t = TreeNode::new(&mut iter, None);
@@ -695,10 +699,10 @@ mod tests {
         let s0 = "(;FF[4]GM[41]SZ[6]GN[https://boardgamegeek.com/boardgame/369862/pathogen]
             ;C[Setup0]
             AW[aa][ab][ad][ae][bb][bc][bf][ca][cd][ce][dc][dd][df][ea][ec][ee][fa][fb][fe][ff]
-            AB[ac][af][ba][bd][be][cb][cc][cf][da][db][de][eb][ed][ef][fc][fd])
+            AB[ac][af][ba][bd][be][cb][cc][cf][da][db][de][eb][ed][ef][fc][fd]
             ;C[Setup1]
             AB[ab][cd][ef][bc]
-            "
+            )"
         .to_string();
         let mut iter = s0.trim().chars().peekable();
         let t = TreeNode::new(&mut iter, None);
@@ -711,10 +715,10 @@ mod tests {
         let s0 = "(;FF[4]GM[41]SZ[6]GN[https://boardgamegeek.com/boardgame/369862/pathogen]
             ;C[Setup0]
             AW[aa][ab][ad][ae][bb][bc][bf][ca][cd][ce][dc][dd][df][ea][ec][ee][fa][fb][fe][ff]
-            AB[ac][af][ba][bd][be][cb][cc][cf][da][db][de][eb][ed][ef][fc][fd])
+            AB[ac][af][ba][bd][be][cb][cc][cf][da][db][de][eb][ed][ef][fc][fd]
             ;C[Setup1]AB[ab]
             ;C[Setup1]AB[dc][bd]
-            "
+            )"
         .to_string();
         let mut iter = s0.trim().chars().peekable();
         let t = TreeNode::new(&mut iter, None);
@@ -729,11 +733,11 @@ mod tests {
         let s0 = "(;FF[4]GM[41]SZ[6]GN[https://boardgamegeek.com/boardgame/369862/pathogen]
             ;C[Setup0]
             AW[aa][ab][ad][ae][bb][bc][bf][ca][cd][ce][dc][dd][df][ea][ec][ee][fa][fb][fe][ff]
-            AB[ac][af][ba][bd][be][cb][cc][cf][da][db][de][eb][ed][ef][fc][fd])
+            AB[ac][af][ba][bd][be][cb][cc][cf][da][db][de][eb][ed][ef][fc][fd]
             ;C[Setup1]AB[ab]
             ;C[Setup1]AB[dc][bd]
             ;C[Setup1]AB[dd][be]
-            "
+            )"
         .to_string();
         let mut iter = s0.trim().chars().peekable();
         let t = TreeNode::new(&mut iter, None);
@@ -746,10 +750,10 @@ mod tests {
         let s0 = "(
             ;C[Setup0]
             AW[aa][ab][ad][ae][bb][bc][bf][ca][cd][ce][dc][dd][df][ea][ec][ee][fa][fb][fe][ff]
-            AB[ac][af][ba][bd][be][cb][cc][cf][da][db][de][eb][ed][ef][fc][fd])
+            AB[ac][af][ba][bd][be][cb][cc][cf][da][db][de][eb][ed][ef][fc][fd]
             ;C[Setup1]AB[ab][dc][bd][ef]
             ;C[Setup2]AW[ab]
-            "
+            )"
         .to_string();
         let mut iter = s0.trim().chars().peekable();
         let t = TreeNode::new(&mut iter, None);
@@ -762,11 +766,11 @@ mod tests {
         let s0 = "(
             ;C[Setup0]
             AW[aa][ab][ad][ae][bb][bc][bf][ca][cd][ce][dc][dd][df][ea][ec][ee][fa][fb][fe][ff]
-            AB[ac][af][ba][bd][be][cb][cc][cf][da][db][de][eb][ed][ef][fc][fd])
+            AB[ac][af][ba][bd][be][cb][cc][cf][da][db][de][eb][ed][ef][fc][fd]
             ;C[Setup1]AB[ab][dc][bd][ef]
             ;C[Setup2]AW[aa]
             ;C[Setup2]AW[ac]
-            "
+            )"
         .to_string();
         let mut iter = s0.trim().chars().peekable();
         let t = TreeNode::new(&mut iter, None);
@@ -779,14 +783,14 @@ mod tests {
         let s0 = "(
             ;C[Setup0]
             AW[aa][ab][ad][ae][bb][bc][bf][ca][cd][ce][dc][dd][df][ea][ec][ee][fa][fb][fe][ff]
-            AB[ac][af][ba][bd][be][cb][cc][cf][da][db][de][eb][ed][ef][fc][fd])
+            AB[ac][af][ba][bd][be][cb][cc][cf][da][db][de][eb][ed][ef][fc][fd]
             ;C[Setup1]AB[ab][dc][bd][ef]
             ;C[Setup2]AW[aa]
             ;C[Setup2]AB[ad]
             ;C[Setup2]AW[af]
             ;C[Setup2]AB[ac]
             ;C[Setup3]AW[gg]
-            "
+            )"
         .to_string();
         let mut iter = s0.trim().chars().peekable();
         let t = TreeNode::new(&mut iter, None);
@@ -798,14 +802,14 @@ mod tests {
         let s0 = "(
             ;C[Setup0]
             AW[aa][ab][ad][ae][bb][bc][bf][ca][cd][ce][dc][dd][df][ea][ec][ee][fa][fb][fe][ff]
-            AB[ac][af][ba][bd][be][cb][cc][cf][da][db][de][eb][ed][ef][fc][fd])
+            AB[ac][af][ba][bd][be][cb][cc][cf][da][db][de][eb][ed][ef][fc][fd]
             ;C[Setup1]AB[ab][dc][bd][ef]
             ;C[Setup2]AW[aa]
             ;C[Setup2]AB[ad]
             ;C[Setup2]AW[af]
             ;C[Setup2]AB[ac]
             ;C[Setup3]AW[hh]
-            "
+            )"
         .to_string();
         let mut iter = s0.trim().chars().peekable();
         let t = TreeNode::new(&mut iter, None);
@@ -820,14 +824,61 @@ mod tests {
         let s0 = "(
             ;C[Setup0]
             AW[aa][ab][ad][ae][bb][bc][bf][ca][cd][ce][dc][dd][df][ea][ec][ee][fa][fb][fe][ff]
-            AB[ac][af][ba][bd][be][cb][cc][cf][da][db][de][eb][ed][ef][fc][fd])
+            AB[ac][af][ba][bd][be][cb][cc][cf][da][db][de][eb][ed][ef][fc][fd]
             ;C[Setup1]AB[ab][dc][bd][ef]
             ;W[ii][hh][aa][ab][bb][ab][aa][aa][aa][aa]
-            "
+            )"
         .to_string();
         let mut iter = s0.trim().chars().peekable();
         let t = TreeNode::new(&mut iter, None);
         let _g = Game::init(Some(t));
+    }
+
+    #[test]
+    fn test_two_steps() {
+        let s0 = "(
+            ;C[Setup0]
+            AW[aa][ab][ad][ae][bb][bc][bf][ca][cd][ce][dc][dd][df][ea][ec][ee][fa][fb][fe][ff]
+            AB[ac][af][ba][bd][be][cb][cc][cf][da][db][de][eb][ed][ef][fc][fd]
+            ;C[Setup1]AB[ab][cd][ef][da]
+            ;C[Setup2]AW[aa]
+            ;C[Setup2]AB[ac]
+            ;C[Setup2]AW[af]
+            ;C[Setup2]AB[ad]
+            ;C[Setup3]AW[ij]
+            ;B[jj][ad][cd][ad][ad][ad][ad]
+            ;W[ii][hh][aa][ab][bb][ab][aa][aa][aa][aa]
+            )"
+        .to_string();
+        let mut iter = s0.trim().chars().peekable();
+        let t = TreeNode::new(&mut iter, None);
+        let g = Game::init(Some(t));
+        assert_eq!(
+            *g.character.get(&(World::Humanity, Camp::Doctor)).unwrap(),
+            Coord::new(1, 1)
+        );
+        assert_eq!(
+            *g.character.get(&(World::Humanity, Camp::Plague)).unwrap(),
+            Coord::new(3, 2)
+        );
+        assert_eq!(
+            *g.character.get(&(World::Underworld, Camp::Doctor)).unwrap(),
+            Coord::new(5, 0)
+        );
+        assert_eq!(
+            *g.character.get(&(World::Underworld, Camp::Plague)).unwrap(),
+            Coord::new(2, 0)
+        );
+        assert_eq!(g.stuff.len(), 5);
+        assert_eq!(
+            *g.stuff.get(&Coord::new(3, 0)).unwrap(),
+            (Camp::Plague, Stuff::Marker(4))
+        );
+        assert_eq!(
+            *g.stuff.get(&Coord::new(0, 0)).unwrap(),
+            (Camp::Doctor, Stuff::Marker(4))
+        );
+        assert_eq!(g.stuff.get(&Coord::new(1, 0)), None);
     }
 
     #[test]

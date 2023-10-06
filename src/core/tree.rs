@@ -1,4 +1,5 @@
 use super::action::*;
+use super::*;
 use std::cell::RefCell;
 use std::iter::Peekable;
 use std::rc::Rc;
@@ -177,10 +178,29 @@ impl TreeNode {
         self.traverse(&print_node, buf);
     }
 
-    pub fn to_action(&self) -> Action {
+    pub fn to_action(&self, g: &Game) -> Result<Action, &'static str> {
         let mut a = Action::new();
-        a.steps = 1;
-        a
+        let mut vi = 0;
+        let c = self.properties[0].value[vi].as_str().to_map();
+        vi = vi + 1;
+        a.add_map_step(g, c)?;
+        if c == Coord::new(0, 0) && g.turn == Camp::Doctor {
+            a.add_lockdown_by_coord(g, self.properties[0].value[vi].as_str().to_map())?;
+            vi = vi + 1;
+        }
+        a.add_character(g, self.properties[0].value[vi].as_str().to_env())?;
+        vi = vi + 1;
+        for _ in 0..a.steps {
+            a.add_board_single_step(g, self.properties[0].value[vi].as_str().to_env())?;
+            vi = vi + 1;
+        }
+        for _ in vi..self.properties[0].value.len() {
+            println!("{:?},", self.properties[0].value[vi].as_str().to_env());
+            a.add_single_marker(g, self.properties[0].value[vi].as_str().to_env())?;
+            vi = vi + 1;
+        }
+        println!("==");
+        Ok(a)
     }
 }
 
