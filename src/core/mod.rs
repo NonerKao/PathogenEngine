@@ -95,10 +95,7 @@ const SETUP1_MARKER: usize = 4;
 
 impl Game {
     pub fn init(file: Option<Rc<RefCell<TreeNode>>>) -> Game {
-        let s = String::from(
-            "(;FF[4]GM[41]SZ[6]GN[https://boardgamegeek.com/boardgame/369862/pathogen]",
-        );
-        let mut iter = s.trim().chars().peekable();
+        let mut iter = "".trim().chars().peekable();
         // The default SGF history starts with a common game-info node
         let mut g = Game {
             env: HashMap::new(),
@@ -113,6 +110,14 @@ impl Game {
         fn load_history(t: &TreeNode, is_front: bool, g: &mut Game) {
             if !is_front {
                 return;
+            }
+            if let Some(p) = t.to_sgf_node() {
+                g.history
+                    .borrow_mut()
+                    .children
+                    .push(p.borrow().children[0].clone());
+                p.borrow().children[0].borrow_mut().parent = Some(g.history.clone());
+                g.history = p.borrow().children[0].clone();
             }
             match t.checkpoint() {
                 "Setup0" => {
@@ -637,14 +642,14 @@ mod tests {
 
     #[test]
     fn test_start1() {
-        let g = Game::init(None);
-        assert_eq!(g.history.borrow().children[0].borrow().properties.len(), 4);
-        assert_eq!(
-            g.history.borrow().children[0].borrow().properties[3]
-                .value
-                .len(),
-            1
-        );
+        let s0 = "(;FF[4]GM[41]SZ[6]GN[https://boardgamegeek.com/boardgame/369862/pathogen])
+            "
+        .to_string();
+        let mut iter = s0.trim().chars().peekable();
+        let t = TreeNode::new(&mut iter, None);
+        let g = Game::init(Some(t));
+        assert_eq!(g.history.borrow().properties.len(), 4);
+        assert_eq!(g.history.borrow().properties[3].value.len(), 1);
     }
 
     #[test]
