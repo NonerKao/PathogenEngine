@@ -179,10 +179,11 @@ impl Game {
                         }
                         let c1 = s.as_str().to_env();
                         g.character.insert((*g.env.get(&c1).unwrap(), g.turn), c1);
-                        if g.is_illegal_order_setup2() {
-                            // Since the `g.switch` above ensures the execution order
-                            // in this phase, this error is not possible to be triggered.
-                            panic!("Ex18");
+                        match g.is_illegal_order_setup2() {
+                            Err(x) => {
+                                panic!("{}", x);
+                            }
+                            _ => {}
                         }
                         if g.is_illegal_position_setup2() {
                             panic!("Ex19");
@@ -560,7 +561,7 @@ impl Game {
         let mut col: [bool; crate::core::SIZE as usize] = [false; crate::core::SIZE as usize];
         let mut quad: [bool; crate::core::QUAD_SIZE] = [false; crate::core::QUAD_SIZE];
         for c in self.stuff.iter() {
-            if let Stuff::Marker(x) = c.1.1 {
+            if let Stuff::Marker(x) = c.1 .1 {
                 if x > 1 {
                     return Err("Ex1d");
                 }
@@ -582,7 +583,7 @@ impl Game {
     }
 
     /// Check if the setup in setup2 is legal
-    pub fn is_illegal_order_setup2(&self) -> bool {
+    pub fn is_illegal_order_setup2(&self) -> Result<(), &'static str> {
         let dc = self
             .character
             .iter()
@@ -596,20 +597,24 @@ impl Game {
         match self.turn {
             Camp::Plague => {
                 if dc == 1 && pc == 1 {
-                    return false;
+                    return Ok(());
                 } else if dc == 2 && pc == 2 {
-                    return false;
+                    return Ok(());
+                } else if dc - pc == 1 {
+                    return Err("Ex1e");
                 } else {
-                    return true;
+                    return Err("Ex18");
                 }
             }
             Camp::Doctor => {
                 if dc == 1 && pc == 0 {
-                    return false;
+                    return Ok(());
+                } else if dc == 1 && pc == 1 {
+                    return Err("Ex1e");
                 } else if dc == 2 && pc == 1 {
-                    return false;
+                    return Ok(());
                 } else {
-                    return true;
+                    return Err("Ex18");
                 }
             }
         }
@@ -646,18 +651,58 @@ impl Game {
 
     pub fn setup_with_coord(&mut self, c: Coord) -> Result<Phase, &'static str> {
         match self.phase {
-            Phase::Setup0 => {
-                panic!("Not possible");
-            }
             Phase::Setup3 => {
                 self.map.insert(Camp::Doctor, c);
                 self.map.insert(Camp::Plague, c);
                 self.phase = Phase::Main(1);
                 Ok(Phase::Main(1))
             }
+            Phase::Setup1 => {
+                self.add_marker(&c, &Camp::Plague);
+                match self.is_illegal_setup1() {
+                    Err(x) => {
+                        // This is funny. I was seriously thinking,
+                        // "Shit, I have to add a sub_marker..."
+                        self.add_marker(&c, &Camp::Doctor);
+                        return Err(x);
+                    }
+                    _ => {}
+                }
+                if self.is_setup1_done() {
+                    self.phase = Phase::Setup2;
+                    self.switch();
+                    return Ok(Phase::Setup1);
+                }
+                Ok(Phase::Setup1)
+            }
+            Phase::Setup2 => {
+                let camp = *self.env.get(&c).unwrap();
+                self.character.insert((camp, self.turn), c);
+                match self.is_illegal_order_setup2() {
+                    Err("Ex18") => {
+                        self.character
+                            .remove(&(*self.env.get(&c).unwrap(), self.turn));
+                        return Err("Ex18");
+                    }
+                    Err("Ex1e") => {
+                        return Err("Ex1e");
+                    }
+                    _ => {}
+                }
+                if self.is_illegal_position_setup2() {
+                    self.character
+                        .remove(&(*self.env.get(&c).unwrap(), self.turn));
+                    return Err("Ex19");
+                }
+                if self.is_setup2_done() {
+                    self.phase = Phase::Setup3;
+                    return Ok(Phase::Setup2);
+                }
+                self.switch();
+                Ok(Phase::Setup2)
+            }
             _ => {
-                self.phase = Phase::Setup3;
-                Ok(Phase::Setup3)
+                panic!("Not possible");
             }
         }
     }
@@ -827,6 +872,24 @@ mod tests {
             ;C[Setup1]AB[ab][dc][bd][ef]
             ;C[Setup2]AW[aa]
             ;C[Setup2]AW[ac]
+            )"
+        .to_string();
+        let mut iter = s0.trim().chars().peekable();
+        let t = TreeNode::new(&mut iter, None);
+        let _g = Game::init(Some(t));
+    }
+
+    #[test]
+    #[should_panic(expected = "Ex1e")]
+    fn test_setup2_order1() {
+        let s0 = "(
+            ;C[Setup0]
+            AW[aa][ab][ad][ae][bb][bc][bf][ca][cd][ce][dc][dd][df][ea][ec][ee][fa][fb][fe][ff]
+            AB[ac][af][ba][bd][be][cb][cc][cf][da][db][de][eb][ed][ef][fc][fd]
+            ;C[Setup1]AB[ab][dc][bd][ef]
+            ;C[Setup2]AW[aa]
+            ;C[Setup2]AB[ac]
+            ;C[Setup2]AB[aa]
             )"
         .to_string();
         let mut iter = s0.trim().chars().peekable();
@@ -1064,7 +1127,7 @@ mod tests {
     }
 
     #[test]
-    fn test_setup1() {
+    fn test_setup_with() {
         let s0 = "(
             ;C[Setup0]
             AW[aa][ab][ad][ae][bb][bc][bf][ca][cd][ce][dc][dd][df][ea][ec][ee][fa][fb][fe][ff]

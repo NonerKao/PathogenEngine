@@ -9,6 +9,7 @@ use std::io::Write;
 
 use pathogen_engine::core::action::Action;
 use pathogen_engine::core::grid_coord::Coord;
+use pathogen_engine::core::status_code::str_to_full_msg;
 use pathogen_engine::core::tree::TreeNode;
 use pathogen_engine::core::{Game, Phase};
 
@@ -50,12 +51,10 @@ fn main() -> std::io::Result<()> {
     let mut g = Game::init(Some(tn.clone()));
     let mut map_coord_pool: Vec<String> = Vec::new();
     let map_base: i32 = 'i' as i32;
-    for i in -2..=2 {
-        for j in -2..=2 {
-            let c = i * j;
-            if c >= 4 || c <= -4 {
-                continue;
-            }
+    // Because we only need to generate the Setup3 steps now
+    // Doctors remain in the inner 3x3
+    for i in -1..=1 {
+        for j in -1..=1 {
             let mut s = String::new();
             s.push(std::char::from_u32((j + map_base) as u32).unwrap());
             s.push(std::char::from_u32((i + map_base) as u32).unwrap());
@@ -75,19 +74,21 @@ fn main() -> std::io::Result<()> {
 
     // setup seed
     let mut rng = from_seed(args.seed);
-    while let r = g.setup_with_alpha(
-        map_coord_pool.choose(&mut rng).unwrap(),
-        env_coord_pool.choose(&mut rng).unwrap(),
-    ) {
+    let env_full = env_coord_pool.clone();
+    loop {
+        let c = env_coord_pool.choose(&mut rng).unwrap().clone();
+        let r = g.setup_with_alpha(map_coord_pool.choose(&mut rng).unwrap(), &c);
         match r {
             Ok(Phase::Main(1)) => {
                 break;
             }
             Ok(x) => {
-                println!("{:?} done one", x);
+                println!("{:?} done one step", x);
+                env_coord_pool = env_full.clone();
             }
             Err(e) => {
-                println!("{}", e);
+                println!("{} from attempting {}", str_to_full_msg(e), c);
+                env_coord_pool.retain(|x| *x != *c);
             }
         }
     }

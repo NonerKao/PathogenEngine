@@ -18,6 +18,7 @@ pub fn str_to_full_msg(s: &'static str) -> &'static str {
     }
 
     match index {
+        542 => return "[Setup2] Character already here",
         541 => return "[Setup1] Invalid stacking",
         540 => return "Setup not done",
         539 => return "[Setup3] Invalid position",
