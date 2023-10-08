@@ -185,8 +185,11 @@ impl Game {
                             }
                             _ => {}
                         }
-                        if g.is_illegal_position_setup2() {
-                            panic!("Ex19");
+                        match g.is_illegal_position_setup2() {
+                            Err(x) => {
+                                panic!("{}", x);
+                            }
+                            _ => {}
                         }
                         if g.is_setup2_done() {
                             g.phase = Phase::Setup3;
@@ -619,13 +622,19 @@ impl Game {
             }
         }
     }
-    pub fn is_illegal_position_setup2(&self) -> bool {
+    pub fn is_illegal_position_setup2(&self) -> Result<(), &'static str> {
+        let mut cl: Vec<Coord> = Vec::new();
         for ((_, _), c) in self.character.iter() {
             if self.stuff.get(c) != None {
-                return true;
+                return Err("Ex19");
+            }
+            if !cl.contains(c) {
+                cl.push(*c);
+            } else {
+                return Err("Ex1f");
             }
         }
-        return false;
+        Ok(())
     }
 
     /// Check if the setup in setup3 is legal
@@ -689,10 +698,13 @@ impl Game {
                     }
                     _ => {}
                 }
-                if self.is_illegal_position_setup2() {
-                    self.character
-                        .remove(&(*self.env.get(&c).unwrap(), self.turn));
-                    return Err("Ex19");
+                match self.is_illegal_position_setup2() {
+                    Err(x) => {
+                        self.character
+                            .remove(&(*self.env.get(&c).unwrap(), self.turn));
+                        return Err(x);
+                    }
+                    _ => {}
                 }
                 if self.is_setup2_done() {
                     self.phase = Phase::Setup3;
@@ -855,6 +867,25 @@ mod tests {
             AB[ac][af][ba][bd][be][cb][cc][cf][da][db][de][eb][ed][ef][fc][fd]
             ;C[Setup1]AB[ab][dc][bd][ef]
             ;C[Setup2]AW[ab]
+            )"
+        .to_string();
+        let mut iter = s0.trim().chars().peekable();
+        let t = TreeNode::new(&mut iter, None);
+        let _g = Game::init(Some(t));
+    }
+
+    #[test]
+    #[should_panic(expected = "Ex1f")]
+    fn test_setup2_position2() {
+        let s0 = "(
+            ;C[Setup0]
+            AW[aa][ab][ad][ae][bb][bc][bf][ca][cd][ce][dc][dd][df][ea][ec][ee][fa][fb][fe][ff]
+            AB[ac][af][ba][bd][be][cb][cc][cf][da][db][de][eb][ed][ef][fc][fd]
+            ;C[Setup1]AB[ab][dc][bd][ef]
+            ;C[Setup2]AW[aa]
+            ;C[Setup2]AB[ac]
+            ;C[Setup2]AW[af]
+            ;C[Setup2]AB[aa]
             )"
         .to_string();
         let mut iter = s0.trim().chars().peekable();

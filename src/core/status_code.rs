@@ -18,12 +18,13 @@ pub fn str_to_full_msg(s: &'static str) -> &'static str {
     }
 
     match index {
+        543 => return "[Setup2] Invalid position: other characters",
         542 => return "[Setup2] Character already here",
         541 => return "[Setup1] Invalid stacking",
         540 => return "Setup not done",
         539 => return "[Setup3] Invalid position",
         538 => return "No need to setup",
-        537 => return "[Setup2] Invalid position",
+        537 => return "[Setup2] Invalid position: marker here",
         536 => return "[Setup2] Invalid order",
         535 => return "[Setup2] Not finished",
         534 => return "[Setup0] out-of-board setting",
@@ -32,6 +33,7 @@ pub fn str_to_full_msg(s: &'static str) -> &'static str {
         531 => return "[Setup0] Not finished",
         530 => return "Invalid checkpoint: Setup0",
         529 => return "[Setup1] Shouldn't share any row, column, and quandrant",
+        // Ex10
         528 => return "Invalid checkpoint: Setup1",
         527 => return "Invalid lockdown resolution",
         526 => return "Shouldn't trigger lockdown action, check application",
