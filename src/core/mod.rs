@@ -147,11 +147,14 @@ impl Game {
                         t.get_general("AB".to_string(), &mut m);
                         for c in m.iter() {
                             g.add_marker(&c.as_str().to_env(), &Camp::Plague);
+                            match g.is_illegal_setup1() {
+                                Err(x) => {
+                                    panic!("{}", x);
+                                }
+                                _ => {}
+                            }
                         }
                         if g.is_setup1_done() {
-                            if g.is_illegal_setup1() {
-                                panic!("Ex11");
-                            }
                             g.phase = Phase::Setup2;
                         }
                     } else {
@@ -260,6 +263,7 @@ impl Game {
                     }
                 }
             }
+            g.phase = Phase::Setup1;
         }
         g
     }
@@ -551,21 +555,26 @@ impl Game {
     }
 
     /// Check if the setup in setup1 is legal
-    pub fn is_illegal_setup1(&self) -> bool {
+    pub fn is_illegal_setup1(&self) -> Result<(), &'static str> {
         let mut row: [bool; crate::core::SIZE as usize] = [false; crate::core::SIZE as usize];
         let mut col: [bool; crate::core::SIZE as usize] = [false; crate::core::SIZE as usize];
         let mut quad: [bool; crate::core::QUAD_SIZE] = [false; crate::core::QUAD_SIZE];
         for c in self.stuff.iter() {
+            if let Stuff::Marker(x) = c.1.1 {
+                if x > 1 {
+                    return Err("Ex1d");
+                }
+            }
             let coord = c.0;
             let q = coord.to_quad();
             if row[coord.x as usize] || col[coord.y as usize] || quad[q as usize] {
-                return true;
+                return Err("Ex11");
             }
             row[coord.x as usize] = true;
             col[coord.y as usize] = true;
             quad[q as usize] = true;
         }
-        return false;
+        return Ok(());
     }
 
     pub fn is_setup2_done(&self) -> bool {
@@ -633,6 +642,32 @@ impl Game {
 
     pub fn switch(&mut self) {
         self.turn = self.opposite(self.turn);
+    }
+
+    pub fn setup_with_coord(&mut self, c: Coord) -> Result<Phase, &'static str> {
+        match self.phase {
+            Phase::Setup0 => {
+                panic!("Not possible");
+            }
+            Phase::Setup3 => {
+                self.map.insert(Camp::Doctor, c);
+                self.map.insert(Camp::Plague, c);
+                self.phase = Phase::Main(1);
+                Ok(Phase::Main(1))
+            }
+            _ => {
+                self.phase = Phase::Setup3;
+                Ok(Phase::Setup3)
+            }
+        }
+    }
+
+    pub fn setup_with_alpha(&mut self, m: &String, e: &String) -> Result<Phase, &'static str> {
+        let mut c = e.as_str().to_env();
+        if self.phase == Phase::Setup3 {
+            c = m.as_str().to_map();
+        }
+        return self.setup_with_coord(c);
     }
 }
 
@@ -733,7 +768,7 @@ mod tests {
     }
 
     #[test]
-    #[should_panic(expected = "Ex15")]
+    #[should_panic(expected = "Ex11")]
     fn test_setup1_4() {
         let s0 = "(;FF[4]GM[41]SZ[6]GN[https://boardgamegeek.com/boardgame/369862/pathogen]
             ;C[Setup0]
@@ -742,6 +777,23 @@ mod tests {
             ;C[Setup1]AB[ab]
             ;C[Setup1]AB[dc][bd]
             ;C[Setup1]AB[dd][be]
+            )"
+        .to_string();
+        let mut iter = s0.trim().chars().peekable();
+        let t = TreeNode::new(&mut iter, None);
+        let _g = Game::init(Some(t));
+    }
+
+    #[test]
+    #[should_panic(expected = "Ex1d")]
+    fn test_setup1_5() {
+        let s0 = "(;FF[4]GM[41]SZ[6]GN[https://boardgamegeek.com/boardgame/369862/pathogen]
+            ;C[Setup0]
+            AW[aa][ab][ad][ae][bb][bc][bf][ca][cd][ce][dc][dd][df][ea][ec][ee][fa][fb][fe][ff]
+            AB[ac][af][ba][bd][be][cb][cc][cf][da][db][de][eb][ed][ef][fc][fd]
+            ;C[Setup1]AB[ab]
+            ;C[Setup1]AB[dc][bd]
+            ;C[Setup1]AB[ab]
             )"
         .to_string();
         let mut iter = s0.trim().chars().peekable();
@@ -1009,5 +1061,27 @@ mod tests {
             Ok(a) => assert_eq!(a.to_sgf_string(&g), s1),
             Err(x) => panic!("{}", x),
         };
+    }
+
+    #[test]
+    fn test_setup1() {
+        let s0 = "(
+            ;C[Setup0]
+            AW[aa][ab][ad][ae][bb][bc][bf][ca][cd][ce][dc][dd][df][ea][ec][ee][fa][fb][fe][ff]
+            AB[ac][af][ba][bd][be][cb][cc][cf][da][db][de][eb][ed][ef][fc][fd]
+            ;C[Setup1]AB[ab][cd][ef][da]
+            ;C[Setup2]AW[aa]
+            ;C[Setup2]AB[ac]
+            ;C[Setup2]AW[af]
+            ;C[Setup2]AB[ad]
+            )"
+        .to_string();
+        let mut iter = s0.trim().chars().peekable();
+        let t = TreeNode::new(&mut iter, None);
+        let mut g = Game::init(Some(t));
+        assert_eq!(
+            g.setup_with_alpha(&String::from("ii"), &String::from("ab")),
+            Ok(Phase::Main(1))
+        );
     }
 }
