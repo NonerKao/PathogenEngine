@@ -707,10 +707,10 @@ impl Game {
         }
     }
 
-    pub fn setup_with_alpha(&mut self, m: &String, e: &String) -> Result<Phase, &'static str> {
-        let mut c = e.as_str().to_env();
+    pub fn setup_with_alpha(&mut self, s: &String) -> Result<Phase, &'static str> {
+        let mut c = s.as_str().to_env();
         if self.phase == Phase::Setup3 {
-            c = m.as_str().to_map();
+            c = s.as_str().to_map();
         }
         return self.setup_with_coord(c);
     }
@@ -1142,9 +1142,23 @@ mod tests {
         let mut iter = s0.trim().chars().peekable();
         let t = TreeNode::new(&mut iter, None);
         let mut g = Game::init(Some(t));
-        assert_eq!(
-            g.setup_with_alpha(&String::from("ii"), &String::from("ab")),
-            Ok(Phase::Main(1))
-        );
+        assert_eq!(g.setup_with_alpha(&String::from("ii")), Ok(Phase::Main(1)));
+    }
+
+    #[test]
+    fn test_setup_with2() {
+        let s0 = "(
+            ;C[Setup0]
+            AW[aa][ab][ad][ae][bb][bc][bf][ca][cd][ce][dc][dd][df][ea][ec][ee][fa][fb][fe][ff]
+            AB[ac][af][ba][bd][be][cb][cc][cf][da][db][de][eb][ed][ef][fc][fd]
+            ;C[Setup1]AB[ab][cd][ef][da]
+            ;C[Setup2]AW[aa]
+            ;C[Setup2]AB[ac]
+            )"
+        .to_string();
+        let mut iter = s0.trim().chars().peekable();
+        let t = TreeNode::new(&mut iter, None);
+        let mut g = Game::init(Some(t));
+        assert_eq!(g.setup_with_alpha(&String::from("af")), Ok(Phase::Setup2));
     }
 }

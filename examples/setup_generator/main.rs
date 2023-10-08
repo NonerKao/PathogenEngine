@@ -77,7 +77,11 @@ fn main() -> std::io::Result<()> {
     let env_full = env_coord_pool.clone();
     loop {
         let c = env_coord_pool.choose(&mut rng).unwrap().clone();
-        let r = g.setup_with_alpha(map_coord_pool.choose(&mut rng).unwrap(), &c);
+        let r = if g.phase != Phase::Setup3 {
+            g.setup_with_alpha(&c)
+        } else {
+            g.setup_with_alpha(map_coord_pool.choose(&mut rng).unwrap())
+        };
         match r {
             Ok(Phase::Main(1)) => {
                 break;
