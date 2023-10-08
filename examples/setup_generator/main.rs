@@ -49,6 +49,10 @@ fn main() -> std::io::Result<()> {
     // main
     let tn = TreeNode::new(&mut iter, None);
     let mut g = Game::init(Some(tn.clone()));
+    if g.is_setup() {
+        to_file(&g)?;
+        return Ok(());
+    }
     let mut map_coord_pool: Vec<String> = Vec::new();
     let map_base: i32 = 'i' as i32;
     // Because we only need to generate the Setup3 steps now
@@ -97,6 +101,11 @@ fn main() -> std::io::Result<()> {
         }
     }
 
+    to_file(&g)
+}
+
+fn to_file(g: &Game) -> std::io::Result<()> {
+    let args = Args::parse();
     let mut buffer = String::new();
     g.history.borrow().to_root().borrow().to_string(&mut buffer);
     match args.save {
@@ -106,7 +115,6 @@ fn main() -> std::io::Result<()> {
         }
         None => {}
     }
-
     Ok(())
 }
 

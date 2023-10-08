@@ -114,12 +114,7 @@ impl Game {
                 return;
             }
             if let Some(p) = t.to_sgf_node() {
-                g.history
-                    .borrow_mut()
-                    .children
-                    .push(p.borrow().children[0].clone());
-                p.borrow().children[0].borrow_mut().parent = Some(g.history.clone());
-                g.history = p.borrow().children[0].clone();
+                g.append_history(p.clone());
             }
             match t.checkpoint() {
                 "Setup0" => {
@@ -269,6 +264,20 @@ impl Game {
                     }
                 }
             }
+            // Update history
+            let mut h: Vec<String> = Vec::new();
+            let mut u: Vec<String> = Vec::new();
+            for (c, w) in g.env.iter() {
+                if *w == World::Humanity {
+                    h.push(c.env_to_sgf())
+                } else if *w == World::Underworld {
+                    u.push(c.env_to_sgf())
+                }
+            }
+            let hs = String::from("(;C[Setup0]AW") + "[" + &h.join("][") + "])";
+            g.append_history_with_new_tree(&hs);
+            let us = String::from("(;C[Setup0]AB") + "[" + &u.join("][") + "])";
+            g.append_history_with_new_tree(&us);
             g.phase = Phase::Setup1;
         }
         g
@@ -724,6 +733,13 @@ impl Game {
 
     pub fn setup_with_alpha(&mut self, s: &String) -> Result<Phase, &'static str> {
         let mut c = s.as_str().to_env();
+        let mut s0 = if self.phase == Phase::Setup1 {
+            String::from("(;C[Setup1]")
+        } else if self.phase == Phase::Setup2 {
+            String::from("(;C[Setup2]")
+        } else {
+            String::from("(;C[Setup3]")
+        };
         let t = self.turn;
         if self.phase == Phase::Setup3 {
             c = s.as_str().to_map();
@@ -735,24 +751,39 @@ impl Game {
             Ok(x) => {
                 // the self.turn is deeply binding with the state transition
                 // so error-prune. Here we check the camp on enter.
-                let mut s0 = if t == Camp::Doctor {
-                    String::from("(;AW[")
-                } else {
-                    String::from("(;AB[")
-                };
-                s0 = s0 + s + "]";
-                let mut iter = s0.trim().chars().peekable();
-                let t = TreeNode::new(&mut iter, None);
-                if let Some(p) = t.borrow().children[0].borrow().to_sgf_node() {
-                    self.history
-                        .borrow_mut()
-                        .children
-                        .push(p.borrow().children[0].clone());
-                    p.borrow().children[0].borrow_mut().parent = Some(self.history.clone());
-                    self.history = p.borrow().children[0].clone();
-                }
+                s0 = s0 + if t == Camp::Doctor { "AW[" } else { "AB[" };
+                s0 = s0 + s + "])";
+                self.append_history_with_new_tree(&s0);
                 return Ok(x);
             }
+        }
+    }
+
+    fn append_history_with_new_tree(&mut self, s0: &String) {
+        let mut iter = s0.trim().chars().peekable();
+        let t = TreeNode::new(&mut iter, None);
+        let mut buffer = String::new();
+        t.borrow().to_string(&mut buffer);
+        println!("{}", buffer);
+        if let Some(p) = t.borrow().children[0].borrow().to_sgf_node() {
+            self.append_history(p.clone());
+        };
+    }
+
+    fn append_history(&mut self, t: Rc<RefCell<TreeNode>>) {
+        self.history
+            .borrow_mut()
+            .children
+            .push(t.borrow().children[0].clone());
+        t.borrow().children[0].borrow_mut().parent = Some(self.history.clone());
+        self.history = t.borrow().children[0].clone();
+    }
+
+    pub fn is_setup(&self) -> bool {
+        if let Phase::Main(_) = self.phase {
+            return true;
+        } else {
+            return false;
         }
     }
 }
@@ -769,8 +800,9 @@ mod tests {
         let mut iter = s0.trim().chars().peekable();
         let t = TreeNode::new(&mut iter, None);
         let g = Game::init(Some(t));
-        assert_eq!(g.history.borrow().properties.len(), 4);
-        assert_eq!(g.history.borrow().properties[3].value.len(), 1);
+        let temp = g.history.borrow().to_root().borrow().children[0].clone();
+        assert_eq!(temp.borrow().properties.len(), 4);
+        assert_eq!(temp.borrow().properties[3].value.len(), 1);
     }
 
     #[test]

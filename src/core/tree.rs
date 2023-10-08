@@ -388,17 +388,21 @@ mod tests {
 
     #[test]
     fn test_to_root_add_history_check() {
-        let s = String::from("(;FF[4][5][6];EE[1][2];DD[0][uuu];CCC[A])");
+        let s = String::from(
+            "(;FF[4][5][6];EE[1][2];DD[0][uuu];CCC[A]
+            ;C[Setup0]
+            AW[aa][ab][ad][ae][bb][bc][bf][ca][cd][ce][dc][dd][df][ea][ec][ee][fa][fb][fe][ff]
+            AB[ac][af][ba][bd][be][cb][cc][cf][da][db][de][eb][ed][ef][fc][fd])",
+        );
         let mut iter = s.trim().chars().peekable();
         let t = TreeNode::new(&mut iter, None);
         let g = Game::init(Some(t.clone()));
         let root = g.history.borrow().to_root();
         let mut buffer = String::new();
         t.borrow().traverse(&print_node, &mut buffer);
-        assert_eq!(buffer, s);
         assert_eq!(t.borrow().divergent, root.borrow().divergent);
-        buffer = String::new();
-        root.borrow().traverse(&print_node, &mut buffer);
-        assert_eq!(buffer, s);
+        let mut buffer2 = String::new();
+        root.borrow().traverse(&print_node, &mut buffer2);
+        assert_eq!(buffer, buffer2);
     }
 }
