@@ -106,6 +106,8 @@ impl Game {
             phase: Phase::Setup0,
             history: TreeNode::new(&mut iter, None),
         };
+        // OK, I admit, this is a over-engineering mistake...
+        g.history.borrow_mut().divergent = true;
 
         fn load_history(t: &TreeNode, is_front: bool, g: &mut Game) {
             if !is_front {
@@ -708,6 +710,7 @@ impl Game {
                 }
                 if self.is_setup2_done() {
                     self.phase = Phase::Setup3;
+                    self.switch();
                     return Ok(Phase::Setup2);
                 }
                 self.switch();
@@ -721,10 +724,36 @@ impl Game {
 
     pub fn setup_with_alpha(&mut self, s: &String) -> Result<Phase, &'static str> {
         let mut c = s.as_str().to_env();
+        let t = self.turn;
         if self.phase == Phase::Setup3 {
             c = s.as_str().to_map();
         }
-        return self.setup_with_coord(c);
+        match self.setup_with_coord(c) {
+            Err(x) => {
+                return Err(x);
+            }
+            Ok(x) => {
+                // the self.turn is deeply binding with the state transition
+                // so error-prune. Here we check the camp on enter.
+                let mut s0 = if t == Camp::Doctor {
+                    String::from("(;AW[")
+                } else {
+                    String::from("(;AB[")
+                };
+                s0 = s0 + s + "]";
+                let mut iter = s0.trim().chars().peekable();
+                let t = TreeNode::new(&mut iter, None);
+                if let Some(p) = t.borrow().children[0].borrow().to_sgf_node() {
+                    self.history
+                        .borrow_mut()
+                        .children
+                        .push(p.borrow().children[0].clone());
+                    p.borrow().children[0].borrow_mut().parent = Some(self.history.clone());
+                    self.history = p.borrow().children[0].clone();
+                }
+                return Ok(x);
+            }
+        }
     }
 }
 

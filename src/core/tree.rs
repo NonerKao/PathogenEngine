@@ -58,7 +58,7 @@ impl Property {
 
 #[derive(Debug, Default, PartialEq)]
 pub struct TreeNode {
-    divergent: bool,
+    pub divergent: bool,
     pub properties: Vec<Property>,
     pub children: Vec<Rc<RefCell<TreeNode>>>,
     pub parent: Option<Rc<RefCell<TreeNode>>>,
@@ -220,6 +220,23 @@ impl TreeNode {
         let mut iter = buffer.trim().chars().peekable();
         Some(TreeNode::new(&mut iter, None))
     }
+
+    pub fn to_root(&self) -> Rc<RefCell<TreeNode>> {
+        match &self.parent {
+            None => {
+                panic!("self cannot be root!");
+            }
+            Some(p) => match p.borrow().parent {
+                None => {
+                    assert_eq!(p.borrow().properties.len(), 0);
+                    return p.clone();
+                }
+                Some(_) => {
+                    return p.borrow().to_root().clone();
+                }
+            },
+        }
+    }
 }
 
 pub fn print_node(t: &TreeNode, is_front: bool, buffer: &mut String) {
@@ -350,5 +367,38 @@ mod tests {
         n.borrow().traverse(&print_node, &mut buffer);
         let ns = String::from("(;DD[0][uuu])");
         assert_eq!(buffer, ns);
+    }
+
+    #[test]
+    fn test_to_root() {
+        let s = String::from("(;FF[4][5][6];EE[1][2];DD[0][uuu];CCC[A])");
+        let mut iter = s.trim().chars().peekable();
+        let t = TreeNode::new(&mut iter, None);
+        let n = t.borrow().children[0].borrow().children[0]
+            .borrow()
+            .children[0]
+            .borrow()
+            .children[0]
+            .clone();
+        let root = n.borrow().to_root();
+        let mut buffer = String::new();
+        root.borrow().traverse(&print_node, &mut buffer);
+        assert_eq!(buffer, s);
+    }
+
+    #[test]
+    fn test_to_root_add_history_check() {
+        let s = String::from("(;FF[4][5][6];EE[1][2];DD[0][uuu];CCC[A])");
+        let mut iter = s.trim().chars().peekable();
+        let t = TreeNode::new(&mut iter, None);
+        let g = Game::init(Some(t.clone()));
+        let root = g.history.borrow().to_root();
+        let mut buffer = String::new();
+        t.borrow().traverse(&print_node, &mut buffer);
+        assert_eq!(buffer, s);
+        assert_eq!(t.borrow().divergent, root.borrow().divergent);
+        buffer = String::new();
+        root.borrow().traverse(&print_node, &mut buffer);
+        assert_eq!(buffer, s);
     }
 }

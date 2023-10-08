@@ -98,7 +98,7 @@ fn main() -> std::io::Result<()> {
     }
 
     let mut buffer = String::new();
-    tn.borrow().to_string(&mut buffer);
+    g.history.borrow().to_root().borrow().to_string(&mut buffer);
     match args.save {
         Some(filename) => {
             let mut file = File::create(filename.as_str())?;
