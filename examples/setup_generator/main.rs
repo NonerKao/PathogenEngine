@@ -7,8 +7,6 @@ use std::fs::File;
 use std::io::Read;
 use std::io::Write;
 
-use pathogen_engine::core::action::Action;
-use pathogen_engine::core::grid_coord::Coord;
 use pathogen_engine::core::status_code::str_to_full_msg;
 use pathogen_engine::core::tree::TreeNode;
 use pathogen_engine::core::{Game, Phase};
@@ -134,6 +132,6 @@ fn from_seed(es: Option<String>) -> StdRng {
         }
         None => {}
     }
-    let mut rng = StdRng::from_seed(seed);
+    let rng = StdRng::from_seed(seed);
     rng
 }
