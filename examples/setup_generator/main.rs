@@ -1,5 +1,8 @@
 use clap::Parser;
 
+use rand::rngs::StdRng;
+use rand::seq::SliceRandom;
+use rand::SeedableRng;
 use std::fs::File;
 use std::io::Read;
 use std::io::Write;
@@ -7,7 +10,7 @@ use std::io::Write;
 use pathogen_engine::core::action::Action;
 use pathogen_engine::core::grid_coord::Coord;
 use pathogen_engine::core::tree::TreeNode;
-use pathogen_engine::core::Game;
+use pathogen_engine::core::{Game, Phase};
 
 #[derive(Parser, Debug)]
 #[command(author, version, about, long_about = None)]
@@ -19,6 +22,10 @@ struct Args {
     /// SGF file to be saved to
     #[arg(short, long)]
     save: Option<String>,
+
+    /// random seed in ASCII string, at most the starting 32 bytes are used
+    #[arg(long)]
+    seed: Option<String>,
 }
 
 fn main() -> std::io::Result<()> {
@@ -40,15 +47,14 @@ fn main() -> std::io::Result<()> {
 
     // main
     let tn = TreeNode::new(&mut iter, None);
-    let g = Game::init(Some(tn.clone()));
+    let mut g = Game::init(Some(tn.clone()));
     let mut map_coord_pool: Vec<String> = Vec::new();
     let map_base: i32 = 'i' as i32;
     for i in -2..=2 {
         for j in -2..=2 {
-            if let c = i * j {
-                if c >= 4 || c <= -4 {
-                    continue;
-                }
+            let c = i * j;
+            if c >= 4 || c <= -4 {
+                continue;
             }
             let mut s = String::new();
             s.push(std::char::from_u32((j + map_base) as u32).unwrap());
@@ -66,8 +72,25 @@ fn main() -> std::io::Result<()> {
             env_coord_pool.push(s);
         }
     }
-    println!("{:?}", map_coord_pool);
-    println!("{:?}", env_coord_pool);
+
+    // setup seed
+    let mut rng = from_seed(args.seed);
+    while let r = g.setup_with_alpha(
+        map_coord_pool.choose(&mut rng).unwrap(),
+        env_coord_pool.choose(&mut rng).unwrap(),
+    ) {
+        match r {
+            Ok(Phase::Main(1)) => {
+                break;
+            }
+            Ok(x) => {
+                println!("{:?} done one", x);
+            }
+            Err(e) => {
+                println!("{}", e);
+            }
+        }
+    }
 
     let mut buffer = String::new();
     tn.borrow().to_string(&mut buffer);
@@ -80,4 +103,24 @@ fn main() -> std::io::Result<()> {
     }
 
     Ok(())
+}
+
+fn from_seed(es: Option<String>) -> StdRng {
+    let mut seed: [u8; 32] = [
+        1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25,
+        26, 27, 28, 29, 30, 31, 32,
+    ];
+    match es {
+        Some(s) => {
+            for (index, c) in s.chars().enumerate() {
+                if c as i32 >= 32 {
+                    break;
+                }
+                seed[index] = c as u8;
+            }
+        }
+        None => {}
+    }
+    let mut rng = StdRng::from_seed(seed);
+    rng
 }
