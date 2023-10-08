@@ -118,7 +118,7 @@ fn from_seed(es: Option<String>) -> StdRng {
     match es {
         Some(s) => {
             for (index, c) in s.chars().enumerate() {
-                if c as i32 >= 32 {
+                if index as i32 >= 32 {
                     break;
                 }
                 seed[index] = c as u8;
