@@ -7,10 +7,10 @@
 $ cargo run --example coord_server
 ```
 
-## Client
+## Client (The random client as an example)
 
 ```
-$ python client.py
+$ python random.py -s Doctor
 ```
 
 # Hacking
