@@ -85,11 +85,10 @@ pub struct Game {
 }
 
 pub const SIZE: i32 = 6;
-const COMPASS_SIZE: usize = 5;
+pub const MAP_SIZE: usize = 5;
 pub const QUAD_SIZE: usize = 4;
 pub const DOCTOR_MARKER: i32 = 5;
 pub const PLAGUE_MARKER: i32 = 4;
-
 pub const MAX_MARKER: u8 = 5;
 const SETUP1_MARKER: usize = 4;
 
@@ -374,69 +373,6 @@ impl Game {
             return true;
         }
         false
-    }
-
-    pub fn encode(&self) -> (Array3<u8>, Array3<u8>) {
-        // 9 entries: cursor, underworld, humanity, doctor character, plague character, doctor colony, plague colony, doctor marker, plague marker
-        let mut a =
-            Array::from_shape_fn((SIZE as usize, SIZE as usize, 9 as usize), |(_, _, _)| {
-                0 as u8
-            });
-
-        // In the core game engine, we don't maintain cursor information. The concept belongs to UI, not here. We just reserve a space for the UI to return the value.
-        for i in 0..SIZE as usize {
-            for j in 0..SIZE as usize {
-                let c = Coord::new(i.try_into().unwrap(), j.try_into().unwrap());
-                if self.env.get(&c).unwrap() == &World::Underworld {
-                    a[[i, j, 1 /*Underworld*/]] = 1;
-                } else {
-                    a[[i, j, 2 /*Humanity*/]] = 1;
-                }
-                match self.stuff.get(&c) {
-                    None => {}
-                    Some((Camp::Doctor, Stuff::Colony)) => {
-                        a[[i, j, 5 /*Doctor Colony*/]] = 1;
-                    }
-                    Some((Camp::Plague, Stuff::Colony)) => {
-                        a[[i, j, 6 /*Plague Colony*/]] = 1;
-                    }
-                    Some((Camp::Doctor, Stuff::Marker(x))) => {
-                        a[[i, j, 7 /*Doctor Marker*/]] = *x;
-                    }
-                    Some((Camp::Plague, Stuff::Marker(x))) => {
-                        a[[i, j, 8 /*Plague Marker*/]] = *x;
-                    }
-                }
-            }
-        }
-        for ((_, camp), c) in self.character.iter() {
-            if *camp == Camp::Doctor {
-                a[[c.y as usize, c.x as usize, 3 /*Doctor Hero*/]] = 1;
-            } else {
-                a[[c.y as usize, c.x as usize, 4 /*Plague Hero*/]] = 1;
-            }
-        }
-
-        // 3 entries: cursor, doctor, plague
-        let mut b = Array::from_shape_fn((COMPASS_SIZE, COMPASS_SIZE, 3 as usize), |(_, _, _)| {
-            0 as u8
-        });
-        for (camp, c) in self.map.iter() {
-            if *camp == Camp::Doctor {
-                b[[
-                    (c.y + COMPASS_OFFSET.y) as usize,
-                    (c.x + COMPASS_OFFSET.x) as usize,
-                    1, /*Doctor Marker*/
-                ]] = 1;
-            } else {
-                b[[
-                    (c.y + COMPASS_OFFSET.y) as usize,
-                    (c.x + COMPASS_OFFSET.x) as usize,
-                    2, /*Plague Marker*/
-                ]] = 1;
-            }
-        }
-        (a, b)
     }
 
     // XXX: Need to add some restriction that each qudrant can

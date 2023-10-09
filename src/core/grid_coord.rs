@@ -2,7 +2,7 @@ use std::collections::HashMap;
 use std::ops::{Add, Sub};
 
 pub const ORIGIN: Coord = Coord { x: 0, y: 0 };
-pub const COMPASS_OFFSET: Coord = Coord { x: 2, y: 2 };
+pub const MAP_OFFSET: Coord = Coord { x: 2, y: 2 };
 
 #[derive(Hash, PartialEq, Eq, Debug, Copy, Clone)]
 pub struct Coord {

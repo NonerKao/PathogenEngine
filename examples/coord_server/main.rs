@@ -1,12 +1,16 @@
 use clap::Parser;
+use ndarray::{Array, Array1};
 use std::fs::File;
 use std::io::{Read, Write};
 use std::net::{TcpListener, TcpStream};
 
 use pathogen_engine::core::action::Action;
 use pathogen_engine::core::grid_coord::Coord;
+use pathogen_engine::core::grid_coord::MAP_OFFSET;
 use pathogen_engine::core::tree::TreeNode;
-use pathogen_engine::core::Game;
+use pathogen_engine::core::*;
+
+const MAX_STEPS: usize = 5;
 
 #[derive(Parser, Debug)]
 #[command(author, version, about, long_about = None)]
@@ -20,8 +24,91 @@ struct Args {
     save: Option<String>,
 }
 
-fn handle_client(mut stream: &TcpStream) -> bool {
+fn encode(g: &Game, _a: &Action) -> Array1<u8> {
+    // Check the README/HACKING for why it is 9
+    let mut e = Array::from_shape_fn((SIZE as usize, SIZE as usize, 9 as usize), |(_, _, _)| {
+        0 as u8
+    });
+    for i in 0..SIZE as usize {
+        for j in 0..SIZE as usize {
+            let c = Coord::new(i.try_into().unwrap(), j.try_into().unwrap());
+            if g.env.get(&c).unwrap() == &World::Underworld {
+                e[[i, j, 0 /*Underworld*/]] = 1;
+            } else {
+                e[[i, j, 1 /*Humanity*/]] = 1;
+            }
+            match g.stuff.get(&c) {
+                None => {}
+                Some((Camp::Doctor, Stuff::Colony)) => {
+                    e[[i, j, 4 /*Doctor Colony*/]] = 1;
+                }
+                Some((Camp::Plague, Stuff::Colony)) => {
+                    e[[i, j, 5 /*Plague Colony*/]] = 1;
+                }
+                Some((Camp::Doctor, Stuff::Marker(x))) => {
+                    e[[i, j, 6 /*Doctor Marker*/]] = *x;
+                }
+                Some((Camp::Plague, Stuff::Marker(x))) => {
+                    e[[i, j, 7 /*Plague Marker*/]] = *x;
+                }
+            }
+        }
+    }
+    for ((_, camp), c) in g.character.iter() {
+        if *camp == Camp::Doctor {
+            e[[c.y as usize, c.x as usize, 2 /*Doctor Hero*/]] = 1;
+        } else {
+            e[[c.y as usize, c.x as usize, 3 /*Plague Hero*/]] = 1;
+        }
+    }
+    // 2 for the two sides
+    let mut m = Array::from_shape_fn(
+        (MAP_SIZE as usize, MAP_SIZE as usize, 2 as usize),
+        |(_, _, _)| 0 as u8,
+    );
+
+    for (camp, c) in g.map.iter() {
+        if *camp == Camp::Doctor {
+            m[[
+                (c.y + MAP_OFFSET.y) as usize,
+                (c.x + MAP_OFFSET.x) as usize,
+                0, /* Doctor Marker */
+            ]] = 1;
+        } else {
+            m[[
+                (c.y + MAP_OFFSET.y) as usize,
+                (c.x + MAP_OFFSET.x) as usize,
+                1, /* Plague Marker */
+            ]] = 1;
+        }
+    }
+
+    // for flow control
+    let fc = Array::from_shape_fn(2 /* map moves */ + MAX_STEPS + MAX_MARKER as usize, |_| {
+        0 as u8
+    });
+
+    let ret = e
+        .into_shape(((SIZE as usize) * (SIZE as usize) * 9,))
+        .unwrap()
+        .into_iter()
+        .chain(
+            m.into_shape((MAP_SIZE * MAP_SIZE * 2,))
+                .unwrap()
+                .into_iter(),
+        )
+        .chain(
+            fc.into_shape((2 + MAX_STEPS + MAX_MARKER as usize,))
+                .unwrap()
+                .into_iter(),
+        )
+        .collect::<Array1<_>>();
+    ret
+}
+
+fn handle_client(mut stream: &TcpStream, _g: &mut Game) -> bool {
     let mut buffer = [0; 1]; // to read the 1-byte action from agent
+    let _a = Action::new();
     loop {
         match stream.peek(&mut buffer) {
             Ok(0) => {
@@ -32,7 +119,7 @@ fn handle_client(mut stream: &TcpStream) -> bool {
                 let _bytes_read = stream.read(&mut buffer).unwrap();
                 println!("{:?}", buffer);
 
-                let action = buffer[0] as usize;
+                let _action = buffer[0] as usize;
 
                 // Here, interact with the IIG environment using the action
                 // and get the resulting game state and status code.
@@ -47,7 +134,6 @@ fn handle_client(mut stream: &TcpStream) -> bool {
                     }
                     _ => {}
                 }
-                break;
             }
             Err(e) => {
                 println!("Error occurred: {:?}", e);
@@ -77,7 +163,7 @@ fn main() -> Result<(), std::io::Error> {
     }
 
     let t = TreeNode::new(&mut iter, None);
-    let g = Game::init(Some(t));
+    let mut g = Game::init(Some(t));
     if !g.is_setup() {
         panic!("The game is not ready");
     }
@@ -88,10 +174,10 @@ fn main() -> Result<(), std::io::Error> {
 
     while w_live || b_live {
         if w_live {
-            w_live = handle_client(&mut w);
+            w_live = handle_client(&mut w, &mut g);
         }
         if b_live {
-            b_live = handle_client(&mut b);
+            b_live = handle_client(&mut b, &mut g);
         }
     }
 
