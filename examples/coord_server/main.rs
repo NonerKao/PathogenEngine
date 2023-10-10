@@ -280,7 +280,6 @@ fn handle_client<T: Read + ReaderExtra + Write + WriterExtra>(
 
                 // Move the character on the board
                 assert_eq!(a.action_phase, ActionPhase::BoardMove);
-                assert_eq!(a.steps, 2);
                 fc[2 /* set character */] = 0;
                 for i in 0..a.steps {
                     loop {
@@ -291,8 +290,6 @@ fn handle_client<T: Read + ReaderExtra + Write + WriterExtra>(
                         match a.add_board_single_step(g, c) {
                             Err(e) => {
                                 s = e;
-                                println!("{:?} {}", a, e);
-                                assert!(false);
                             }
                             Ok(()) => {}
                         }
@@ -465,9 +462,7 @@ fn network_setup() -> Result<(TcpStream, TcpStream), std::io::Error> {
 
     let hello: [u8; 154] = [0; 154];
     let mut w = white_listener.accept().unwrap().0;
-    w.write(&hello)?;
     let mut b = black_listener.accept().unwrap().0;
-    b.write(&hello)?;
 
     Ok((w, b))
 }

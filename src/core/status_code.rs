@@ -18,6 +18,8 @@ pub fn str_to_full_msg(s: &'static str) -> &'static str {
     }
 
     match index {
+        // Ex20
+        544 => return "Invalid map position: No possible route",
         543 => return "[Setup2] Invalid position: other characters",
         542 => return "[Setup2] Character already here",
         541 => return "[Setup1] Invalid stacking",
@@ -25,6 +27,7 @@ pub fn str_to_full_msg(s: &'static str) -> &'static str {
         539 => return "[Setup3] Invalid position",
         538 => return "No need to setup",
         537 => return "[Setup2] Invalid position: marker here",
+        // Ex18
         536 => return "[Setup2] Invalid order",
         535 => return "[Setup2] Not finished",
         534 => return "[Setup0] out-of-board setting",
@@ -42,14 +45,15 @@ pub fn str_to_full_msg(s: &'static str) -> &'static str {
         523 => return "Invalid marker action: more than a colony",
         522 => return "Invalid marker action: over the quota",
         521 => return "Invalid marker action: not in the trajectory",
+        // Ex08
         520 => return "Invalid marker action: opponent is here",
         519 => return "Invalid move: stopping at the opponent's character",
         518 => return "Invalid move: going through or stopping at the opponent's colony",
         517 => return "Invalid move along the direction",
-        516 => return "Invalid map move",
+        516 => return "Invalid board move",
         515 => return "Invalid coordinate as the next step",
         514 => return "Invalid character position",
-        513 => return "Invalid map area",
+        513 => return "Invalid map position: Lockdown now",
         512 => return "Invalid map position: Collide with opponent",
         // Ix01 and beyond: Currently used only in coord_server
         5 => return "LOSE",

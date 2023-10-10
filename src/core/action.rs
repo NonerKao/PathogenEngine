@@ -76,6 +76,25 @@ impl Action {
 
         self.transit(g);
         return Ok(());
+        // Check if the choice is valid immediately.
+        // It is possible that the chosen map position does not work
+        // for both characters. Check it now.
+        /* let possible_route = a.find_route();
+        for pr in possible_route.iter() {
+            // finding one would be enough
+            if g.viable() {
+                self.transit(g);
+                return Ok(());
+            }
+        }*/
+
+        // Cleanup self. It is recommanded that the application should
+        // clean up the state after seeing this error. Anyway we also
+        // wipe out the three attributes we have set above.
+        self.map = None;
+        self.restriction = HashMap::new();
+        self.steps = 0;
+        return Err("Ex20");
     }
 
     pub fn add_lockdown_by_rotation(&mut self, g: &Game, ld: Lockdown) -> Result<(), &'static str> {
@@ -382,6 +401,18 @@ impl Action {
             }
         }
     }
+
+    fn find_route(&self, ret: &mut Vec<Vec<Direction>>) {
+        let mut inner: Vec<Direction> = Vec::new();
+        if self.restriction.len() == 1 {
+            let (d, n) = self.restriction.iter().next().unwrap();
+            let nn = *n as usize;
+            for i in 0..nn {
+                inner.push(*d);
+            }
+        }
+        ret.push(inner);
+    }
 }
 
 #[cfg(test)]
@@ -480,5 +511,20 @@ mod tests {
         if let Err(e) = a.add_board_single_step(&g, clf3) {
             assert_eq!(e, "Ex03");
         }
+    }
+
+    #[test]
+    fn test_find_route() {
+        let s0 = "(;FF[4]GM[41]SZ[6]GN[https://boardgamegeek.com/boardgame/369862/pathogen];C[Setup0]AW[fa][ef][ed][eb][cf][cc][dc][ca][ad][fe][ab][db][bb][be][fd][ae][ac][df];C[Setup0]AB[af][ba][dd][da][ff][bf][ee][bc][de][ec][cb][aa][ea][bd][ce][fc][cd][fb];C[Setup1]AB[ee];C[Setup1]AB[cf];C[Setup1]AB[fa];C[Setup1]AB[bc];C[Setup2]AW[bf];C[Setup2]AB[ce];C[Setup2]AW[db];C[Setup2]AB[eb];C[Setup3]AW[ih])"
+        .to_string();
+        let mut iter = s0.trim().chars().peekable();
+        let t = TreeNode::new(&mut iter, None);
+        let mut g = Game::init(Some(t));
+        let c1 = Coord::new(2, -1); /* AB[ik] */
+        let mut a = Action::new();
+        a.add_map_step(&g, c1);
+        let mut ret: Vec<Vec<Direction>> = Vec::new();
+        a.find_route(&mut ret);
+        assert_eq!(ret.len(), 1);
     }
 }
