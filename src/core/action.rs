@@ -2,6 +2,16 @@ use super::grid_coord::*;
 use super::*;
 use std::collections::HashMap;
 
+#[derive(Debug, PartialEq)]
+pub enum ActionPhase {
+    SetMap,
+    Lockdown,
+    SetCharacter,
+    BoardMove,
+    SetMarkers,
+    Done,
+}
+
 #[derive(Debug)]
 pub struct Action {
     pub map: Option<Coord>,
@@ -12,6 +22,7 @@ pub struct Action {
     pub steps: i32,
     pub trajectory: Vec<Coord>,
     pub markers: Vec<Coord>,
+    pub action_phase: ActionPhase,
 }
 
 impl Action {
@@ -22,9 +33,10 @@ impl Action {
             character: None,
             world: None,
             restriction: HashMap::new(),
+            steps: 0,
             trajectory: Vec::new(),
             markers: Vec::new(),
-            steps: 0,
+            action_phase: ActionPhase::SetMap,
         };
     }
 
@@ -61,6 +73,8 @@ impl Action {
         for (_, i) in self.restriction.iter() {
             self.steps += *i;
         }
+
+        self.transit(g);
         return Ok(());
     }
 
@@ -75,6 +89,8 @@ impl Action {
         // Update action
         self.lockdown = ld;
         self.restriction = o - &cp;
+
+        self.transit(g);
         return Ok(());
     }
 
@@ -84,19 +100,18 @@ impl Action {
             return Err("Ex0E");
         }
         let cp = *g.map.get(&Camp::Plague).unwrap();
-        // Coord iter
-        let lda = vec![Lockdown::CC90, Lockdown::CC180, Lockdown::CC270];
-
-        if cp == c {
+        let lda = vec![
+            Lockdown::Normal,
+            Lockdown::CC90,
+            Lockdown::CC180,
+            Lockdown::CC270,
+        ];
+        let cc: Vec<_> = lda.iter().map(|&x| cp.lockdown(x)).collect();
+        if let Some(ld) = cc.iter().position(|&x| x == c) {
+            self.lockdown = lda[ld];
+            self.restriction = o - &c;
+            self.transit(g);
             return Ok(());
-        }
-        for i in 0..3 {
-            let citer = cp.lockdown(lda[i]);
-            if citer == c {
-                self.lockdown = lda[i];
-                self.restriction = o - &citer;
-                return Ok(());
-            }
         }
         return Err("Ex0F");
     }
@@ -115,6 +130,8 @@ impl Action {
         }
         self.character = Some(c);
         self.trajectory.push(c);
+
+        self.transit(g);
         return Ok(());
     }
 
@@ -193,6 +210,7 @@ impl Action {
             if op == to {
                 return Err("Ex07");
             }
+            self.transit(g);
         }
 
         self.character = Some(to);
@@ -298,6 +316,7 @@ impl Action {
                     }
                 }
             }
+            self.transit(g);
         }
         return Ok(());
     }
@@ -333,6 +352,35 @@ impl Action {
 
         let s = String::from(m) + "[" + &v.join("][") + "])";
         return s;
+    }
+
+    fn transit(&mut self, g: &Game) {
+        match &self.action_phase {
+            ActionPhase::SetMap => {
+                if let Some(c) = self.map {
+                    if c == ORIGIN && g.turn == Camp::Doctor {
+                        self.action_phase = ActionPhase::Lockdown;
+                        return;
+                    }
+                }
+                self.action_phase = ActionPhase::SetCharacter;
+            }
+            ActionPhase::Lockdown => {
+                self.action_phase = ActionPhase::SetCharacter;
+            }
+            ActionPhase::SetCharacter => {
+                self.action_phase = ActionPhase::BoardMove;
+            }
+            ActionPhase::BoardMove => {
+                self.action_phase = ActionPhase::SetMarkers;
+            }
+            ActionPhase::SetMarkers => {
+                self.action_phase = ActionPhase::Done;
+            }
+            _ => {
+                panic!("transit after done?");
+            }
+        }
     }
 }
 
@@ -395,9 +443,10 @@ mod tests {
     fn test_integrate1() {
         let mut g = Game::init(None);
         // For not panic the functions
-        g.map.insert(Camp::Doctor, Coord::new(-2, -2));
-        g.character
-            .insert((World::Underworld, Camp::Doctor), Coord::new(-2, -2));
+        let ch2 = Coord::new(-2, -2);
+        g.env.insert(ch2, World::Underworld);
+        g.map.insert(Camp::Doctor, ch2);
+        g.character.insert((World::Underworld, Camp::Doctor), ch2);
         // what really necessary
         g.turn = Camp::Doctor;
         g.map.insert(Camp::Plague, Coord::new(-1, -2));
@@ -416,10 +465,13 @@ mod tests {
         g.env.insert(clf3, World::Underworld);
 
         let mut a = Action::new();
+        assert_eq!(a.action_phase, ActionPhase::SetMap);
         let r1 = a.add_map_step(&g, Coord::new(0, -1));
         assert!(r1.is_ok());
+        assert_eq!(a.action_phase, ActionPhase::SetCharacter);
         let r2 = a.add_character(&g, ch);
         assert!(r2.is_ok());
+        assert_eq!(a.action_phase, ActionPhase::BoardMove);
         if let Err(e) = a.add_board_single_step(&g, cf1) {
             assert_eq!(e, "Ex03");
         }

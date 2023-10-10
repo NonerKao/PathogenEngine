@@ -51,6 +51,12 @@ pub fn str_to_full_msg(s: &'static str) -> &'static str {
         514 => return "Invalid character position",
         513 => return "Invalid map area",
         512 => return "Invalid map position: Collide with opponent",
+        // Ix01 and beyond: Currently used only in coord_server
+        5 => return "LOSE",
+        4 => return "WIN",
+        3 => return "TURN",
+        2 => return "DONE",
+        1 => return "OK",
         0 => return "Skip",
         _ => return "??",
     }

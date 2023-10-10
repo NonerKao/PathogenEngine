@@ -5,6 +5,7 @@ use std::io::{Read, Write};
 use std::net::{TcpListener, TcpStream};
 
 use pathogen_engine::core::action::Action;
+use pathogen_engine::core::action::ActionPhase;
 use pathogen_engine::core::grid_coord::Coord;
 use pathogen_engine::core::grid_coord::MAP_OFFSET;
 use pathogen_engine::core::tree::TreeNode;
@@ -24,7 +25,7 @@ struct Args {
     save: Option<String>,
 }
 
-fn encode(g: &Game, _a: &Action) -> Array1<u8> {
+fn encode(g: &Game, a: &Action) -> Array1<u8> {
     // Check the README/HACKING for why it is 9
     let mut e = Array::from_shape_fn((SIZE as usize, SIZE as usize, 9 as usize), |(_, _, _)| {
         0 as u8
@@ -83,11 +84,9 @@ fn encode(g: &Game, _a: &Action) -> Array1<u8> {
         }
     }
 
-    // for flow control
-    let fc = Array::from_shape_fn(2 /* map moves */ + MAX_STEPS + MAX_MARKER as usize, |_| {
-        0 as u8
-    });
+    // apply the effect of a partial Action to the Game
 
+    // wrap it up
     let ret = e
         .into_shape(((SIZE as usize) * (SIZE as usize) * 9,))
         .unwrap()
@@ -97,43 +96,150 @@ fn encode(g: &Game, _a: &Action) -> Array1<u8> {
                 .unwrap()
                 .into_iter(),
         )
-        .chain(
-            fc.into_shape((2 + MAX_STEPS + MAX_MARKER as usize,))
-                .unwrap()
-                .into_iter(),
-        )
         .collect::<Array1<_>>();
+
+    assert_eq!(ret.len(), 374);
     ret
 }
 
-fn handle_client(mut stream: &TcpStream, _g: &mut Game) -> bool {
+trait ActionCoord {
+    fn to_coord(&self) -> Coord;
+}
+
+impl ActionCoord for u8 {
+    fn to_coord(&self) -> Coord {
+        match *self {
+            // env
+            0 => Coord::new(0, 0),
+            1 => Coord::new(1, 0),
+            2 => Coord::new(2, 0),
+            3 => Coord::new(3, 0),
+            4 => Coord::new(4, 0),
+            5 => Coord::new(5, 0),
+            6 => Coord::new(0, 1),
+            7 => Coord::new(1, 1),
+            8 => Coord::new(2, 1),
+            9 => Coord::new(3, 1),
+            10 => Coord::new(4, 1),
+            11 => Coord::new(5, 1),
+            12 => Coord::new(0, 2),
+            13 => Coord::new(1, 2),
+            14 => Coord::new(2, 2),
+            15 => Coord::new(3, 2),
+            16 => Coord::new(4, 2),
+            17 => Coord::new(5, 2),
+            18 => Coord::new(0, 3),
+            19 => Coord::new(1, 3),
+            20 => Coord::new(2, 3),
+            21 => Coord::new(3, 3),
+            22 => Coord::new(4, 3),
+            23 => Coord::new(5, 3),
+            24 => Coord::new(0, 4),
+            25 => Coord::new(1, 4),
+            26 => Coord::new(2, 4),
+            27 => Coord::new(3, 4),
+            28 => Coord::new(4, 4),
+            29 => Coord::new(5, 4),
+            30 => Coord::new(0, 5),
+            31 => Coord::new(1, 5),
+            32 => Coord::new(2, 5),
+            33 => Coord::new(3, 5),
+            34 => Coord::new(4, 5),
+            35 => Coord::new(5, 5),
+            // map
+            36 => Coord::new(-1, -2),
+            37 => Coord::new(0, -2),
+            38 => Coord::new(1, -2),
+            39 => Coord::new(-2, -1),
+            40 => Coord::new(-1, -1),
+            41 => Coord::new(0, -1),
+            42 => Coord::new(1, -1),
+            43 => Coord::new(2, -1),
+            44 => Coord::new(-2, 0),
+            45 => Coord::new(-1, 0),
+            46 => Coord::new(0, 0),
+            47 => Coord::new(1, 0),
+            48 => Coord::new(2, 0),
+            49 => Coord::new(-2, 1),
+            50 => Coord::new(-1, 1),
+            51 => Coord::new(0, 1),
+            52 => Coord::new(1, 1),
+            53 => Coord::new(2, 1),
+            54 => Coord::new(-1, 2),
+            55 => Coord::new(0, 2),
+            56 => Coord::new(1, 2),
+            // The rest are not supposed to happen
+            _ => Coord::new(-2, -2),
+        }
+    }
+}
+
+const FC_LEN: usize = 2 /* map move */ + 1 /* set character*/ + MAX_STEPS + DOCTOR_MARKER as usize;
+
+fn handle_client(stream: &mut TcpStream, g: &mut Game) -> bool {
     let mut buffer = [0; 1]; // to read the 1-byte action from agent
-    let _a = Action::new();
-    loop {
+    let mut fc: [u8; FC_LEN] = [0; FC_LEN];
+    'restart: loop {
         match stream.peek(&mut buffer) {
             Ok(0) => {
                 println!("Client disconnected.");
                 return false;
             }
             Ok(_) => {
+                let mut a = Action::new();
                 let _bytes_read = stream.read(&mut buffer).unwrap();
                 println!("{:?}", buffer);
 
-                let _action = buffer[0] as usize;
+                let action = buffer[0] as u8;
+                let c = action.to_coord();
 
-                // Here, interact with the IIG environment using the action
-                // and get the resulting game state and status code.
-                let game_state: [u8; 150] = [0; 150]; // This should be obtained from IIG environment
-                let status_code: [u8; 4] = [0, 0, 0, 0]; // This too, from IIG
+                // Check tree.rs:to_action() function for the following
+                // big block. s for status code in the spec.
+                let mut s = "Ix01";
 
-                let response = [&game_state[..], &status_code[..]].concat();
-                match stream.write(&response) {
-                    Err(_) => {
-                        println!("Client disconnected.");
-                        return false;
+                // Add the map move first
+                assert_eq!(a.action_phase, ActionPhase::SetMap);
+                fc[0 /* set map */] = 1;
+                loop {
+                    match a.add_map_step(g, c) {
+                        Err(e) => {
+                            s = e;
+                        }
+                        Ok(()) => {}
                     }
-                    _ => {}
+                    if stream.update_agent(g, &a, &fc, &s) == false {
+                        return false;
+                    } else {
+                        if s.as_bytes()[0] == b'E' {
+                            continue 'restart;
+                        }
+                        break;
+                    }
                 }
+
+                if a.action_phase == ActionPhase::Lockdown {
+                    // Optional for Doctor: lockdown?
+                    fc[0 /* set map */] = 0;
+                    fc[1 /* lockdown */] = 1;
+                    loop {
+                        match a.add_lockdown_by_coord(g, c) {
+                            Err(e) => {
+                                s = e;
+                            }
+                            Ok(()) => {}
+                        }
+                    }
+                    if stream.update_agent(g, &a, &fc, &s) == false {
+                        return false;
+                    } else {
+                        if s.as_bytes()[0] == b'E' {
+                            continue 'restart;
+                        }
+                        break;
+                    }
+                }
+
+                assert_eq!(a.action_phase, ActionPhase::SetCharacter);
             }
             Err(e) => {
                 println!("Error occurred: {:?}", e);
@@ -142,6 +248,29 @@ fn handle_client(mut stream: &TcpStream, _g: &mut Game) -> bool {
         }
     }
     return true;
+}
+
+trait StreamInform {
+    fn update_agent(&mut self, g: &Game, a: &Action, fc: &[u8; FC_LEN], s: &'static str) -> bool;
+}
+
+impl StreamInform for TcpStream {
+    fn update_agent(&mut self, g: &Game, a: &Action, fc: &[u8; FC_LEN], s: &'static str) -> bool {
+        let encoded = encode(g, &a);
+        let sb = s.as_bytes();
+        let enc = encoded.as_slice().unwrap();
+
+        let response = [&enc[..], &fc[..], &sb].concat();
+        match self.write(&response) {
+            Err(_) => {
+                println!("Client disconnected.");
+                return false;
+            }
+            _ => {
+                return true;
+            }
+        }
+    }
 }
 
 fn main() -> Result<(), std::io::Error> {
@@ -209,4 +338,9 @@ fn network_setup() -> Result<(TcpStream, TcpStream), std::io::Error> {
     b.write(&hello)?;
 
     Ok((w, b))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
 }
