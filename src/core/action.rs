@@ -19,7 +19,7 @@ pub struct Action {
     pub character: Option<Coord>,
     pub world: Option<World>,
     pub restriction: HashMap<Direction, i32>,
-    pub steps: i32,
+    pub steps: usize,
     pub trajectory: Vec<Coord>,
     pub markers: Vec<Coord>,
     pub action_phase: ActionPhase,
@@ -71,7 +71,7 @@ impl Action {
             panic!("{:?}:{:?}==", self.steps, self.restriction);
         }
         for (_, i) in self.restriction.iter() {
-            self.steps += *i;
+            self.steps += *i as usize;
         }
 
         self.transit(g);
@@ -204,7 +204,7 @@ impl Action {
         // Update action
         self.trajectory.push(to);
         // Finish taking the action steps
-        if self.trajectory.len() > self.steps.try_into().unwrap() {
+        if self.trajectory.len() > self.steps {
             // Final step: No collision?
             let op = *g.character.get(&(w, enemy_camp)).unwrap();
             if op == to {
@@ -336,9 +336,9 @@ impl Action {
         }
 
         // trajectory: in reverse order
-        let mut i = self.steps - 1;
-        while i >= 0 {
-            v.push(self.trajectory[i as usize].env_to_sgf());
+        let mut i = self.steps;
+        while i > 0 {
+            v.push(self.trajectory[i - 1].env_to_sgf());
             i = i - 1;
         }
         // character

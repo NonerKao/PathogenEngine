@@ -178,7 +178,6 @@ const FC_LEN: usize = 2 /* map move */ + 1 /* set character*/ + MAX_STEPS + DOCT
 
 fn handle_client(stream: &mut TcpStream, g: &mut Game) -> bool {
     let mut buffer = [0; 1]; // to read the 1-byte action from agent
-    let mut fc: [u8; FC_LEN] = [0; FC_LEN];
     'restart: loop {
         match stream.peek(&mut buffer) {
             Ok(0) => {
@@ -187,6 +186,7 @@ fn handle_client(stream: &mut TcpStream, g: &mut Game) -> bool {
             }
             Ok(_) => {
                 let mut a = Action::new();
+                let mut fc: [u8; FC_LEN] = [0; FC_LEN];
                 let _bytes_read = stream.read(&mut buffer).unwrap();
                 println!("{:?}", buffer);
 
@@ -217,8 +217,8 @@ fn handle_client(stream: &mut TcpStream, g: &mut Game) -> bool {
                     }
                 }
 
+                // Optional for Doctor: lockdown?
                 if a.action_phase == ActionPhase::Lockdown {
-                    // Optional for Doctor: lockdown?
                     fc[0 /* set map */] = 0;
                     fc[1 /* lockdown */] = 1;
                     loop {
@@ -228,6 +228,30 @@ fn handle_client(stream: &mut TcpStream, g: &mut Game) -> bool {
                             }
                             Ok(()) => {}
                         }
+                        if stream.update_agent(g, &a, &fc, &s) == false {
+                            return false;
+                        } else {
+                            if s.as_bytes()[0] == b'E' {
+                                continue 'restart;
+                            }
+                            break;
+                        }
+                    }
+                }
+
+                // Set the character
+                assert_eq!(a.action_phase, ActionPhase::SetCharacter);
+                fc[0 /* set map */] = 0;
+                fc[1 /* lockdown */] = 0;
+                for i in 0..=a.steps {
+                    fc[2 /* set character */ + i] = 1;
+                }
+                loop {
+                    match a.add_character(g, c) {
+                        Err(e) => {
+                            s = e;
+                        }
+                        Ok(()) => {}
                     }
                     if stream.update_agent(g, &a, &fc, &s) == false {
                         return false;
@@ -239,7 +263,28 @@ fn handle_client(stream: &mut TcpStream, g: &mut Game) -> bool {
                     }
                 }
 
-                assert_eq!(a.action_phase, ActionPhase::SetCharacter);
+                // Move the character on the board
+                assert_eq!(a.action_phase, ActionPhase::BoardMove);
+                fc[2 /* set character */] = 0;
+                for i in 0..a.steps {
+                    loop {
+                        match a.add_board_single_step(g, c) {
+                            Err(e) => {
+                                s = e;
+                            }
+                            Ok(()) => {}
+                        }
+                        if stream.update_agent(g, &a, &fc, &s) == false {
+                            return false;
+                        } else {
+                            if s.as_bytes()[0] == b'E' {
+                                continue 'restart;
+                            }
+                            break;
+                        }
+                    }
+                    fc[3 /* board step */ + i] = 0;
+                }
             }
             Err(e) => {
                 println!("Error occurred: {:?}", e);
