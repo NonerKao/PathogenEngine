@@ -176,7 +176,10 @@ impl ActionCoord for u8 {
 
 const FC_LEN: usize = 2 /* map move */ + 1 /* set character*/ + MAX_STEPS + DOCTOR_MARKER as usize;
 
-fn handle_client(stream: &mut TcpStream, g: &mut Game) -> bool {
+fn handle_client<T: Read + ReaderExtra + Write + WriterExtra>(
+    stream: &mut T,
+    g: &mut Game,
+) -> bool {
     let mut buffer = [0; 1]; // to read the 1-byte action from agent
     'restart: loop {
         match stream.peek(&mut buffer) {
@@ -190,8 +193,7 @@ fn handle_client(stream: &mut TcpStream, g: &mut Game) -> bool {
                 let _bytes_read = stream.read(&mut buffer).unwrap();
                 println!("{:?}", buffer);
 
-                let action = buffer[0] as u8;
-                let c = action.to_coord();
+                let c = (buffer[0] as u8).to_coord();
 
                 // Check tree.rs:to_action() function for the following
                 // big block. s for status code in the spec.
@@ -285,6 +287,48 @@ fn handle_client(stream: &mut TcpStream, g: &mut Game) -> bool {
                     }
                     fc[3 /* board step */ + i] = 0;
                 }
+
+                // Set the markers
+                assert_eq!(a.action_phase, ActionPhase::SetMarkers);
+                assert!(fc.iter().all(|&x| x == 0));
+                for i in 0..fc.len() {
+                    fc[8 /* set character */ + i] = 1;
+                }
+                if g.turn == Camp::Plague {
+                    fc[12 /* final one: Plague has only 4 markers */] = 0;
+                }
+                let mut i = 8;
+                while fc[i] != 0 {
+                    loop {
+                        match a.add_single_marker(g, c) {
+                            Err(e) => {
+                                s = e;
+                            }
+                            Ok(()) => {
+                                if i == 12 || i == 11 && fc[12] == 0 {
+                                    s = "Ix02"
+                                }
+                            }
+                        }
+                        if stream.update_agent(g, &a, &fc, &s) == false {
+                            return false;
+                        } else {
+                            if s.as_bytes()[0] == b'E' {
+                                continue 'restart;
+                            }
+                            break;
+                        }
+                    }
+                    fc[i] = 0;
+                    i = i + 1;
+                }
+
+                // commit the action to the game
+                assert_eq!(a.action_phase, ActionPhase::Done);
+                assert!(fc.iter().all(|&x| x == 0));
+                g.commit_action(&a);
+                g.append_history_with_new_tree(&a.to_sgf_string(g));
+                g.next();
             }
             Err(e) => {
                 println!("Error occurred: {:?}", e);
@@ -295,11 +339,11 @@ fn handle_client(stream: &mut TcpStream, g: &mut Game) -> bool {
     return true;
 }
 
-trait StreamInform {
+trait WriterExtra {
     fn update_agent(&mut self, g: &Game, a: &Action, fc: &[u8; FC_LEN], s: &'static str) -> bool;
 }
 
-impl StreamInform for TcpStream {
+impl WriterExtra for TcpStream {
     fn update_agent(&mut self, g: &Game, a: &Action, fc: &[u8; FC_LEN], s: &'static str) -> bool {
         let encoded = encode(g, &a);
         let sb = s.as_bytes();
@@ -315,6 +359,16 @@ impl StreamInform for TcpStream {
                 return true;
             }
         }
+    }
+}
+
+trait ReaderExtra {
+    fn peek(&mut self, buffer: &mut [u8]) -> std::io::Result<usize>;
+}
+
+impl ReaderExtra for TcpStream {
+    fn peek(&mut self, buffer: &mut [u8]) -> std::io::Result<usize> {
+        TcpStream::peek(self, buffer)
     }
 }
 

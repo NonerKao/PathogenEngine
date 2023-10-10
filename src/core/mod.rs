@@ -695,7 +695,7 @@ impl Game {
         }
     }
 
-    fn append_history_with_new_tree(&mut self, s0: &String) {
+    pub fn append_history_with_new_tree(&mut self, s0: &String) {
         let mut iter = s0.trim().chars().peekable();
         let t = TreeNode::new(&mut iter, None);
         let mut buffer = String::new();
@@ -1191,5 +1191,33 @@ mod tests {
         let t = TreeNode::new(&mut iter, None);
         let mut g = Game::init(Some(t));
         assert_eq!(g.setup_with_alpha(&String::from("af")), Ok(Phase::Setup2));
+    }
+
+    #[test]
+    fn test_load() {
+        let s0 = "(
+            ;C[Setup0]
+            AW[aa][ab][ad][ae][bb][bc][bf][ca][cd][ce][dc][dd][df][ea][ec][ee][fa][fb][fe][ff]
+            AB[ac][af][ba][bd][be][cb][cc][cf][da][db][de][eb][ed][ef][fc][fd]
+            ;C[Setup1]AB[ab][cd][ef][da]
+            ;C[Setup2]AW[aa]
+            ;C[Setup2]AB[ac]
+            ;C[Setup2]AW[af]
+            ;C[Setup2]AB[ad]
+            ;C[Setup3]AW[ij]
+            ;B[jj][ad][cd][ad][ad][ad][ad]
+            )"
+        .to_string();
+        let mut iter = s0.trim().chars().peekable();
+        let t = TreeNode::new(&mut iter, None);
+        let g = Game::init(Some(t));
+        let mut buffer = String::new();
+        g.history.borrow().to_root().borrow().to_string(&mut buffer);
+        assert_eq!(
+            s0.chars()
+                .filter(|&c| !c.is_whitespace())
+                .collect::<String>(),
+            buffer
+        );
     }
 }
