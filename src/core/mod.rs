@@ -8,7 +8,6 @@ pub mod tree;
 use action::Action;
 use gen_map::get_rand_matrix;
 use grid_coord::*;
-use ndarray::{Array, Array3};
 use std::cell::RefCell;
 use std::collections::HashMap;
 use std::rc::Rc;

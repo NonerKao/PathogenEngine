@@ -181,6 +181,12 @@ fn handle_client<T: Read + ReaderExtra + Write + WriterExtra>(
     g: &mut Game,
 ) -> bool {
     let mut buffer = [0; 1]; // to read the 1-byte action from agent
+
+    let ea = Action::new();
+    let ec: [u8; FC_LEN] = [0; FC_LEN];
+    if stream.update_agent(g, &ea, &ec, &"Ix03") == false {
+        return false;
+    }
     'restart: loop {
         match stream.peek(&mut buffer) {
             Ok(0) => {
@@ -190,10 +196,6 @@ fn handle_client<T: Read + ReaderExtra + Write + WriterExtra>(
             Ok(_) => {
                 let mut a = Action::new();
                 let mut fc: [u8; FC_LEN] = [0; FC_LEN];
-                let _bytes_read = stream.read(&mut buffer).unwrap();
-                println!("{:?}", buffer);
-
-                let c = (buffer[0] as u8).to_coord();
 
                 // Check tree.rs:to_action() function for the following
                 // big block. s for status code in the spec.
@@ -203,6 +205,9 @@ fn handle_client<T: Read + ReaderExtra + Write + WriterExtra>(
                 assert_eq!(a.action_phase, ActionPhase::SetMap);
                 fc[0 /* set map */] = 1;
                 loop {
+                    let bytes_read = stream.read(&mut buffer).unwrap();
+                    assert_eq!(bytes_read, 1);
+                    let c = (buffer[0] as u8).to_coord();
                     match a.add_map_step(g, c) {
                         Err(e) => {
                             s = e;
@@ -224,8 +229,12 @@ fn handle_client<T: Read + ReaderExtra + Write + WriterExtra>(
                     fc[0 /* set map */] = 0;
                     fc[1 /* lockdown */] = 1;
                     loop {
+                        let bytes_read = stream.read(&mut buffer).unwrap();
+                        assert_eq!(bytes_read, 1);
+                        let c = (buffer[0] as u8).to_coord();
                         match a.add_lockdown_by_coord(g, c) {
                             Err(e) => {
+                                println!("{}", e);
                                 s = e;
                             }
                             Ok(()) => {}
@@ -249,6 +258,10 @@ fn handle_client<T: Read + ReaderExtra + Write + WriterExtra>(
                     fc[2 /* set character */ + i] = 1;
                 }
                 loop {
+                    let bytes_read = stream.read(&mut buffer).unwrap();
+                    assert_eq!(bytes_read, 1);
+                    println!("{:?}", buffer);
+                    let c = (buffer[0] as u8).to_coord();
                     match a.add_character(g, c) {
                         Err(e) => {
                             s = e;
@@ -267,12 +280,19 @@ fn handle_client<T: Read + ReaderExtra + Write + WriterExtra>(
 
                 // Move the character on the board
                 assert_eq!(a.action_phase, ActionPhase::BoardMove);
+                assert_eq!(a.steps, 2);
                 fc[2 /* set character */] = 0;
                 for i in 0..a.steps {
                     loop {
+                        let bytes_read = stream.read(&mut buffer).unwrap();
+                        assert_eq!(bytes_read, 1);
+                        println!("{:?}", buffer);
+                        let c = (buffer[0] as u8).to_coord();
                         match a.add_board_single_step(g, c) {
                             Err(e) => {
                                 s = e;
+                                println!("{:?} {}", a, e);
+                                assert!(false);
                             }
                             Ok(()) => {}
                         }
@@ -291,15 +311,22 @@ fn handle_client<T: Read + ReaderExtra + Write + WriterExtra>(
                 // Set the markers
                 assert_eq!(a.action_phase, ActionPhase::SetMarkers);
                 assert!(fc.iter().all(|&x| x == 0));
-                for i in 0..fc.len() {
+                for i in 0..DOCTOR_MARKER as usize {
                     fc[8 /* set character */ + i] = 1;
                 }
                 if g.turn == Camp::Plague {
                     fc[12 /* final one: Plague has only 4 markers */] = 0;
                 }
                 let mut i = 8;
-                while fc[i] != 0 {
+                while i < FC_LEN {
+                    if fc[i] == 0 {
+                        continue;
+                    }
                     loop {
+                        let bytes_read = stream.read(&mut buffer).unwrap();
+                        assert_eq!(bytes_read, 1);
+                        println!("{:?}", buffer);
+                        let c = (buffer[0] as u8).to_coord();
                         match a.add_single_marker(g, c) {
                             Err(e) => {
                                 s = e;
@@ -326,9 +353,14 @@ fn handle_client<T: Read + ReaderExtra + Write + WriterExtra>(
                 // commit the action to the game
                 assert_eq!(a.action_phase, ActionPhase::Done);
                 assert!(fc.iter().all(|&x| x == 0));
-                g.commit_action(&a);
+                // Holy shit, the order of the following two lines
+                // is tricky. You shouldn't commit it first and then
+                // try to interpret the Action with the new Game
+                // status.
                 g.append_history_with_new_tree(&a.to_sgf_string(g));
+                g.commit_action(&a);
                 g.next();
+                break;
             }
             Err(e) => {
                 println!("Error occurred: {:?}", e);
@@ -350,6 +382,7 @@ impl WriterExtra for TcpStream {
         let enc = encoded.as_slice().unwrap();
 
         let response = [&enc[..], &fc[..], &sb].concat();
+        assert!(response.len() == 391);
         match self.write(&response) {
             Err(_) => {
                 println!("Client disconnected.");
@@ -442,4 +475,72 @@ fn network_setup() -> Result<(TcpStream, TcpStream), std::io::Error> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::io::Cursor;
+
+    #[test]
+    fn test_handle_client_with_cursor() {
+        let s0 = "(
+            ;C[Setup0]
+            AW[aa][ab][ad][ae][bb][bc][bf][ca][cd][ce][dc][dd][df][ea][ec][ee][fa][fb][fe][ff]
+            AB[ac][af][ba][bd][be][cb][cc][cf][da][db][de][eb][ed][ef][fc][fd]
+            ;C[Setup1]AB[ab][cd][ef][da]
+            ;C[Setup2]AW[aa]
+            ;C[Setup2]AB[ac]
+            ;C[Setup2]AW[af]
+            ;C[Setup2]AB[ad]
+            ;C[Setup3]AW[ij]
+            ;B[jj][ad][cd][ad][ad][ad][ad]
+            )"
+        .to_string();
+        let mut iter = s0.trim().chars().peekable();
+        let t = TreeNode::new(&mut iter, None);
+        let mut g = Game::init(Some(t));
+
+        const LEN: usize = 391 + (1 + 391) * 10;
+        let mut buf: [u8; LEN] = [0; LEN];
+        let s1 = ";W[ii][hh][aa][ab][bb][ab][ab][ab][aa][aa]";
+        buf[391] = 46;
+        buf[392 * 2 - 1] = 40;
+        buf[392 * 3 - 1] = 0;
+        buf[392 * 4 - 1] = 1;
+        buf[392 * 5 - 1] = 7;
+        buf[392 * 6 - 1] = 1;
+        buf[392 * 7 - 1] = 0;
+        buf[392 * 8 - 1] = 1;
+        buf[392 * 9 - 1] = 0;
+        buf[392 * 10 - 1] = 1;
+        let mut fake_stream = Cursor::new(buf);
+        assert!(handle_client(&mut fake_stream, &mut g) == true);
+        let mut buffer = String::new();
+        g.history.borrow().to_string(&mut buffer);
+        assert_eq!(buffer, s1);
+    }
+}
+
+// For the test only
+impl ReaderExtra for std::io::Cursor<[u8; 4311]> {
+    fn peek(&mut self, _buffer: &mut [u8]) -> std::io::Result<usize> {
+        return Ok(1);
+    }
+}
+
+// For the test only
+impl WriterExtra for std::io::Cursor<[u8; 4311]> {
+    fn update_agent(&mut self, g: &Game, a: &Action, fc: &[u8; FC_LEN], s: &'static str) -> bool {
+        let encoded = encode(g, &a);
+        let sb = s.as_bytes();
+        let enc = encoded.as_slice().unwrap();
+
+        let response = [&enc[..], &fc[..], &sb].concat();
+        assert!(response.len() == 391);
+        match self.write(&response) {
+            Err(_) => {
+                println!("Client disconnected.");
+                return false;
+            }
+            _ => {
+                return true;
+            }
+        }
+    }
 }
