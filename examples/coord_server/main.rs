@@ -460,9 +460,8 @@ fn network_setup() -> Result<(TcpStream, TcpStream), std::io::Error> {
     let white_listener = TcpListener::bind("127.0.0.1:6241").unwrap();
     let black_listener = TcpListener::bind("127.0.0.1:3698").unwrap();
 
-    let hello: [u8; 154] = [0; 154];
-    let mut w = white_listener.accept().unwrap().0;
-    let mut b = black_listener.accept().unwrap().0;
+    let w = white_listener.accept().unwrap().0;
+    let b = black_listener.accept().unwrap().0;
 
     Ok((w, b))
 }
@@ -497,13 +496,13 @@ mod tests {
         buf[391] = 46;
         buf[392 * 2 - 1] = 40;
         buf[392 * 3 - 1] = 0;
-        buf[392 * 4 - 1] = 1;
+        buf[392 * 4 - 1] = 6;
         buf[392 * 5 - 1] = 7;
-        buf[392 * 6 - 1] = 1;
+        buf[392 * 6 - 1] = 6;
         buf[392 * 7 - 1] = 0;
-        buf[392 * 8 - 1] = 1;
+        buf[392 * 8 - 1] = 6;
         buf[392 * 9 - 1] = 0;
-        buf[392 * 10 - 1] = 1;
+        buf[392 * 10 - 1] = 6;
         let mut fake_stream = Cursor::new(buf);
         assert!(handle_client(&mut fake_stream, &mut g) == true);
         let mut buffer = String::new();

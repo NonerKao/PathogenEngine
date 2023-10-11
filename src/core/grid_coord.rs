@@ -1,6 +1,8 @@
 use std::collections::HashMap;
 use std::ops::{Add, Sub};
 
+pub const BOARD_MIN: i32 = 0;
+pub const BOARD_MAX: i32 = crate::core::SIZE;
 pub const ORIGIN: Coord = Coord { x: 0, y: 0 };
 pub const MAP_OFFSET: Coord = Coord { x: 2, y: 2 };
 
@@ -18,20 +20,20 @@ impl Coord {
     pub fn env_to_sgf(&self) -> String {
         let mut s = String::new();
         let base: i32 = 'a' as i32;
-        let y: u32 = (base + self.y) as u32;
         let x: u32 = (base + self.x) as u32;
-        s.push(std::char::from_u32(y).unwrap());
+        let y: u32 = (base + self.y) as u32;
         s.push(std::char::from_u32(x).unwrap());
+        s.push(std::char::from_u32(y).unwrap());
         return s;
     }
 
     pub fn map_to_sgf(&self) -> String {
         let mut s = String::new();
         let base: i32 = 'i' as i32;
-        let y: u32 = (base + self.y) as u32;
         let x: u32 = (base + self.x) as u32;
-        s.push(std::char::from_u32(y).unwrap());
+        let y: u32 = (base + self.y) as u32;
         s.push(std::char::from_u32(x).unwrap());
+        s.push(std::char::from_u32(y).unwrap());
         return s;
     }
 
@@ -66,6 +68,27 @@ impl Coord {
             -1
         }
     }
+
+    pub fn in_boundary(&self) -> bool {
+        if self.x >= BOARD_MIN && self.y >= BOARD_MIN && self.x < BOARD_MAX && self.y < BOARD_MAX {
+            return true;
+        }
+        return false;
+    }
+
+    pub fn to_direction(&self) -> Direction {
+        if *self == Coord::new(1, 0) {
+            Direction::Right
+        } else if *self == Coord::new(0, 1) {
+            Direction::Up
+        } else if *self == Coord::new(-1, 0) {
+            Direction::Left
+        } else if *self == Coord::new(0, -1) {
+            Direction::Down
+        } else {
+            panic!("not meant for this usage")
+        }
+    }
 }
 
 #[derive(PartialEq, Copy, Clone, Debug)]
@@ -74,6 +97,17 @@ pub enum Lockdown {
     CC90,
     CC180,
     CC270,
+}
+
+impl Direction {
+    pub fn to_coord(&self) -> Coord {
+        match *self {
+            Direction::Right => Coord::new(1, 0),
+            Direction::Up => Coord::new(0, 1),
+            Direction::Left => Coord::new(-1, 0),
+            Direction::Down => Coord::new(0, -1),
+        }
+    }
 }
 
 impl Add<&Direction> for Coord {
@@ -154,5 +188,29 @@ mod tests {
         let c = Coord::new(1, 3);
         assert_eq!(c.x, 1);
         assert_eq!(c.y, 3);
+    }
+
+    #[test]
+    fn test_boundary1() {
+        let c = Coord::new(1, 3);
+        assert_eq!(c.in_boundary(), true);
+    }
+
+    #[test]
+    fn test_boundary2() {
+        let c = Coord::new(7, 3);
+        assert_eq!(c.in_boundary(), false);
+    }
+
+    #[test]
+    fn test_sub() {
+        let c1 = Coord::new(2, -1);
+        let c2 = Coord::new(-1, 0);
+        let res = c1 - &c2;
+        let mut iter = res.iter();
+        let r1 = iter.next().unwrap();
+        assert_eq!(&Direction::Up == r1.0, &Direction::Right != r1.0);
+        let r2 = iter.next().unwrap();
+        assert_eq!(&3 == r2.1, &1 != r2.1);
     }
 }

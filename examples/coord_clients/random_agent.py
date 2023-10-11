@@ -16,7 +16,8 @@ class RandomAgent(Agent):
     def analyze(self, data):
         if ord('E') == data[-4]:
         # Exclude current self.action from self.map
-            if 
+            if self.head < self.tail:
+                self.action = self.replay
             if self.action in self.map:
                 self.map.remove(self.action)
         elif b'Ix02' == data[-4:]:

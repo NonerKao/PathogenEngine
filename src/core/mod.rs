@@ -57,16 +57,16 @@ impl SGFCoord for str {
     fn to_map(&self) -> Coord {
         // row major, x as row index and y as column index
         // ghijk
-        let x: i32 = self.chars().nth(1).unwrap() as i32 - 'i' as i32;
-        let y: i32 = self.chars().nth(0).unwrap() as i32 - 'i' as i32;
+        let x: i32 = self.chars().nth(0).unwrap() as i32 - 'i' as i32;
+        let y: i32 = self.chars().nth(1).unwrap() as i32 - 'i' as i32;
         Coord::new(x, y)
     }
 
     fn to_env(&self) -> Coord {
         // row major, x as row index and y as column index
         // abcdef
-        let x: i32 = self.chars().nth(1).unwrap() as i32 - 'a' as i32;
-        let y: i32 = self.chars().nth(0).unwrap() as i32 - 'a' as i32;
+        let x: i32 = self.chars().nth(0).unwrap() as i32 - 'a' as i32;
+        let y: i32 = self.chars().nth(1).unwrap() as i32 - 'a' as i32;
         Coord::new(x, y)
     }
 }
@@ -721,6 +721,49 @@ impl Game {
             return false;
         }
     }
+
+    // is this choice of map position derive at least one
+    // route for any character to move legitimatly?
+    pub fn viable(&self, r: &Vec<Direction>) -> bool {
+        let ch = *self.character.get(&(World::Humanity, self.turn)).unwrap();
+        let cu = *self.character.get(&(World::Underworld, self.turn)).unwrap();
+        println!("enter {:?}", r);
+
+        let mut w = World::Humanity;
+        for c in &[ch, cu] {
+            let mut ctemp = c.clone();
+            let mut r_clone = r.clone();
+            r_clone.reverse();
+            'new_dir: while let Some(d) = r_clone.pop() {
+                ctemp = ctemp + &d;
+                while ctemp.in_boundary() {
+                    println!("{:?}", ctemp);
+                    match self.env.get(&ctemp) {
+                        Some(x) => {
+                            if *x == w {
+                                continue 'new_dir;
+                            } else {
+                                print!("{:?} ======> ", ctemp);
+                                ctemp = ctemp + &d;
+                                println!("{:?}", ctemp);
+                                continue;
+                            }
+                        }
+                        None => {
+                            break 'new_dir;
+                        }
+                    }
+                }
+                // not in the boundary
+                return false;
+            }
+            if r_clone.is_empty() {
+                return true;
+            }
+            w = World::Underworld;
+        }
+        return false;
+    }
 }
 
 #[cfg(test)]
@@ -753,8 +796,8 @@ mod tests {
         let g = Game::init(Some(t));
         assert_eq!(g.phase, Phase::Setup1);
         // Note that the "a" in "ab" SGF notation stands for y-axis.
-        assert_eq!(*g.env.get(&Coord::new(0, 5)).unwrap(), World::Humanity);
-        assert_eq!(*g.env.get(&Coord::new(2, 5)).unwrap(), World::Underworld);
+        assert_eq!(*g.env.get(&Coord::new(0, 5)).unwrap(), World::Underworld);
+        assert_eq!(*g.env.get(&Coord::new(2, 0)).unwrap(), World::Humanity);
     }
 
     #[test]
@@ -1009,19 +1052,19 @@ mod tests {
         );
         assert_eq!(
             *g.character.get(&(World::Humanity, Camp::Plague)).unwrap(),
-            Coord::new(3, 2)
+            Coord::new(2, 3)
         );
         assert_eq!(
             *g.character.get(&(World::Underworld, Camp::Doctor)).unwrap(),
-            Coord::new(5, 0)
+            Coord::new(0, 5)
         );
         assert_eq!(
             *g.character.get(&(World::Underworld, Camp::Plague)).unwrap(),
-            Coord::new(2, 0)
+            Coord::new(0, 2)
         );
         assert_eq!(g.stuff.len(), 5);
         assert_eq!(
-            *g.stuff.get(&Coord::new(3, 0)).unwrap(),
+            *g.stuff.get(&Coord::new(0, 3)).unwrap(),
             (Camp::Plague, Stuff::Marker(4))
         );
         assert_eq!(
@@ -1218,5 +1261,28 @@ mod tests {
                 .collect::<String>(),
             buffer
         );
+    }
+
+    #[test]
+    fn test_viable() {
+        let s0 = "(
+            ;C[Setup0]
+            AW[aa][ab][ad][ae][bb][bc][bf][ca][cd][ce][dc][dd][df][ea][ec][ee][fa][fb][fe][ff]
+            AB[ac][af][ba][bd][be][cb][cc][cf][da][db][de][eb][ed][ef][fc][fd]
+            ;C[Setup1]AB[ab][cd][ef][da]
+            ;C[Setup2]AW[aa]
+            ;C[Setup2]AB[ac]
+            ;C[Setup2]AW[af]
+            ;C[Setup2]AB[ad]
+            ;C[Setup3]AW[ij]
+            ;B[jj][ad][cd][ad][ad][ad][ad]
+            )"
+        .to_string();
+        let mut iter = s0.trim().chars().peekable();
+        let t = TreeNode::new(&mut iter, None);
+        let g = Game::init(Some(t));
+        let _c_ii = Coord::new(0, 0);
+        let r = vec![Direction::Left, Direction::Up];
+        assert_eq!(g.viable(&r), false);
     }
 }

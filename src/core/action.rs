@@ -74,19 +74,18 @@ impl Action {
             self.steps += *i as usize;
         }
 
-        self.transit(g);
-        return Ok(());
         // Check if the choice is valid immediately.
         // It is possible that the chosen map position does not work
         // for both characters. Check it now.
-        /* let possible_route = a.find_route();
+        let mut possible_route: Vec<Vec<Direction>> = Vec::new();
+        self.find_route(&mut possible_route, g.turn == Camp::Doctor && c == ORIGIN);
         for pr in possible_route.iter() {
             // finding one would be enough
-            if g.viable() {
+            if g.viable(pr) {
                 self.transit(g);
                 return Ok(());
             }
-        }*/
+        }
 
         // Cleanup self. It is recommanded that the application should
         // clean up the state after seeing this error. Anyway we also
@@ -402,16 +401,82 @@ impl Action {
         }
     }
 
-    fn find_route(&self, ret: &mut Vec<Vec<Direction>>) {
-        let mut inner: Vec<Direction> = Vec::new();
+    fn find_route(&self, ret: &mut Vec<Vec<Direction>>, ld: bool) {
         if self.restriction.len() == 1 {
+            let mut inner: Vec<Direction> = Vec::new();
             let (d, n) = self.restriction.iter().next().unwrap();
             let nn = *n as usize;
-            for i in 0..nn {
+            for _ in 0..nn {
                 inner.push(*d);
             }
+            ret.push(inner);
+        } else if self.restriction.len() == 2 {
+            let mut iter = self.restriction.iter();
+            let mut r1 = iter.next().unwrap();
+            let mut r2 = iter.next().unwrap();
+            // r1 has less steps along its direction, r2 is another
+            let d1 = r1.0;
+            let d2 = r2.0;
+            let n1 = r1.1;
+            let n2 = r2.1;
+            if n1 <= n2 {
+                r1 = (d1, n1);
+                r2 = (d2, n2);
+            } else {
+                r1 = (d2, n2);
+                r2 = (d1, n1);
+            };
+
+            // recursively find all permutations in this situation
+            // there will be (n1+n2)!/n1!n2! routes
+            let mut mask = vec![false; (n1 + n2).try_into().unwrap()];
+            fn find_single_route(
+                n: i32,
+                since: usize,
+                ret: &mut Vec<Vec<Direction>>,
+                mask: &mut Vec<bool>,
+                major: Direction,
+                minor: Direction,
+            ) {
+                if n == 0 {
+                    let mut inner: Vec<Direction> = Vec::new();
+                    for b in mask.iter() {
+                        if *b {
+                            inner.push(major);
+                        } else {
+                            inner.push(minor);
+                        }
+                    }
+                    ret.push(inner);
+                } else {
+                    for i in (since as usize)..mask.len() {
+                        if mask[i] {
+                            continue;
+                        }
+                        mask[i] = true;
+                        find_single_route(n - 1, i, ret, mask, major, minor);
+                        mask[i] = false;
+                    }
+                }
+            }
+            find_single_route(*r1.1, 0, ret, &mut mask, *r1.0, *r2.0);
+        } else {
+            panic!("On a 2D space, this is just not possible.");
         }
-        ret.push(inner);
+        if ld {
+            let base = ret.clone();
+            let lda = vec![Lockdown::CC90, Lockdown::CC180, Lockdown::CC270];
+            for b in base.iter() {
+                for &m in lda.iter() {
+                    let inner: Vec<Direction> = Vec::new();
+                    let _ = b
+                        .iter()
+                        .map(|&x| x.to_coord().lockdown(m).to_direction())
+                        .collect::<Vec<_>>();
+                    ret.push(inner);
+                }
+            }
+        }
     }
 }
 
@@ -434,18 +499,20 @@ mod tests {
 
     #[test]
     fn test_lockdown() {
-        let mut g = Game::init(None);
-        g.turn = Camp::Doctor;
-        let cp = Coord::new(-2, -1);
-        g.map.insert(Camp::Doctor, cp);
-        g.map.insert(Camp::Plague, cp);
+        let s0 = "(;FF[4]GM[41]SZ[6]GN[https://boardgamegeek.com/boardgame/369862/pathogen];C[Setup0]AW[fa][ef][ed][eb][cf][cc][dc][ca][ad][fe][ab][db][bb][be][fd][ae][ac][df];C[Setup0]AB[af][ba][dd][da][ff][bf][ee][bc][de][ec][cb][aa][ea][bd][ce][fc][cd][fb];C[Setup1]AB[ee];C[Setup1]AB[cf];C[Setup1]AB[fa];C[Setup1]AB[bc];C[Setup2]AW[bf];C[Setup2]AB[ce];C[Setup2]AW[db];C[Setup2]AB[eb];C[Setup3]AW[ih]
+        ;B[hj][eb][db][dc][df][eb][eb][dc][dc]
+        )"
+        .to_string();
+        let mut iter = s0.trim().chars().peekable();
+        let t = TreeNode::new(&mut iter, None);
+        let mut g = Game::init(Some(t));
         let mut a = Action::new();
         let cd = Coord::new(0, 0);
         assert!(a.add_map_step(&g, cd).is_ok());
-        assert_eq!(*a.restriction.get(&Direction::Right).unwrap(), 2);
-        assert_eq!(*a.restriction.get(&Direction::Down).unwrap(), 1);
-        assert!(a.add_lockdown_by_coord(&g, Coord::new(-1, 2)).is_ok());
-        assert_eq!(*a.restriction.get(&Direction::Up).unwrap(), 2);
+        assert_eq!(*a.restriction.get(&Direction::Up).unwrap(), 1);
+        assert_eq!(*a.restriction.get(&Direction::Right).unwrap(), 1);
+        assert!(a.add_lockdown_by_coord(&g, Coord::new(-1, 1)).is_ok());
+        assert_eq!(*a.restriction.get(&Direction::Up).unwrap(), 1);
         assert_eq!(*a.restriction.get(&Direction::Right).unwrap(), 1);
     }
 
@@ -472,45 +539,39 @@ mod tests {
 
     #[test]
     fn test_integrate1() {
-        let mut g = Game::init(None);
-        // For not panic the functions
-        let ch2 = Coord::new(-2, -2);
-        g.env.insert(ch2, World::Underworld);
-        g.map.insert(Camp::Doctor, ch2);
-        g.character.insert((World::Underworld, Camp::Doctor), ch2);
-        // what really necessary
-        g.turn = Camp::Doctor;
-        g.map.insert(Camp::Plague, Coord::new(-1, -2));
-        let ch = Coord::new(3, 4);
-        g.character.insert((World::Humanity, Camp::Doctor), ch);
-        g.env.insert(ch, World::Humanity);
-        // A failed route
-        let cf1 = Coord::new(3, 5);
-        g.env.insert(cf1, World::Underworld);
-        // A longer, failed route
-        let clf1 = Coord::new(4, 4);
-        let clf2 = Coord::new(5, 4);
-        let clf3 = Coord::new(5, 5);
-        g.env.insert(clf1, World::Underworld);
-        g.env.insert(clf2, World::Humanity);
-        g.env.insert(clf3, World::Underworld);
+        let s0 = "(
+            ;C[Setup0]
+            AW[aa][ab][ad][ae][bb][bc][bf][ca][cd][ce][dc][dd][df][ea][ec][ee][fa][fb][fe][ff]
+            AB[ac][af][ba][bd][be][cb][cc][cf][da][db][de][eb][ed][ef][fc][fd]
+            ;C[Setup1]AB[ab][cd][ef][da]
+            ;C[Setup2]AW[df]
+            ;C[Setup2]AB[ac]
+            ;C[Setup2]AW[af]
+            ;C[Setup2]AB[ad]
+            ;C[Setup3]AW[ij]
+            ;B[jj][ad][cd][ad][ad][ad][ad]
+            )"
+        .to_string();
+        let mut iter = s0.trim().chars().peekable();
+        let t = TreeNode::new(&mut iter, None);
+        let mut g = Game::init(Some(t));
 
         let mut a = Action::new();
         assert_eq!(a.action_phase, ActionPhase::SetMap);
         let r1 = a.add_map_step(&g, Coord::new(0, -1));
         assert!(r1.is_ok());
         assert_eq!(a.action_phase, ActionPhase::SetCharacter);
-        let r2 = a.add_character(&g, ch);
+        let r2 = a.add_character(&g, Coord::new(3, 5));
         assert!(r2.is_ok());
         assert_eq!(a.action_phase, ActionPhase::BoardMove);
-        if let Err(e) = a.add_board_single_step(&g, cf1) {
+        if let Err(e) = a.add_board_single_step(&g, Coord::new(0, 5)) {
             assert_eq!(e, "Ex03");
         }
-        let r4 = a.add_board_single_step(&g, clf2);
+        if let Err(e) = a.add_board_single_step(&g, Coord::new(2, 5)) {
+            assert_eq!(e, "Ex03");
+        }
+        let r4 = a.add_board_single_step(&g, Coord::new(1, 5));
         assert!(r4.is_ok());
-        if let Err(e) = a.add_board_single_step(&g, clf3) {
-            assert_eq!(e, "Ex03");
-        }
     }
 
     #[test]
@@ -519,12 +580,43 @@ mod tests {
         .to_string();
         let mut iter = s0.trim().chars().peekable();
         let t = TreeNode::new(&mut iter, None);
-        let mut g = Game::init(Some(t));
-        let c1 = Coord::new(2, -1); /* AB[ik] */
+        let g = Game::init(Some(t));
+        let c1 = Coord::new(0, 2); /* AB[ik] */
         let mut a = Action::new();
-        a.add_map_step(&g, c1);
+        // effectively a.add_map_step(&g, c1), but less because we are testing find_route
+        a.restriction = c1 - g.map.get(&g.opposite(g.turn)).unwrap();
         let mut ret: Vec<Vec<Direction>> = Vec::new();
-        a.find_route(&mut ret);
+        a.find_route(&mut ret, false);
         assert_eq!(ret.len(), 1);
+    }
+
+    #[test]
+    fn test_find_route2() {
+        let s0 = "(;FF[4]GM[41]SZ[6]GN[https://boardgamegeek.com/boardgame/369862/pathogen];C[Setup0]AW[fa][ef][ed][eb][cf][cc][dc][ca][ad][fe][ab][db][bb][be][fd][ae][ac][df];C[Setup0]AB[af][ba][dd][da][ff][bf][ee][bc][de][ec][cb][aa][ea][bd][ce][fc][cd][fb];C[Setup1]AB[ee];C[Setup1]AB[cf];C[Setup1]AB[fa];C[Setup1]AB[bc];C[Setup2]AW[bf];C[Setup2]AB[ce];C[Setup2]AW[db];C[Setup2]AB[eb];C[Setup3]AW[ih])"
+        .to_string();
+        let mut iter = s0.trim().chars().peekable();
+        let t = TreeNode::new(&mut iter, None);
+        let g = Game::init(Some(t));
+        let c1 = Coord::new(-1, 2); /* AB[hk] */
+        let mut a = Action::new();
+        a.restriction = c1 - g.map.get(&g.opposite(g.turn)).unwrap();
+        let mut ret: Vec<Vec<Direction>> = Vec::new();
+        a.find_route(&mut ret, false);
+        assert_eq!(ret.len(), 4);
+    }
+
+    #[test]
+    fn test_find_route3() {
+        let s0 = "(;FF[4]GM[41]SZ[6]GN[https://boardgamegeek.com/boardgame/369862/pathogen];C[Setup0]AW[fa][ef][ed][eb][cf][cc][dc][ca][ad][fe][ab][db][bb][be][fd][ae][ac][df];C[Setup0]AB[af][ba][dd][da][ff][bf][ee][bc][de][ec][cb][aa][ea][bd][ce][fc][cd][fb];C[Setup1]AB[ee];C[Setup1]AB[cf];C[Setup1]AB[fa];C[Setup1]AB[bc];C[Setup2]AW[bf];C[Setup2]AB[ce];C[Setup2]AW[db];C[Setup2]AB[eb];C[Setup3]AW[ih])"
+        .to_string();
+        let mut iter = s0.trim().chars().peekable();
+        let t = TreeNode::new(&mut iter, None);
+        let g = Game::init(Some(t));
+        let c1 = Coord::new(2, 1); /* AB[kj] */
+        let mut a = Action::new();
+        a.restriction = c1 - g.map.get(&g.opposite(g.turn)).unwrap();
+        let mut ret: Vec<Vec<Direction>> = Vec::new();
+        a.find_route(&mut ret, false);
+        assert_eq!(ret.len(), 6);
     }
 }
