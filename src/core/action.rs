@@ -125,6 +125,7 @@ impl Action {
             Lockdown::CC270,
         ];
         let cc: Vec<_> = lda.iter().map(|&x| cp.lockdown(x)).collect();
+        println!("{:?} from {:?}", cc, c);
         if let Some(ld) = cc.iter().position(|&x| x == c) {
             self.lockdown = lda[ld];
             self.restriction = o - &c;

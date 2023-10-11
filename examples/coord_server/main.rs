@@ -198,13 +198,14 @@ fn handle_client<T: Read + ReaderExtra + Write + WriterExtra>(
                 let mut fc: [u8; FC_LEN] = [0; FC_LEN];
 
                 // Check tree.rs:to_action() function for the following
-                // big block. s for status code in the spec.
+                // big block of state machine. s for status code in the spec.
                 let mut s = "Ix01";
 
                 // Add the map move first
                 assert_eq!(a.action_phase, ActionPhase::SetMap);
                 fc[0 /* set map */] = 1;
-                loop {
+                'set_map: loop {
+                    s = "Ix01";
                     let bytes_read = stream.read(&mut buffer).unwrap();
                     assert_eq!(bytes_read, 1);
                     let c = (buffer[0] as u8).to_coord();
@@ -218,7 +219,7 @@ fn handle_client<T: Read + ReaderExtra + Write + WriterExtra>(
                         return false;
                     } else {
                         if s.as_bytes()[0] == b'E' {
-                            continue 'restart;
+                            continue 'set_map;
                         }
                         break;
                     }
@@ -228,7 +229,8 @@ fn handle_client<T: Read + ReaderExtra + Write + WriterExtra>(
                 if a.action_phase == ActionPhase::Lockdown {
                     fc[0 /* set map */] = 0;
                     fc[1 /* lockdown */] = 1;
-                    loop {
+                    'lockdown: loop {
+                        s = "Ix01";
                         let bytes_read = stream.read(&mut buffer).unwrap();
                         assert_eq!(bytes_read, 1);
                         let c = (buffer[0] as u8).to_coord();
@@ -243,7 +245,7 @@ fn handle_client<T: Read + ReaderExtra + Write + WriterExtra>(
                             return false;
                         } else {
                             if s.as_bytes()[0] == b'E' {
-                                continue 'restart;
+                                continue 'lockdown;
                             }
                             break;
                         }
@@ -466,6 +468,58 @@ fn network_setup() -> Result<(TcpStream, TcpStream), std::io::Error> {
     Ok((w, b))
 }
 
+// For the test only
+impl ReaderExtra for std::io::Cursor<[u8; 4311]> {
+    fn peek(&mut self, _buffer: &mut [u8]) -> std::io::Result<usize> {
+        return Ok(1);
+    }
+}
+impl ReaderExtra for std::io::Cursor<[u8; 4703]> {
+    fn peek(&mut self, _buffer: &mut [u8]) -> std::io::Result<usize> {
+        return Ok(1);
+    }
+}
+
+// For the test only
+impl WriterExtra for std::io::Cursor<[u8; 4311]> {
+    fn update_agent(&mut self, g: &Game, a: &Action, fc: &[u8; FC_LEN], s: &'static str) -> bool {
+        let encoded = encode(g, &a);
+        let sb = s.as_bytes();
+        let enc = encoded.as_slice().unwrap();
+
+        let response = [&enc[..], &fc[..], &sb].concat();
+        assert!(response.len() == 391);
+        match self.write(&response) {
+            Err(_) => {
+                println!("Client disconnected.");
+                return false;
+            }
+            _ => {
+                return true;
+            }
+        }
+    }
+}
+// For the test only
+impl WriterExtra for std::io::Cursor<[u8; 4703]> {
+    fn update_agent(&mut self, g: &Game, a: &Action, fc: &[u8; FC_LEN], s: &'static str) -> bool {
+        let encoded = encode(g, &a);
+        let sb = s.as_bytes();
+        let enc = encoded.as_slice().unwrap();
+
+        let response = [&enc[..], &fc[..], &sb].concat();
+        assert!(response.len() == 391);
+        match self.write(&response) {
+            Err(_) => {
+                println!("Client disconnected.");
+                return false;
+            }
+            _ => {
+                return true;
+            }
+        }
+    }
+}
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -509,32 +563,46 @@ mod tests {
         g.history.borrow().to_string(&mut buffer);
         assert_eq!(buffer, s1);
     }
-}
 
-// For the test only
-impl ReaderExtra for std::io::Cursor<[u8; 4311]> {
-    fn peek(&mut self, _buffer: &mut [u8]) -> std::io::Result<usize> {
-        return Ok(1);
-    }
-}
+    #[test]
+    fn test_handle_client_with_cursor2() {
+        let s0 = "(
+            ;C[Setup0]
+            AW[aa][ab][ad][ae][bb][bc][bf][ca][cd][ce][dc][dd][df][ea][ec][ee][fa][fb][fe][ff]
+            AB[ac][af][ba][bd][be][cb][cc][cf][da][db][de][eb][ed][ef][fc][fd]
+            ;C[Setup1]AB[ab][cd][ef][da]
+            ;C[Setup2]AW[aa]
+            ;C[Setup2]AB[ac]
+            ;C[Setup2]AW[af]
+            ;C[Setup2]AB[ad]
+            ;C[Setup3]AW[ij]
+            ;B[jj][ad][cd][ad][ad][ad][ad]
+            )"
+        .to_string();
+        let mut iter = s0.trim().chars().peekable();
+        let t = TreeNode::new(&mut iter, None);
+        let mut g = Game::init(Some(t));
 
-// For the test only
-impl WriterExtra for std::io::Cursor<[u8; 4311]> {
-    fn update_agent(&mut self, g: &Game, a: &Action, fc: &[u8; FC_LEN], s: &'static str) -> bool {
-        let encoded = encode(g, &a);
-        let sb = s.as_bytes();
-        let enc = encoded.as_slice().unwrap();
-
-        let response = [&enc[..], &fc[..], &sb].concat();
-        assert!(response.len() == 391);
-        match self.write(&response) {
-            Err(_) => {
-                println!("Client disconnected.");
-                return false;
-            }
-            _ => {
-                return true;
-            }
-        }
+        const LEN: usize = 391 + (1 + 391) * 11;
+        let mut buf: [u8; LEN] = [0; LEN];
+        // in real correct SGF file, of course we cannot assign "hi" as the
+        // lockdown position, but this is for a demo
+        let s1 = ";W[ii][hi][hh][aa][ab][bb][ab][ab][ab][aa][aa]";
+        buf[391] = 46;
+        buf[392 * 2 - 1] = 45;
+        buf[392 * 3 - 1] = 40;
+        buf[392 * 4 - 1] = 0;
+        buf[392 * 5 - 1] = 6;
+        buf[392 * 6 - 1] = 7;
+        buf[392 * 7 - 1] = 6;
+        buf[392 * 8 - 1] = 0;
+        buf[392 * 9 - 1] = 6;
+        buf[392 * 10 - 1] = 0;
+        buf[392 * 11 - 1] = 6;
+        let mut fake_stream = Cursor::new(buf);
+        assert!(handle_client(&mut fake_stream, &mut g) == true);
+        let mut buffer = String::new();
+        g.history.borrow().to_string(&mut buffer);
+        assert_eq!(buffer, s1.replace("[hi]", ""));
     }
 }
