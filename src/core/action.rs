@@ -245,17 +245,23 @@ impl Action {
         // Update action
         self.trajectory.push(to);
         // Finish taking the action steps
+        let mut collision = false;
         if self.trajectory.len() > self.steps {
             // Final step: No collision?
             let op = *g.character.get(&(w, enemy_camp)).unwrap();
             if op == to {
-                return Err("Ex07");
+                collision = true;
             }
             self.transit(g);
         }
 
-        self.character = Some(to);
-        return Ok("Ix01");
+        if collision {
+            let _ = self.trajectory.pop().unwrap();
+            return Err("Ex07");
+        } else {
+            self.character = Some(to);
+            return Ok("Ix01");
+        }
     }
 
     pub fn add_single_marker(&mut self, g: &Game, t: Coord) -> Result<&'static str, &'static str> {

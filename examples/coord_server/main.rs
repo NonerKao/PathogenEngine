@@ -295,7 +295,7 @@ fn handle_client<T: Read + ReaderExtra + Write + WriterExtra>(
                 assert_eq!(a.action_phase, ActionPhase::BoardMove);
                 fc[2 /* set character */] = 0;
                 for i in 0..a.steps {
-                    loop {
+                    'board_move: loop {
                         let bytes_read = stream.read(&mut buffer).unwrap();
                         assert_eq!(bytes_read, 1);
                         println!("{:?}", buffer);
@@ -312,7 +312,7 @@ fn handle_client<T: Read + ReaderExtra + Write + WriterExtra>(
                             return false;
                         } else {
                             if s.as_bytes()[0] == b'E' {
-                                continue 'restart;
+                                continue 'board_move;
                             }
                             break;
                         }
@@ -635,5 +635,49 @@ mod tests {
         let mut buffer = String::new();
         g.history.borrow().to_string(&mut buffer);
         assert_eq!(buffer, s1.replace("[af]", ""));
+    }
+
+    #[test]
+    fn test_handle_client_with_cursor4() {
+        let s0 = "(
+            ;C[Setup0]
+            AW[aa][ab][ad][ae][bb][bc][bf][ca][cd][ce][dc][dd][df][ea][ec][ee][fa][fb][fe][ff]
+            AB[ac][af][ba][bd][be][cb][cc][cf][da][db][de][eb][ed][ef][fc][fd]
+            ;C[Setup1]AB[ab][cd][ef][da]
+            ;C[Setup2]AW[aa]
+            ;C[Setup2]AB[ac]
+            ;C[Setup2]AW[af]
+            ;C[Setup2]AB[ad]
+            ;C[Setup3]AW[ij]
+            ;B[jj][ad][cd][ad][ad][ad][ad]
+            )"
+        .to_string();
+        let mut iter = s0.trim().chars().peekable();
+        let t = TreeNode::new(&mut iter, None);
+        let mut g = Game::init(Some(t));
+
+        const LEN: usize = 391 + (1 + 391) * 12;
+        let mut buf_origin: [u8; LEN] = [0; LEN];
+        let buf = &mut buf_origin[..];
+        // in real correct SGF file, of course we cannot assign "hi" as the
+        // lockdown position, but this is for a demo
+        let s1 = ";W[ii][hh][aa][dd][ab][ac][bb][ab][ab][ab][aa][aa]";
+        buf[391] = 46;
+        buf[392 * 2 - 1] = 40;
+        buf[392 * 3 - 1] = 0;
+        buf[392 * 4 - 1] = 21;
+        buf[392 * 5 - 1] = 6;
+        buf[392 * 6 - 1] = 12;
+        buf[392 * 7 - 1] = 7;
+        buf[392 * 8 - 1] = 6;
+        buf[392 * 9 - 1] = 0;
+        buf[392 * 10 - 1] = 6;
+        buf[392 * 11 - 1] = 0;
+        buf[392 * 12 - 1] = 6;
+        let mut fake_stream = Cursor::new(buf);
+        assert!(handle_client(&mut fake_stream, &mut g) == true);
+        let mut buffer = String::new();
+        g.history.borrow().to_string(&mut buffer);
+        assert_eq!(buffer, s1.replace("[dd]", "").replace("[ac]", ""));
     }
 }
