@@ -42,7 +42,7 @@ impl Action {
 
     // There are various combos for the following add* functions.
 
-    pub fn add_map_step(&mut self, g: &Game, c: Coord) -> Result<(), &'static str> {
+    pub fn add_map_step(&mut self, g: &Game, c: Coord) -> Result<&'static str, &'static str> {
         if *g.map.get(&g.opposite(g.turn)).unwrap() == c {
             return Err("Ex00");
         }
@@ -55,7 +55,8 @@ impl Action {
             // XXX: But then, who will do the transition?
             // Also remove the match g.phase block below because it doesn't make
             // sense that the Plague must not skip at the 1st round.
-            return Err("Ix00");
+            println!("{:?} == {:?}", *g.map.get(&g.turn).unwrap(), c);
+            return Ok("Ix00");
         }
         if (g.lockdown() && g.turn == Camp::Plague) || g.turn == Camp::Doctor {
             // Plague cannot outbreak when lockdown
@@ -81,9 +82,9 @@ impl Action {
         self.find_route(&mut possible_route, g.turn == Camp::Doctor && c == ORIGIN);
         for pr in possible_route.iter() {
             // finding one would be enough
-            if g.viable(pr) {
+            if g.viable(pr, None) {
                 self.transit(g);
-                return Ok(());
+                return Ok("Ix01");
             }
         }
 
@@ -96,7 +97,11 @@ impl Action {
         return Err("Ex20");
     }
 
-    pub fn add_lockdown_by_rotation(&mut self, g: &Game, ld: Lockdown) -> Result<(), &'static str> {
+    pub fn add_lockdown_by_rotation(
+        &mut self,
+        g: &Game,
+        ld: Lockdown,
+    ) -> Result<&'static str, &'static str> {
         let o = Coord::new(0, 0);
         if g.turn != Camp::Doctor || self.map.unwrap() != o {
             return Err("Ex0E");
@@ -109,10 +114,14 @@ impl Action {
         self.restriction = o - &cp;
 
         self.transit(g);
-        return Ok(());
+        return Ok("Ix01");
     }
 
-    pub fn add_lockdown_by_coord(&mut self, g: &Game, c: Coord) -> Result<(), &'static str> {
+    pub fn add_lockdown_by_coord(
+        &mut self,
+        g: &Game,
+        c: Coord,
+    ) -> Result<&'static str, &'static str> {
         let o = Coord::new(0, 0);
         if g.turn != Camp::Doctor || self.map.unwrap() != o {
             return Err("Ex0E");
@@ -125,19 +134,20 @@ impl Action {
             Lockdown::CC270,
         ];
         let cc: Vec<_> = lda.iter().map(|&x| cp.lockdown(x)).collect();
-        println!("{:?} from {:?}", cc, c);
         if let Some(ld) = cc.iter().position(|&x| x == c) {
             self.lockdown = lda[ld];
             self.restriction = o - &c;
             self.transit(g);
-            return Ok(());
+            return Ok("Ix01");
         }
         return Err("Ex0F");
     }
 
-    pub fn add_character(&mut self, g: &Game, c: Coord) -> Result<(), &'static str> {
+    pub fn add_character(&mut self, g: &Game, c: Coord) -> Result<&'static str, &'static str> {
         let hh = *g.character.get(&(World::Humanity, g.turn)).unwrap();
         let hu = *g.character.get(&(World::Underworld, g.turn)).unwrap();
+        let mut possible_route: Vec<Vec<Direction>> = Vec::new();
+        self.find_route(&mut possible_route, false);
 
         // Update action
         if c != hh && c != hu {
@@ -147,17 +157,29 @@ impl Action {
         } else {
             self.world = Some(World::Underworld);
         }
-        self.character = Some(c);
-        self.trajectory.push(c);
 
-        self.transit(g);
-        return Ok(());
+        for pr in possible_route.iter() {
+            // finding one would be enough
+            if g.viable(pr, self.world) {
+                self.character = Some(c);
+                self.trajectory.push(c);
+                self.transit(g);
+                return Ok("Ix01");
+            }
+        }
+
+        self.world = None;
+        return Err("Ex21");
     }
 
     // This is intended to be used multiple times, and only when every single step
     // is valid the action is complete. UIs that does not generate valid candidate
     // routes can use this directly.
-    pub fn add_board_single_step(&mut self, g: &Game, to: Coord) -> Result<(), &'static str> {
+    pub fn add_board_single_step(
+        &mut self,
+        g: &Game,
+        to: Coord,
+    ) -> Result<&'static str, &'static str> {
         // impossible number as a implicit assertion
         let mut from = Coord::new(-999, -999);
         if let Some(x) = self.trajectory.last() {
@@ -233,10 +255,10 @@ impl Action {
         }
 
         self.character = Some(to);
-        return Ok(());
+        return Ok("Ix01");
     }
 
-    pub fn add_single_marker(&mut self, g: &Game, t: Coord) -> Result<(), &'static str> {
+    pub fn add_single_marker(&mut self, g: &Game, t: Coord) -> Result<&'static str, &'static str> {
         let quota = if g.turn == Camp::Doctor {
             DOCTOR_MARKER
         } else {
@@ -336,8 +358,9 @@ impl Action {
                 }
             }
             self.transit(g);
+            return Ok("Ix02");
         }
-        return Ok(());
+        return Ok("Ix01");
     }
 
     pub fn to_sgf_string(&self, g: &Game) -> String {
@@ -499,43 +522,30 @@ mod tests {
     }
 
     #[test]
-    fn test_lockdown() {
+    fn test_lockdown_and_character() {
         let s0 = "(;FF[4]GM[41]SZ[6]GN[https://boardgamegeek.com/boardgame/369862/pathogen];C[Setup0]AW[fa][ef][ed][eb][cf][cc][dc][ca][ad][fe][ab][db][bb][be][fd][ae][ac][df];C[Setup0]AB[af][ba][dd][da][ff][bf][ee][bc][de][ec][cb][aa][ea][bd][ce][fc][cd][fb];C[Setup1]AB[ee];C[Setup1]AB[cf];C[Setup1]AB[fa];C[Setup1]AB[bc];C[Setup2]AW[bf];C[Setup2]AB[ce];C[Setup2]AW[db];C[Setup2]AB[eb];C[Setup3]AW[ih]
         ;B[hj][eb][db][dc][df][eb][eb][dc][dc]
         )"
         .to_string();
         let mut iter = s0.trim().chars().peekable();
         let t = TreeNode::new(&mut iter, None);
-        let mut g = Game::init(Some(t));
+        let g = Game::init(Some(t));
         let mut a = Action::new();
-        let cd = Coord::new(0, 0);
-        assert!(a.add_map_step(&g, cd).is_ok());
+        let c1 = Coord::new(0, 0);
+        assert!(a.add_map_step(&g, c1).is_ok());
         assert_eq!(*a.restriction.get(&Direction::Up).unwrap(), 1);
         assert_eq!(*a.restriction.get(&Direction::Right).unwrap(), 1);
         assert!(a.add_lockdown_by_coord(&g, Coord::new(-1, 1)).is_ok());
         assert_eq!(*a.restriction.get(&Direction::Up).unwrap(), 1);
         assert_eq!(*a.restriction.get(&Direction::Right).unwrap(), 1);
-    }
-
-    #[test]
-    fn test_character() {
-        let mut g = Game::init(None);
-        let ch = Coord::new(4, 4);
-        let cu = Coord::new(2, 3);
-        g.character.insert((World::Humanity, Camp::Plague), ch);
-        g.character.insert((World::Underworld, Camp::Plague), cu);
-        let mut a = Action::new();
-        let c = Coord::new(1, 5);
-        if let Err(e) = a.add_character(&g, c) {
+        let c2 = Coord::new(2, 5);
+        if let Err(e) = a.add_character(&g, c2) {
             assert_eq!(e, "Ex02");
         }
-        let r1 = a.add_character(&g, ch);
+        let c3 = Coord::new(1, 5);
+        let r1 = a.add_character(&g, c3);
         assert!(r1.is_ok());
         assert_eq!(a.trajectory.len(), 1);
-        let r2 = a.add_character(&g, cu);
-        assert!(r2.is_ok());
-        assert_eq!(a.trajectory.len(), 2);
-        assert_eq!(a.character.unwrap(), cu);
     }
 
     #[test]
@@ -555,7 +565,7 @@ mod tests {
         .to_string();
         let mut iter = s0.trim().chars().peekable();
         let t = TreeNode::new(&mut iter, None);
-        let mut g = Game::init(Some(t));
+        let g = Game::init(Some(t));
 
         let mut a = Action::new();
         assert_eq!(a.action_phase, ActionPhase::SetMap);

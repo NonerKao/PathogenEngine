@@ -699,7 +699,6 @@ impl Game {
         let t = TreeNode::new(&mut iter, None);
         let mut buffer = String::new();
         t.borrow().to_string(&mut buffer);
-        println!("{}", buffer);
         if let Some(p) = t.borrow().children[0].borrow().to_sgf_node() {
             self.append_history(p.clone());
         };
@@ -724,28 +723,33 @@ impl Game {
 
     // is this choice of map position derive at least one
     // route for any character to move legitimatly?
-    pub fn viable(&self, r: &Vec<Direction>) -> bool {
+    pub fn viable(&self, r: &Vec<Direction>, w: Option<World>) -> bool {
         let ch = *self.character.get(&(World::Humanity, self.turn)).unwrap();
         let cu = *self.character.get(&(World::Underworld, self.turn)).unwrap();
-        println!("enter {:?}", r);
+        let mut ca: Vec<Coord> = Vec::new();
+        if w == None {
+            ca.push(ch);
+            ca.push(cu);
+        } else if w.unwrap() == World::Humanity {
+            ca.push(ch);
+        } else if w.unwrap() == World::Underworld {
+            ca.push(cu);
+        }
 
         let mut w = World::Humanity;
-        for c in &[ch, cu] {
+        for c in ca.iter() {
             let mut ctemp = c.clone();
             let mut r_clone = r.clone();
             r_clone.reverse();
             'new_dir: while let Some(d) = r_clone.pop() {
                 ctemp = ctemp + &d;
                 while ctemp.in_boundary() {
-                    println!("{:?}", ctemp);
                     match self.env.get(&ctemp) {
                         Some(x) => {
                             if *x == w {
                                 continue 'new_dir;
                             } else {
-                                print!("{:?} ======> ", ctemp);
                                 ctemp = ctemp + &d;
-                                println!("{:?}", ctemp);
                                 continue;
                             }
                         }
@@ -1283,6 +1287,6 @@ mod tests {
         let g = Game::init(Some(t));
         let _c_ii = Coord::new(0, 0);
         let r = vec![Direction::Left, Direction::Up];
-        assert_eq!(g.viable(&r), false);
+        assert_eq!(g.viable(&r, None), false);
     }
 }
