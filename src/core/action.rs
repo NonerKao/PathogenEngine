@@ -13,6 +13,23 @@ pub enum ActionPhase {
 }
 
 #[derive(Debug)]
+pub struct Candidate {
+    lockdown: Vec<Lockdown>,
+    character: Vec<Coord>,
+    trajectory: Vec<Vec<Coord>>,
+}
+
+impl Candidate {
+    pub fn new() -> Candidate {
+        return Candidate {
+            lockdown: Vec::new(),
+            character: Vec::new(),
+            trajectory: Vec::new(),
+        };
+    }
+}
+
+#[derive(Debug)]
 pub struct Action {
     pub map: Option<Coord>,
     pub lockdown: Lockdown,
@@ -24,6 +41,7 @@ pub struct Action {
     pub markers: Vec<Coord>,
     pub action_phase: ActionPhase,
     marker_slot: HashMap<Coord, u8>,
+    candidate: Candidate,
 }
 
 impl Action {
@@ -39,6 +57,7 @@ impl Action {
             markers: Vec::new(),
             action_phase: ActionPhase::SetMap,
             marker_slot: HashMap::new(),
+            candidate: Candidate::new(),
         };
     }
 
@@ -689,5 +708,27 @@ mod tests {
         g.character
             .insert((World::Underworld, Camp::Doctor), "dd".to_env());
         assert!(!g.viable(&ret[1], Some(World::Underworld)));
+    }
+
+    #[test]
+    fn test_fail_to_lockdown() {
+        let s0 = "(;FF[4]GM[41]SZ[6]GN[https://boardgamegeek.com/boardgame/369862/pathogen];C[Setup0]AW[fa][ef][ed][eb][cf][cc][dc][ca][ad][fe][ab][db][bb][be][fb][ae][ac][df];C[Setup0]AB[af][ba][dd][da][ff][bf][ee][bc][de][ec][cb][aa][ea][bd][ce][fc][cd][fd];C[Setup1]AB[ee];C[Setup1]AB[cf];C[Setup1]AB[fa];C[Setup1]AB[bc];C[Setup2]AW[bf];C[Setup2]AB[ce];C[Setup2]AW[db];C[Setup2]AB[eb];C[Setup3]AW[ih];B[jg][ce][de][dd][ce][ce][de][de])"
+        .to_string();
+        let mut iter = s0.trim().chars().peekable();
+        let t = TreeNode::new(&mut iter, None);
+        let mut g = Game::init(Some(t));
+        // On choosing [hk] to lockdown, [eb] is not an option.
+        // from [bf], two intermediates are [bd] here and [ff]. Lock them.
+        let _s1 = "(;W[ii][hk][bf][bd][bc][ec][bc][bf][bf][bf][bd])";
+        let mut a = Action::new();
+
+        g.stuff.insert("bd".to_env(), (Camp::Plague, Stuff::Colony));
+        g.stuff.insert("ff".to_env(), (Camp::Plague, Stuff::Colony));
+        let r1 = a.add_map_step(&g, "ii".to_map());
+        assert_eq!(Ok("Ix01"), r1);
+        let r2 = a.add_lockdown_by_coord(&g, "hk".to_map());
+        assert_eq!(Ok("Ix01"), r2);
+        let r3 = a.add_character(&g, "bf".to_env());
+        assert_eq!(Err("Ex21"), r3);
     }
 }
