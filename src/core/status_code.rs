@@ -18,6 +18,7 @@ pub fn str_to_full_msg(s: &'static str) -> &'static str {
     }
 
     match index {
+        546 => return "Invalid lockdown choice: No possible route",
         545 => return "Invalid character choice: No possible route",
         // Ex20
         544 => return "Invalid map position: No possible route",

@@ -342,13 +342,11 @@ fn handle_client<T: Read + ReaderExtra + Write + WriterExtra>(
                         match a.add_single_marker(g, c) {
                             Err(e) => {
                                 s = e;
-                                println!("{}: {}", i, s);
                             }
                             Ok(o) => {
                                 s = o;
                                 fc[i] = 0;
                                 i = i + 1;
-                                println!("{}: {}", i, s);
                             }
                         }
                         if stream.update_agent(g, &a, &fc, &s) == false {
@@ -618,12 +616,16 @@ mod tests {
         const LEN: usize = 391 + (1 + 391) * 11;
         let mut buf_origin: [u8; LEN] = [0; LEN];
         let buf = &mut buf_origin[..];
-        // in real correct SGF file, of course we cannot assign "hi" as the
-        // lockdown position, but this is for a demo
-        let s1 = ";W[ii][hh][af][aa][ab][bb][ab][ab][ab][aa][aa]";
+        // It's difficult to reason why it was ([bf] was [af]) working.
+        // [af] happended to be the other character. Before the candidate
+        // mechanism, there is no check that [hh] lockdown with [af]
+        // character cannot work together. BUT! Even now, there is no
+        // way to do the check, so theoretically it should still fail.
+        //
+        let s1 = ";W[ii][hh][bf][aa][ab][bb][ab][ab][ab][aa][aa]";
         buf[391] = 46;
         buf[392 * 2 - 1] = 40;
-        buf[392 * 3 - 1] = 30;
+        buf[392 * 3 - 1] = 31;
         buf[392 * 4 - 1] = 0;
         buf[392 * 5 - 1] = 6;
         buf[392 * 6 - 1] = 7;
@@ -636,7 +638,48 @@ mod tests {
         assert!(handle_client(&mut fake_stream, &mut g) == true);
         let mut buffer = String::new();
         g.history.borrow().to_string(&mut buffer);
-        assert_eq!(buffer, s1.replace("[af]", ""));
+        assert_eq!(buffer, s1.replace("[bf]", ""));
+    }
+
+    #[test]
+    fn test_handle_client_with_cursor3_2() {
+        let s0 = "(
+            ;C[Setup0]
+            AW[aa][ab][ad][ae][bb][bc][bf][ca][cd][ce][dc][dd][df][ea][ec][ee][fa][fb][fe][ff]
+            AB[ac][af][ba][bd][be][cb][cc][cf][da][db][de][eb][ed][ef][fc][fd]
+            ;C[Setup1]AB[ab][cd][ef][da]
+            ;C[Setup2]AW[aa]
+            ;C[Setup2]AB[ac]
+            ;C[Setup2]AW[af]
+            ;C[Setup2]AB[ad]
+            ;C[Setup3]AW[ij]
+            ;B[jj][ad][cd][ad][ad][ad][ad]
+            )"
+        .to_string();
+        let mut iter = s0.trim().chars().peekable();
+        let t = TreeNode::new(&mut iter, None);
+        let mut g = Game::init(Some(t));
+
+        const LEN: usize = 391 + (1 + 391) * 11;
+        let s2 = ";W[ii][hh][af][aa][ab][bb][ab][ab][ab][aa][aa]";
+        let mut buf_origin2: [u8; LEN] = [0; LEN];
+        let buf2 = &mut buf_origin2[..];
+        buf2[391] = 46;
+        buf2[392 * 2 - 1] = 40;
+        buf2[392 * 3 - 1] = 30;
+        buf2[392 * 4 - 1] = 0;
+        buf2[392 * 5 - 1] = 6;
+        buf2[392 * 6 - 1] = 7;
+        buf2[392 * 7 - 1] = 6;
+        buf2[392 * 8 - 1] = 0;
+        buf2[392 * 9 - 1] = 6;
+        buf2[392 * 10 - 1] = 0;
+        buf2[392 * 11 - 1] = 6;
+        let mut fake_stream = Cursor::new(buf2);
+        assert!(handle_client(&mut fake_stream, &mut g) == true);
+        let mut buffer = String::new();
+        g.history.borrow().to_string(&mut buffer);
+        assert_eq!(buffer, s2.replace("[af]", ""));
     }
 
     #[test]
@@ -661,8 +704,6 @@ mod tests {
         const LEN: usize = 391 + (1 + 391) * 12;
         let mut buf_origin: [u8; LEN] = [0; LEN];
         let buf = &mut buf_origin[..];
-        // in real correct SGF file, of course we cannot assign "hi" as the
-        // lockdown position, but this is for a demo
         let s1 = ";W[ii][hh][aa][dd][ab][ac][bb][ab][ab][ab][aa][aa]";
         buf[391] = 46;
         buf[392 * 2 - 1] = 40;

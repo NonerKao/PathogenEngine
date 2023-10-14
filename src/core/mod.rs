@@ -721,72 +721,6 @@ impl Game {
         }
     }
 
-    // is this choice of map position derive at least one
-    // route for any character to move legitimatly?
-    pub fn viable(&self, r: &Vec<Direction>, w: Option<World>) -> bool {
-        let ch = *self.character.get(&(World::Humanity, self.turn)).unwrap();
-        let cu = *self.character.get(&(World::Underworld, self.turn)).unwrap();
-        let mut ca: Vec<Coord> = Vec::new();
-        if w == None {
-            ca.push(ch);
-            ca.push(cu);
-        } else if w.unwrap() == World::Humanity {
-            ca.push(ch);
-        } else if w.unwrap() == World::Underworld {
-            ca.push(cu);
-        }
-
-        'next_character: for c in ca.iter() {
-            let w = self.env.get(&c).unwrap();
-            let mut ctemp = c.clone();
-            let mut r_clone = r.clone();
-            r_clone.reverse();
-            'new_dir: while let Some(d) = r_clone.pop() {
-                ctemp = ctemp + &d;
-                while ctemp.in_boundary() {
-                    match self.env.get(&ctemp) {
-                        Some(x) => {
-                            if *x == *w {
-                                match self.stuff.get(&ctemp) {
-                                    Some((camp, Stuff::Colony)) => {
-                                        if *camp != self.turn {
-                                            // Cannot go through opponent's colony
-                                            continue 'next_character;
-                                        }
-                                    }
-                                    _ => {}
-                                }
-                                continue 'new_dir;
-                            } else {
-                                ctemp = ctemp + &d;
-                                continue;
-                            }
-                        }
-                        None => {
-                            // shouldn't be here?
-                            break 'new_dir;
-                        }
-                    }
-                }
-                // not in the boundary
-                continue 'next_character;
-            }
-            if r_clone.is_empty() {
-                match self.character.get(&(*w, self.opposite(self.turn))) {
-                    Some(&c) => {
-                        if ctemp == c {
-                            // Cannot stop at the opponent
-                            continue 'next_character;
-                        }
-                    }
-                    _ => {}
-                }
-                return true;
-            }
-        }
-        return false;
-    }
-
     pub fn get_marker_capacity(&self, c: Coord) -> u8 {
         // is a Colony near within the same quadrant?
         let mut near_colony = false;
@@ -1337,10 +1271,11 @@ mod tests {
         .to_string();
         let mut iter = s0.trim().chars().peekable();
         let t = TreeNode::new(&mut iter, None);
-        let g = Game::init(Some(t));
+        let _g = Game::init(Some(t));
         let _c_ii = Coord::new(0, 0);
-        let r = vec![Direction::Left, Direction::Up];
-        assert_eq!(g.viable(&r, None), false);
+        let _r = vec![Direction::Left, Direction::Up];
+        //assert_eq!(g.viable(&r, None), false);
+        panic!("viable");
     }
 
     #[test]
