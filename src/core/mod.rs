@@ -631,8 +631,8 @@ impl Game {
                 Ok(Phase::Setup1)
             }
             Phase::Setup2 => {
-                let camp = *self.env.get(&c).unwrap();
-                self.character.insert((camp, self.turn), c);
+                let w = *self.env.get(&c).unwrap();
+                self.character.insert((w, self.turn), c);
                 match self.is_illegal_order_setup2() {
                     Err("Ex18") => {
                         self.character
@@ -736,8 +736,8 @@ impl Game {
             ca.push(cu);
         }
 
-        let mut w = World::Humanity;
-        for c in ca.iter() {
+        'next_character: for c in ca.iter() {
+            let w = self.env.get(&c).unwrap();
             let mut ctemp = c.clone();
             let mut r_clone = r.clone();
             r_clone.reverse();
@@ -746,7 +746,16 @@ impl Game {
                 while ctemp.in_boundary() {
                     match self.env.get(&ctemp) {
                         Some(x) => {
-                            if *x == w {
+                            if *x == *w {
+                                match self.stuff.get(&ctemp) {
+                                    Some((camp, Stuff::Colony)) => {
+                                        if *camp != self.turn {
+                                            // Cannot go through opponent's colony
+                                            continue 'next_character;
+                                        }
+                                    }
+                                    _ => {}
+                                }
                                 continue 'new_dir;
                             } else {
                                 ctemp = ctemp + &d;
@@ -754,17 +763,26 @@ impl Game {
                             }
                         }
                         None => {
+                            // shouldn't be here?
                             break 'new_dir;
                         }
                     }
                 }
                 // not in the boundary
-                return false;
+                continue 'next_character;
             }
             if r_clone.is_empty() {
+                match self.character.get(&(*w, self.opposite(self.turn))) {
+                    Some(&c) => {
+                        if ctemp == c {
+                            // Cannot stop at the opponent
+                            continue 'next_character;
+                        }
+                    }
+                    _ => {}
+                }
                 return true;
             }
-            w = World::Underworld;
         }
         return false;
     }
@@ -1364,5 +1382,23 @@ mod tests {
             g.get_marker_capacity(Coord::new(/* [af] */ 0, 5)),
             MAX_MARKER - 3
         );
+    }
+
+    #[test]
+    fn test_precise_route() {
+        let s0 = "(;FF[4]GM[41]SZ[6]GN[https://boardgamegeek.com/boardgame/369862/pathogen];C[Setup0]AW[fa][ef][ed][eb][cf][cc][dc][ca][ad][fe][ab][db][bb][be][fb][ae][ac][df];C[Setup0]AB[af][ba][dd][da][ff][bf][ee][bc][de][ec][cb][aa][ea][bd][ce][fc][cd][fd];C[Setup1]AB[ee];C[Setup1]AB[cf];C[Setup1]AB[fa];C[Setup1]AB[bc];C[Setup2]AW[bf];C[Setup2]AB[ce];C[Setup2]AW[db];C[Setup2]AB[eb];C[Setup3]AW[ih])"
+        .to_string();
+        let mut iter = s0.trim().chars().peekable();
+        let t = TreeNode::new(&mut iter, None);
+        let mut g = Game::init(Some(t));
+        let _s1 = "(;B[jg][ce][de][dd][ce][ce][de][de])";
+        let _s2 = "(;B[jg][ce][cd][dd][cd][cd][de][de])";
+        let _s3 = "(;B[jg][eb][fb][fa][eb][eb][fb][fb])";
+        let mut a = Action::new();
+
+        g.stuff.insert("fb".to_env(), (Camp::Doctor, Stuff::Colony));
+        g.character
+            .insert((World::Underworld, Camp::Doctor), "dd".to_env());
+        assert_eq!(Err("Ex20"), a.add_map_step(&g, "jg".to_env()));
     }
 }

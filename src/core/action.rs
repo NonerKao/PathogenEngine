@@ -661,4 +661,33 @@ mod tests {
         a.find_route(&mut ret, false);
         assert_eq!(ret.len(), 6);
     }
+
+    #[test]
+    fn test_find_route4() {
+        let s0 = "(;FF[4]GM[41]SZ[6]GN[https://boardgamegeek.com/boardgame/369862/pathogen];C[Setup0]AW[fa][ef][ed][eb][cf][cc][dc][ca][ad][fe][ab][db][bb][be][fb][ae][ac][df];C[Setup0]AB[af][ba][dd][da][ff][bf][ee][bc][de][ec][cb][aa][ea][bd][ce][fc][cd][fd];C[Setup1]AB[ee];C[Setup1]AB[cf];C[Setup1]AB[fa];C[Setup1]AB[bc];C[Setup2]AW[bf];C[Setup2]AB[ce];C[Setup2]AW[db];C[Setup2]AB[eb];C[Setup3]AW[ih])"
+        .to_string();
+        let mut iter = s0.trim().chars().peekable();
+        let t = TreeNode::new(&mut iter, None);
+        let mut g = Game::init(Some(t));
+        let mut buffer = String::new();
+        g.history.borrow().to_root().borrow().to_string(&mut buffer);
+        assert_eq!(s0, buffer);
+        let _s1 = "(;B[jg][ce][de][dd][ce][ce][de][de])";
+        let mut a = Action::new();
+        a.restriction = "jg".to_map() - g.map.get(&g.opposite(g.turn)).unwrap();
+        let mut ret: Vec<Vec<Direction>> = Vec::new();
+        a.find_route(&mut ret, false);
+        assert_eq!(ret.len(), 2);
+        println!("{:?}", ret);
+
+        // test Humanity "eb"
+        g.stuff.insert("fb".to_env(), (Camp::Doctor, Stuff::Colony));
+        assert!(!g.viable(&ret[0], Some(World::Humanity)));
+        let _s3 = "(;B[jg][eb][fb][fa][eb][eb][fb][fb])";
+        assert!(!g.viable(&ret[1], Some(World::Humanity)));
+        let _s2 = "(;B[jg][ce][cd][dd][cd][cd][de][de])";
+        g.character
+            .insert((World::Underworld, Camp::Doctor), "dd".to_env());
+        assert!(!g.viable(&ret[1], Some(World::Underworld)));
+    }
 }
