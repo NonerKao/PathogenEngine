@@ -12,104 +12,20 @@ pub enum ActionPhase {
     Done,
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct Candidate {
-    lockdown: Vec<Lockdown>,
-    character: Vec<Coord>,
-    trajectory: Vec<Vec<Coord>>,
+    lockdown: Lockdown,
+    character: Coord,
+    trajectory: Vec<Coord>,
 }
 
 impl Candidate {
     pub fn new() -> Candidate {
         return Candidate {
-            lockdown: Vec::new(),
-            character: Vec::new(),
+            lockdown: Lockdown::Normal,
+            character: Coord::new(-999, -999),
             trajectory: Vec::new(),
         };
-    }
-
-    // Upon this choice of map position, we can build the candidates
-    // of following choices. For this specific route (`r`), two possible
-    // trajectories can bee kept.
-    pub fn traverse(
-        &mut self,
-        g: &Game,
-        r: &Vec<Direction>,
-        ld: Lockdown,
-        w: Option<World>,
-    ) -> bool {
-        let ch = *g.character.get(&(World::Humanity, g.turn)).unwrap();
-        let cu = *g.character.get(&(World::Underworld, g.turn)).unwrap();
-        let mut ca: Vec<Coord> = Vec::new();
-        if w == None {
-            ca.push(ch);
-            ca.push(cu);
-        } else if w.unwrap() == World::Humanity {
-            ca.push(ch);
-        } else if w.unwrap() == World::Underworld {
-            ca.push(cu);
-        }
-
-        'next_character: for c in ca.iter() {
-            let w = g.env.get(&c).unwrap();
-            let mut ctemp = c.clone();
-            let mut r_clone = r.clone();
-            let mut temp_trajectory: Vec<Coord> = Vec::new();
-            temp_trajectory.push(ctemp);
-            r_clone.reverse();
-            'new_dir: while let Some(d) = r_clone.pop() {
-                ctemp = ctemp + &d;
-                while ctemp.in_boundary() {
-                    match g.env.get(&ctemp) {
-                        Some(x) => {
-                            if *x == *w {
-                                match g.stuff.get(&ctemp) {
-                                    Some((camp, Stuff::Colony)) => {
-                                        if *camp != g.turn {
-                                            // Cannot go through opponent's colony
-                                            continue 'next_character;
-                                        }
-                                    }
-                                    _ => {}
-                                }
-                                temp_trajectory.push(ctemp);
-                                continue 'new_dir;
-                            } else {
-                                ctemp = ctemp + &d;
-                                continue;
-                            }
-                        }
-                        None => {
-                            // shouldn't be here?
-                            break 'new_dir;
-                        }
-                    }
-                }
-                // not in the boundary
-                continue 'next_character;
-            }
-            if r_clone.is_empty() {
-                match g.character.get(&(*w, g.opposite(g.turn))) {
-                    Some(&c) => {
-                        if ctemp == c {
-                            // Cannot stop at the opponent
-                            continue 'next_character;
-                        }
-                    }
-                    _ => {}
-                }
-                // Yes, we find a real viable route here
-                if !self.character.contains(c) {
-                    self.character.push(*c);
-                }
-                if !self.lockdown.contains(&ld) {
-                    self.lockdown.push(ld);
-                }
-                self.trajectory.push(temp_trajectory);
-            }
-        }
-        // For characters in the both worlds, this `r` just doesn't work.
-        return false;
     }
 }
 
@@ -125,7 +41,7 @@ pub struct Action {
     pub markers: Vec<Coord>,
     pub action_phase: ActionPhase,
     marker_slot: HashMap<Coord, u8>,
-    pub candidate: Candidate,
+    pub candidate: Vec<Candidate>,
 }
 
 impl Action {
@@ -141,7 +57,7 @@ impl Action {
             markers: Vec::new(),
             action_phase: ActionPhase::SetMap,
             marker_slot: HashMap::new(),
-            candidate: Candidate::new(),
+            candidate: Vec::new(),
         };
     }
 
@@ -200,10 +116,10 @@ impl Action {
                     lockdown_type = Lockdown::CC270;
                 }
             }
-            self.candidate.traverse(g, pr, lockdown_type, None);
+            self.traverse(g, pr, lockdown_type, None);
         }
 
-        if self.candidate.trajectory.len() == 0 {
+        if self.candidate.len() == 0 {
             // Cleanup self. It is recommanded that the application should
             // clean up the state after seeing this error. Anyway we also
             // wipe out the three attributes we have set above.
@@ -255,9 +171,13 @@ impl Action {
         ];
         let cc: Vec<_> = lda.iter().map(|&x| cp.lockdown(x)).collect();
         if let Some(ld) = cc.iter().position(|&x| x == c) {
-            if !self.candidate.lockdown.contains(&lda[ld]) {
+            let mut temp_candidate = self.candidate.clone();
+            temp_candidate.retain(|candidate| candidate.lockdown == lda[ld]);
+            if temp_candidate.len() == 0 {
                 return Err("Ex22");
             }
+            self.candidate
+                .retain(|candidate| candidate.lockdown == lda[ld]);
             self.lockdown = lda[ld];
             self.restriction = o - &c;
             self.transit(g);
@@ -267,9 +187,12 @@ impl Action {
     }
 
     pub fn add_character(&mut self, g: &Game, c: Coord) -> Result<&'static str, &'static str> {
-        if !self.candidate.character.contains(&c) {
+        let mut temp_candidate = self.candidate.clone();
+        temp_candidate.retain(|candidate| candidate.character == c);
+        if temp_candidate.len() == 0 {
             return Err("Ex21");
         }
+        self.candidate.retain(|candidate| candidate.character == c);
         let hh = *g.character.get(&(World::Humanity, g.turn)).unwrap();
         let hu = *g.character.get(&(World::Underworld, g.turn)).unwrap();
 
@@ -647,6 +570,88 @@ impl Action {
             }
         }
     }
+
+    // Upon this choice of map position, we can build the candidates
+    // of following choices. For this specific route (`r`), two possible
+    // trajectories can bee kept.
+    pub fn traverse(
+        &mut self,
+        g: &Game,
+        r: &Vec<Direction>,
+        ld: Lockdown,
+        w: Option<World>,
+    ) -> bool {
+        let ch = *g.character.get(&(World::Humanity, g.turn)).unwrap();
+        let cu = *g.character.get(&(World::Underworld, g.turn)).unwrap();
+        let mut ca: Vec<Coord> = Vec::new();
+        if w == None {
+            ca.push(ch);
+            ca.push(cu);
+        } else if w.unwrap() == World::Humanity {
+            ca.push(ch);
+        } else if w.unwrap() == World::Underworld {
+            ca.push(cu);
+        }
+
+        'next_character: for c in ca.iter() {
+            let w = g.env.get(&c).unwrap();
+            let mut ctemp = c.clone();
+            let mut r_clone = r.clone();
+            let mut temp_trajectory: Vec<Coord> = Vec::new();
+            temp_trajectory.push(ctemp);
+            r_clone.reverse();
+            'new_dir: while let Some(d) = r_clone.pop() {
+                ctemp = ctemp + &d;
+                while ctemp.in_boundary() {
+                    match g.env.get(&ctemp) {
+                        Some(x) => {
+                            if *x == *w {
+                                match g.stuff.get(&ctemp) {
+                                    Some((camp, Stuff::Colony)) => {
+                                        if *camp != g.turn {
+                                            // Cannot go through opponent's colony
+                                            continue 'next_character;
+                                        }
+                                    }
+                                    _ => {}
+                                }
+                                temp_trajectory.push(ctemp);
+                                continue 'new_dir;
+                            } else {
+                                ctemp = ctemp + &d;
+                                continue;
+                            }
+                        }
+                        None => {
+                            // shouldn't be here?
+                            break 'new_dir;
+                        }
+                    }
+                }
+                // not in the boundary
+                continue 'next_character;
+            }
+            if r_clone.is_empty() {
+                match g.character.get(&(*w, g.opposite(g.turn))) {
+                    Some(&c) => {
+                        if ctemp == c {
+                            // Cannot stop at the opponent
+                            continue 'next_character;
+                        }
+                    }
+                    _ => {}
+                }
+                // Yes, we find a real viable route here
+                let mut candidate = Candidate::new();
+                candidate.character = *c;
+                candidate.lockdown = ld;
+                candidate.trajectory = temp_trajectory;
+                self.candidate.push(candidate);
+            }
+        }
+        // For characters in the both worlds, this `r` just doesn't work.
+        return false;
+    }
 }
 
 #[cfg(test)]
@@ -720,7 +725,7 @@ mod tests {
         assert!(r1.is_ok());
         assert_eq!(a.action_phase, ActionPhase::SetCharacter);
         let r2 = a.add_character(&g, Coord::new(3, 5));
-        assert!(r2.is_ok());
+        assert_eq!(r2, Ok("Ix01"));
         assert_eq!(a.action_phase, ActionPhase::BoardMove);
         if let Err(e) = a.add_board_single_step(&g, Coord::new(0, 5)) {
             assert_eq!(e, "Ex03");
@@ -789,22 +794,15 @@ mod tests {
         g.history.borrow().to_root().borrow().to_string(&mut buffer);
         assert_eq!(s0, buffer);
         let _s1 = "(;B[jg][ce][de][dd][ce][ce][de][de])";
-        let mut a = Action::new();
-        a.restriction = "jg".to_map() - g.map.get(&g.opposite(g.turn)).unwrap();
-        let mut ret: Vec<Vec<Direction>> = Vec::new();
-        a.find_route(&mut ret, false);
-        assert_eq!(ret.len(), 2);
-
-        // test Humanity "eb"
-        g.stuff.insert("fb".to_env(), (Camp::Doctor, Stuff::Colony));
-        //assert!(!g.viable(&ret[0], Some(World::Humanity)));
-        let _s3 = "(;B[jg][eb][fb][fa][eb][eb][fb][fb])";
-        //assert!(!g.viable(&ret[1], Some(World::Humanity)));
         let _s2 = "(;B[jg][ce][cd][dd][cd][cd][de][de])";
+        let _s3 = "(;B[jg][eb][fb][fa][eb][eb][fb][fb])";
+        let mut a = Action::new();
+        // Two roadblocks to shutdown the possiblity
+        g.stuff.insert("fb".to_env(), (Camp::Doctor, Stuff::Colony));
         g.character
             .insert((World::Underworld, Camp::Doctor), "dd".to_env());
-        //assert!(!g.viable(&ret[1], Some(World::Underworld)));
-        panic!("viable");
+        let r1 = a.add_map_step(&g, "jg".to_map());
+        assert_eq!(Err("Ex20"), r1);
     }
 
     #[test]
