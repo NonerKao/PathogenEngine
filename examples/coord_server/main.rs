@@ -188,7 +188,7 @@ fn handle_client<T: Read + ReaderExtra + Write + WriterExtra>(
     if stream.update_agent(g, &ea, &ec, &s) == false {
         return false;
     }
-    'restart: loop {
+    loop {
         match stream.peek(&mut buffer) {
             Ok(0) => {
                 println!("Client disconnected.");
@@ -321,20 +321,20 @@ fn handle_client<T: Read + ReaderExtra + Write + WriterExtra>(
                 }
 
                 // Set the markers
-                assert_eq!(a.action_phase, ActionPhase::SetMarkers);
                 assert!(fc.iter().all(|&x| x == 0));
-                for i in 0..DOCTOR_MARKER as usize {
-                    fc[8 /* set character */ + i] = 1;
-                }
-                if g.turn == Camp::Plague {
-                    fc[12 /* final one: Plague has only 4 markers */] = 0;
-                }
-                let mut i = 8;
-                while i < FC_LEN {
-                    if fc[i] == 0 {
-                        continue;
+                'set_marker: loop {
+                    assert_eq!(a.action_phase, ActionPhase::SetMarkers);
+                    for i in 0..DOCTOR_MARKER as usize {
+                        fc[8 /* set character */ + i] = 1;
                     }
-                    loop {
+                    if g.turn == Camp::Plague {
+                        fc[12 /* final one: Plague has only 4 markers */] = 0;
+                    }
+                    let mut i = 8;
+                    while i < FC_LEN {
+                        if fc[i] == 0 {
+                            continue;
+                        }
                         let bytes_read = stream.read(&mut buffer).unwrap();
                         assert_eq!(bytes_read, 1);
                         println!("{:?}", buffer);
@@ -342,24 +342,26 @@ fn handle_client<T: Read + ReaderExtra + Write + WriterExtra>(
                         match a.add_single_marker(g, c) {
                             Err(e) => {
                                 s = e;
+                                println!("{}: {}", i, s);
                             }
                             Ok(o) => {
                                 s = o;
+                                fc[i] = 0;
+                                i = i + 1;
+                                println!("{}: {}", i, s);
                             }
                         }
                         if stream.update_agent(g, &a, &fc, &s) == false {
                             return false;
                         } else {
                             if s.as_bytes()[0] == b'E' {
-                                continue 'restart;
+                                continue 'set_marker;
+                            } else if s == "Ix02" {
+                                break 'set_marker;
                             }
-                            break;
                         }
                     }
-                    fc[i] = 0;
-                    i = i + 1;
                 }
-
                 // commit the action to the game
                 assert_eq!(a.action_phase, ActionPhase::Done);
                 assert!(fc.iter().all(|&x| x == 0));
@@ -679,5 +681,52 @@ mod tests {
         let mut buffer = String::new();
         g.history.borrow().to_string(&mut buffer);
         assert_eq!(buffer, s1.replace("[dd]", "").replace("[ac]", ""));
+    }
+
+    #[test]
+    fn test_handle_client_with_cursor5() {
+        let s0 = "(
+            ;C[Setup0]
+            AW[aa][ab][ad][ae][bb][bc][bf][ca][cd][ce][dc][dd][df][ea][ec][ee][fa][fb][fe][ff]
+            AB[ac][af][ba][bd][be][cb][cc][cf][da][db][de][eb][ed][ef][fc][fd]
+            ;C[Setup1]AB[ab][cd][ef][da]
+            ;C[Setup2]AW[aa]
+            ;C[Setup2]AB[ac]
+            ;C[Setup2]AW[af]
+            ;C[Setup2]AB[ad]
+            ;C[Setup3]AW[ij]
+            ;B[jj][ad][cd][ad][ad][ad][ad]
+            )"
+        .to_string();
+        let mut iter = s0.trim().chars().peekable();
+        let t = TreeNode::new(&mut iter, None);
+        let mut g = Game::init(Some(t));
+
+        const LEN: usize = 391 + (1 + 391) * 15;
+        let mut buf_origin: [u8; LEN] = [0; LEN];
+        let buf = &mut buf_origin[..];
+        // in real correct SGF file, of course we cannot assign "hi" as the
+        // lockdown position, but this is for a demo
+        let s1 = ";W[ii][hh][aa][ab][bb][aa][aa][aa][aa][aa][ab][aa][aa][aa][aa]";
+        buf[391] = 46;
+        buf[392 * 2 - 1] = 40;
+        buf[392 * 3 - 1] = 0;
+        buf[392 * 4 - 1] = 6;
+        buf[392 * 5 - 1] = 7;
+        buf[392 * 6 - 1] = 0;
+        buf[392 * 7 - 1] = 0;
+        buf[392 * 8 - 1] = 0;
+        buf[392 * 9 - 1] = 0;
+        buf[392 * 10 - 1] = 0;
+        buf[392 * 11 - 1] = 0;
+        buf[392 * 12 - 1] = 0;
+        buf[392 * 13 - 1] = 0;
+        buf[392 * 14 - 1] = 0;
+        buf[392 * 15 - 1] = 6;
+        let mut fake_stream = Cursor::new(buf);
+        assert!(handle_client(&mut fake_stream, &mut g) == true);
+        let mut buffer = String::new();
+        g.history.borrow().to_string(&mut buffer);
+        assert_eq!(buffer, s1.replace("[aa][aa][aa][aa][aa]", ""));
     }
 }

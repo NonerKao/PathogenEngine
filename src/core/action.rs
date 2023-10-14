@@ -23,6 +23,7 @@ pub struct Action {
     pub trajectory: Vec<Coord>,
     pub markers: Vec<Coord>,
     pub action_phase: ActionPhase,
+    marker_slot: HashMap<Coord, u8>,
 }
 
 impl Action {
@@ -37,6 +38,7 @@ impl Action {
             trajectory: Vec::new(),
             markers: Vec::new(),
             action_phase: ActionPhase::SetMap,
+            marker_slot: HashMap::new(),
         };
     }
 
@@ -55,7 +57,6 @@ impl Action {
             // XXX: But then, who will do the transition?
             // Also remove the match g.phase block below because it doesn't make
             // sense that the Plague must not skip at the 1st round.
-            println!("{:?} == {:?}", *g.map.get(&g.turn).unwrap(), c);
             return Ok("Ix00");
         }
         if (g.lockdown() && g.turn == Camp::Plague) || g.turn == Camp::Doctor {
@@ -258,10 +259,27 @@ impl Action {
         if collision {
             let _ = self.trajectory.pop().unwrap();
             return Err("Ex07");
-        } else {
-            self.character = Some(to);
-            return Ok("Ix01");
         }
+
+        // Based on the established trajectory, make the list
+        // of available grids: excluding opponent's characters,
+        // own's colony, and already full due to neighboring
+        // colony ones.
+        let mut t = self.trajectory.clone();
+        t.retain(|&y| {
+            let op = g.opposite(g.turn);
+            let hh = *g.character.get(&(World::Humanity, op)).unwrap();
+            let hu = *g.character.get(&(World::Underworld, op)).unwrap();
+            y != hh && y != hu
+        });
+        for c in t.iter() {
+            let n = g.get_marker_capacity(*c);
+            self.marker_slot.insert(*c, n);
+        }
+
+        self.character = Some(to);
+        // Also, after excluding all, we should juist return DONE?
+        return Ok("Ix01");
     }
 
     pub fn add_single_marker(&mut self, g: &Game, t: Coord) -> Result<&'static str, &'static str> {
@@ -285,6 +303,7 @@ impl Action {
         // Update action
         self.markers.push(t);
         if self.markers.len() > quota.try_into().unwrap() {
+            // technically, this is not possible for all servers we have now.
             return Err("Ex0A");
         } else if self.markers.len() == quota.try_into().unwrap() {
             // when all markers are given ... most checks are here
@@ -292,7 +311,7 @@ impl Action {
             // 2. (Doctor) if any plagues are ignored
             // 3. (Plague) if distributed evenly
             let last = self.trajectory.len() - 1;
-            self.trajectory.remove(last);
+            let recover = self.trajectory.remove(last);
 
             // This sort-and-traverse was for Plague only because it would be easier to calculate max/min,
             // but now we need to check if any marker overflows to Colony. Move Plague check here as well
@@ -320,10 +339,14 @@ impl Action {
                 if i == m.len() || m[i - 1] != m[i] {
                     if let Some((c, Stuff::Marker(x))) = g.stuff.get(&m[i - 1]) {
                         if *c == g.turn && MAX_MARKER < x + cur {
+                            self.markers = Vec::new();
+                            self.trajectory.push(recover);
                             return Err("Ex0B");
                         }
                     }
                     if g.turn == Camp::Plague && cur != max && cur != min {
+                        self.markers = Vec::new();
+                        self.trajectory.push(recover);
                         return Err("Ex0C");
                     }
                     cur = 1;
@@ -358,6 +381,8 @@ impl Action {
                         m.retain(|&y| y != *c);
                         let after = m.len();
                         if before - after < *x as usize && after != 0 {
+                            self.markers = Vec::new();
+                            self.trajectory.push(recover);
                             return Err("Ex0D");
                         }
                     }

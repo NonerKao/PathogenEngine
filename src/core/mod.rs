@@ -768,6 +768,41 @@ impl Game {
         }
         return false;
     }
+
+    pub fn get_marker_capacity(&self, c: Coord) -> u8 {
+        // is a Colony near within the same quadrant?
+        let mut near_colony = false;
+        let iter = vec![0..(SIZE / 2), (SIZE / 2)..(SIZE)];
+        let q: usize = c.to_quad().try_into().unwrap();
+        'check_quadrant: for xi in iter[q % 2].clone() {
+            for yi in iter[q / 2].clone() {
+                if let Some(&(ci, si)) = self.stuff.get(&Coord::new(xi, yi)) {
+                    if ci != self.turn {
+                        continue;
+                    }
+                    if si == Stuff::Colony {
+                        near_colony = true;
+                        break 'check_quadrant;
+                    }
+                }
+            }
+        }
+
+        let mut max = MAX_MARKER + if near_colony { 0 } else { 1 };
+        if self.stuff.get(&c) == None {
+            return max;
+        }
+        let &(camp, s) = self.stuff.get(&c).unwrap();
+        if camp != self.turn || s == Stuff::Colony {
+            return 0;
+        }
+
+        let Stuff::Marker(m) = s else {
+            panic!("Not possible")
+        };
+        max = max - m;
+        return max;
+    }
 }
 
 #[cfg(test)]
@@ -1288,5 +1323,46 @@ mod tests {
         let _c_ii = Coord::new(0, 0);
         let r = vec![Direction::Left, Direction::Up];
         assert_eq!(g.viable(&r, None), false);
+    }
+
+    #[test]
+    fn test_marker_capacity() {
+        let s0 = "(
+            ;C[Setup0]
+            AW[aa][ab][ad][ae][bb][bc][bf][ca][cd][ce][dc][dd][df][ea][ec][ee][fa][fb][fe][ff]
+            AB[ac][af][ba][bd][be][cb][cc][cf][da][db][de][eb][ed][ef][fc][fd]
+            ;C[Setup1]AB[ab][cd][ef][da]
+            ;C[Setup2]AW[aa]
+            ;C[Setup2]AB[ac]
+            ;C[Setup2]AW[af]
+            ;C[Setup2]AB[ad]
+            ;C[Setup3]AW[ij]
+            ;B[jj][ad][cd][ad][ad][ad][ad]
+            )"
+        .to_string();
+        let mut iter = s0.trim().chars().peekable();
+        let t = TreeNode::new(&mut iter, None);
+        let mut g = Game::init(Some(t));
+        // The condition looks a bit weird.
+        // The MAX_MARKER was defined as the real amount that a
+        // grid can have markers. Not really the capacity. So
+        // to count the one that upgrades the grid to a colony,
+        // an +1 here.
+        assert_eq!(
+            g.get_marker_capacity(Coord::new(/* [cf] */ 2, 5)),
+            MAX_MARKER + 1
+        );
+        g.stuff
+            .insert(Coord::new(2, 4), (Camp::Doctor, Stuff::Colony));
+        assert_eq!(
+            g.get_marker_capacity(Coord::new(/* [cf] */ 2, 5)),
+            MAX_MARKER
+        );
+        g.stuff
+            .insert(Coord::new(0, 5), (Camp::Doctor, Stuff::Marker(3)));
+        assert_eq!(
+            g.get_marker_capacity(Coord::new(/* [af] */ 0, 5)),
+            MAX_MARKER - 3
+        );
     }
 }

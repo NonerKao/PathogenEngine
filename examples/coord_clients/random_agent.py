@@ -9,18 +9,26 @@ class RandomAgent(Agent):
         self.map = self.fixmap
         self.action = -1
         self.count = 0
+
+        self.is_replaying = False
         self.replay = []
         self.tail = 0
         self.head = 0
 
     def analyze(self, data):
-        if ord('E') == data[-4]:
-        # Exclude current self.action from self.map
+        if b'Ex0B' == data[-4:] or b'Ex0C' == data[-4:] or b'Ex0D' == data[-4:]:
+	    # SetMarker finished but not passed the check
+            print(data[-17:-4])
+        elif ord('E') == data[-4]:
+	    # Exclude current self.action from self.map
             if self.head < self.tail:
-                self.action = self.replay
-            if self.action in self.map:
-                self.map.remove(self.action)
+                self.action = self.replay[self.head]
+                self.head = self.head + 1
+                return
+            self.map.remove(self.action)
         elif b'Ix02' == data[-4:]:
+            self.replay = []
+            self.tail = 0
             return
         elif b'Ix01' == data[-4:]:
             self.replay.append(self.action)
