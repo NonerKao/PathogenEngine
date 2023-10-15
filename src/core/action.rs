@@ -328,7 +328,7 @@ impl Action {
             y != hh && y != hu
         });
         for c in t.iter() {
-            let n = g.get_marker_capacity(*c);
+            let n = g.get_marker_capacity(*c, None);
             if n > 0 && !self.marker_slot.contains(&(*c, n)) {
                 self.marker_slot.push((*c, n));
             }
@@ -361,8 +361,25 @@ impl Action {
         // 3. Plague count: the plague count in the trajectory, substracted from
         //    that of the partial action already cured. We should eliminate
         //    them if the quota allows us.
+
+        // 1. Quota
         let mut quota = DOCTOR_MARKER;
-        let compacity_count = self.marker_slot.iter().map(|(_, n)| n).sum::<u8>();
+
+        // 2. Capacity
+        let mut temp_marker_slot = self.marker_slot.clone();
+        temp_marker_slot.retain(|&(mc, n)| mc != c || (mc == c && n > 1));
+        // for get_marker_slot
+        for (c, n) in temp_marker_slot.iter_mut() {
+            *n = g.get_marker_capacity(*c, Some(&self));
+        }
+        temp_marker_slot.retain(|&(_, n)| n != 0);
+        temp_marker_slot.sort_by(|a, b| {
+            b.1.cmp(&a.1)
+                .then(a.0.x.cmp(&b.0.x))
+                .then(a.0.y.cmp(&b.0.y))
+        });
+
+        let compacity_count = temp_marker_slot.iter().map(|(_, n)| n).sum::<u8>();
         if <u8 as Into<i32>>::into(compacity_count) < quota {
             quota = compacity_count.into();
         }
@@ -370,6 +387,7 @@ impl Action {
             // This action is done
             return Ok("Ix02");
         }
+
         let mut plague_count = 0;
         for (c, _) in self.marker_slot.iter() {
             if let Some((Camp::Plague, Stuff::Marker(x))) = g.stuff.get(c) {
@@ -402,11 +420,17 @@ impl Action {
         }
 
         let mut res = Ok("Ix01");
+        // Update action
+        self.markers.push(c);
         if g.turn == Camp::Doctor {
             res = self.add_single_marker_doctor(g, c);
         } else {
             res = self.add_single_marker_plague(g, c);
         };
+
+        if res == Ok("Ix02") {
+            return res;
+        }
 
         let quota = if g.turn == Camp::Doctor {
             DOCTOR_MARKER
@@ -425,8 +449,6 @@ impl Action {
             return Err("Ex09");
         }
 
-        // Update action
-        self.markers.push(c);
         if self.markers.len() > quota.try_into().unwrap() {
             // technically, this is not possible for all servers we have now.
             return Err("Ex0A");
@@ -961,11 +983,11 @@ mod tests {
         let mut g = Game::init(Some(t));
         let _s1 = "(;W[ii][hk][bf][bd][bc][ec][bc][bf][bf][bf][bd])";
         let mut a = Action::new();
-        a.add_map_step(&g, "ii".to_map());
-        a.add_lockdown_by_coord(&g, "hk".to_map());
-        a.add_character(&g, "bf".to_env());
-        a.add_board_single_step(&g, "bd".to_env());
-        a.add_board_single_step(&g, "bc".to_env());
+        let _ = a.add_map_step(&g, "ii".to_map());
+        let _ = a.add_lockdown_by_coord(&g, "hk".to_map());
+        let _ = a.add_character(&g, "bf".to_env());
+        let _ = a.add_board_single_step(&g, "bd".to_env());
+        let _ = a.add_board_single_step(&g, "bc".to_env());
         g.stuff.insert("aa".to_env(), (Camp::Doctor, Stuff::Colony));
         g.stuff
             .insert("bf".to_env(), (Camp::Doctor, Stuff::Marker(5)));
@@ -977,7 +999,7 @@ mod tests {
         assert_eq!(Ok("Ix01"), r6);
         assert_eq!(2, a.marker_slot.len());
         let r7 = a.add_single_marker(&g, "bf".to_env());
-        assert_eq!(Ok("Ix01"), r7);
+        assert_eq!(Ok("Ix02"), r7);
         assert_eq!(g.near_colony("bd".to_env(), None), false);
         assert_eq!(g.near_colony("bd".to_env(), Some(&a)), true);
     }
