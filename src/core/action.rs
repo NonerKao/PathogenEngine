@@ -292,21 +292,17 @@ impl Action {
         // Update action
         self.trajectory.push(to);
         // Finish taking the action steps
-        let mut collision = false;
-        if self.trajectory.len() > self.steps {
-            // Final step: No collision?
-            let op = *g.character.get(&(w, enemy_camp)).unwrap();
-            if op == to {
-                collision = true;
-            }
-            self.transit(g);
+        if self.trajectory.len() <= self.steps {
+            return Ok("Ix01");
         }
-
-        if collision {
+        // Final step: No collision?
+        let op = *g.character.get(&(w, enemy_camp)).unwrap();
+        if op == to {
             let _ = self.trajectory.pop().unwrap();
             return Err("Ex07");
         }
 
+        self.transit(g);
         // Based on the established trajectory, make the list
         // of available grids: excluding opponent's characters,
         // own's colony, and already full due to neighboring
@@ -324,6 +320,7 @@ impl Action {
 
     fn prepare_for_marker(&mut self, g: &Game) {
         let mut t = self.trajectory.clone();
+        let _ = t.pop();
         t.retain(|&y| {
             let op = g.opposite(g.turn);
             let hh = *g.character.get(&(World::Humanity, op)).unwrap();
@@ -923,12 +920,12 @@ mod tests {
     }
 
     #[test]
-    fn test_preparation() {
+    fn test_doctor_marker() {
         let s0 = "(;FF[4]GM[41]SZ[6]GN[https://boardgamegeek.com/boardgame/369862/pathogen];C[Setup0]AW[fa][ef][ed][eb][cf][cc][dc][ca][ad][fe][ab][db][bb][be][fb][ae][ac][df];C[Setup0]AB[af][ba][dd][da][ff][bf][ee][bc][de][ec][cb][aa][ea][bd][ce][fc][cd][fd];C[Setup1]AB[ee];C[Setup1]AB[cf];C[Setup1]AB[fa];C[Setup1]AB[bc];C[Setup2]AW[bf];C[Setup2]AB[ce];C[Setup2]AW[db];C[Setup2]AB[eb];C[Setup3]AW[ih];B[jg][ce][de][dd][ce][ce][de][de])"
         .to_string();
         let mut iter = s0.trim().chars().peekable();
         let t = TreeNode::new(&mut iter, None);
-        let g = Game::init(Some(t));
+        let mut g = Game::init(Some(t));
         let _s1 = "(;W[ii][hk][bf][bd][bc][ec][bc][bf][bf][bf][bd])";
         let mut a = Action::new();
         // check test_fail_to_lockdown
@@ -942,8 +939,46 @@ mod tests {
         assert_eq!(Ok("Ix01"), r4);
         let r5 = a.add_board_single_step(&g, "bc".to_env());
         assert_eq!(Ok("Ix01"), r5);
+        g.stuff.insert("aa".to_env(), (Camp::Doctor, Stuff::Colony));
+        g.stuff.insert("ad".to_env(), (Camp::Doctor, Stuff::Colony));
+        g.stuff
+            .insert("bf".to_env(), (Camp::Doctor, Stuff::Marker(5)));
+        g.stuff
+            .insert("bd".to_env(), (Camp::Doctor, Stuff::Marker(5)));
+        g.stuff
+            .insert("bc".to_env(), (Camp::Doctor, Stuff::Marker(5)));
+        let r6 = a.add_board_single_step(&g, "ec".to_env());
+        assert_eq!(Ok("Ix02"), r6);
+        assert_eq!(0, a.marker_slot.len());
+    }
+
+    #[test]
+    fn test_doctor_marker2() {
+        let s0 = "(;FF[4]GM[41]SZ[6]GN[https://boardgamegeek.com/boardgame/369862/pathogen];C[Setup0]AW[fa][ef][ed][eb][cf][cc][dc][ca][ad][fe][ab][db][bb][be][fb][ae][ac][df];C[Setup0]AB[af][ba][dd][da][ff][bf][ee][bc][de][ec][cb][aa][ea][bd][ce][fc][cd][fd];C[Setup1]AB[ee];C[Setup1]AB[cf];C[Setup1]AB[fa];C[Setup1]AB[bc];C[Setup2]AW[bf];C[Setup2]AB[ce];C[Setup2]AW[db];C[Setup2]AB[eb];C[Setup3]AW[ih];B[jg][ce][de][dd][ce][ce][de][de])"
+        .to_string();
+        let mut iter = s0.trim().chars().peekable();
+        let t = TreeNode::new(&mut iter, None);
+        let mut g = Game::init(Some(t));
+        let _s1 = "(;W[ii][hk][bf][bd][bc][ec][bc][bf][bf][bf][bd])";
+        let mut a = Action::new();
+        a.add_map_step(&g, "ii".to_map());
+        a.add_lockdown_by_coord(&g, "hk".to_map());
+        a.add_character(&g, "bf".to_env());
+        a.add_board_single_step(&g, "bd".to_env());
+        a.add_board_single_step(&g, "bc".to_env());
+        g.stuff.insert("aa".to_env(), (Camp::Doctor, Stuff::Colony));
+        g.stuff
+            .insert("bf".to_env(), (Camp::Doctor, Stuff::Marker(5)));
+        g.stuff
+            .insert("bd".to_env(), (Camp::Doctor, Stuff::Marker(5)));
+        g.stuff
+            .insert("bc".to_env(), (Camp::Doctor, Stuff::Marker(5)));
         let r6 = a.add_board_single_step(&g, "ec".to_env());
         assert_eq!(Ok("Ix01"), r6);
-        println!("{:?}", a.marker_slot);
+        assert_eq!(2, a.marker_slot.len());
+        let r7 = a.add_single_marker(&g, "bf".to_env());
+        assert_eq!(Ok("Ix01"), r7);
+        assert_eq!(g.near_colony("bd".to_env(), None), false);
+        assert_eq!(g.near_colony("bd".to_env(), Some(&a)), true);
     }
 }
