@@ -1000,7 +1000,7 @@ mod tests {
         assert_eq!(2, a.marker_slot.len());
         let r7 = a.add_single_marker(&g, "bf".to_env());
         assert_eq!(Ok("Ix02"), r7);
-        assert_eq!(g.near_colony("bd".to_env(), None), false);
-        assert_eq!(g.near_colony("bd".to_env(), Some(&a)), true);
+        assert_eq!(g.near_but_not_colony("bd".to_env(), None), false);
+        assert_eq!(g.near_but_not_colony("bd".to_env(), Some(&a)), true);
     }
 }

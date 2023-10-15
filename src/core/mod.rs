@@ -753,7 +753,7 @@ impl Game {
         return false;
     }
 
-    fn near_colony(&self, c: Coord, oa: Option<&Action>) -> bool {
+    fn near_but_not_colony(&self, c: Coord, oa: Option<&Action>) -> bool {
         // if a is not None, we are in the middle of SetMarker,
         // do the complicated additions here.
         let iter = vec![0..(SIZE / 2), (SIZE / 2)..(SIZE)];
@@ -778,7 +778,7 @@ impl Game {
                             .sum::<u8>();
                         // Everytime a.markers is updated, it must have already
                         // checked this function. So this should be OK.
-                        if m + added > MAX_MARKER {
+                        if m + added > MAX_MARKER && c != ci {
                             return true;
                         }
                     }
@@ -790,7 +790,7 @@ impl Game {
 
     pub fn get_marker_capacity(&self, c: Coord, oa: Option<&Action>) -> u8 {
         // is a Colony near within the same quadrant?
-        let near_colony = self.near_colony(c, oa);
+        let near_but_not_colony = self.near_but_not_colony(c, oa);
         let mut modifier_from_action = 0;
         if let Some(a) = oa {
             modifier_from_action = a
@@ -800,7 +800,7 @@ impl Game {
                 .sum::<u8>();
         }
 
-        let mut max = MAX_MARKER + if near_colony { 0 } else { 1 };
+        let mut max = MAX_MARKER + if near_but_not_colony { 0 } else { 1 };
         if self.stuff.get(&c) == None {
             return max;
         }
@@ -1387,15 +1387,37 @@ mod tests {
         let mut a = Action::new();
 
         g.stuff.insert("ff".to_env(), (Camp::Plague, Stuff::Colony));
-        assert_eq!(g.near_colony("dd".to_env(), None), true);
-        assert_eq!(g.near_colony("da".to_env(), None), false);
+        assert_eq!(g.near_but_not_colony("dd".to_env(), None), true);
+        assert_eq!(g.near_but_not_colony("da".to_env(), None), false);
         g.stuff
             .insert("af".to_env(), (Camp::Plague, Stuff::Marker(4)));
         a.markers.push("af".to_env());
-        assert_eq!(g.near_colony("ad".to_env(), Some(&a)), false);
+        assert_eq!(g.near_but_not_colony("ad".to_env(), Some(&a)), false);
         assert_eq!(g.is_colony("af".to_env(), Some(&a)), false);
         a.markers.push("af".to_env());
-        assert_eq!(g.near_colony("ad".to_env(), Some(&a)), true);
+        assert_eq!(g.near_but_not_colony("ad".to_env(), Some(&a)), true);
         assert_eq!(g.is_colony("af".to_env(), Some(&a)), true);
+    }
+
+    #[test]
+    fn test_capacity() {
+        let s0 = "(;FF[4]GM[41]SZ[6]GN[https://boardgamegeek.com/boardgame/369862/pathogen];C[Setup0]AW[fa][ef][ed][eb][cf][cc][dc][ca][ad][fe][ab][db][bb][be][fb][ae][ac][df];C[Setup0]AB[af][ba][dd][da][ff][bf][ee][bc][de][ec][cb][aa][ea][bd][ce][fc][cd][fd];C[Setup1]AB[ee];C[Setup1]AB[cf];C[Setup1]AB[fa];C[Setup1]AB[bc];C[Setup2]AW[bf];C[Setup2]AB[ce];C[Setup2]AW[db];C[Setup2]AB[eb];C[Setup3]AW[ih])"
+        .to_string();
+        let mut iter = s0.trim().chars().peekable();
+        let t = TreeNode::new(&mut iter, None);
+        let mut g = Game::init(Some(t));
+        let mut a = Action::new();
+
+        g.stuff
+            .insert("bf".to_env(), (Camp::Plague, Stuff::Marker(3)));
+        g.stuff
+            .insert("af".to_env(), (Camp::Plague, Stuff::Marker(4)));
+        assert_eq!(g.get_marker_capacity("af".to_env(), None), 2);
+        a.markers.push("af".to_env());
+        assert_eq!(g.get_marker_capacity("af".to_env(), Some(&a)), 1);
+        a.markers.push("af".to_env());
+        assert_eq!(g.get_marker_capacity("af".to_env(), Some(&a)), 0);
+        a.markers.push("bf".to_env());
+        assert_eq!(g.get_marker_capacity("bf".to_env(), Some(&a)), 1);
     }
 }
