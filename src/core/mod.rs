@@ -745,14 +745,18 @@ impl Game {
             return max;
         }
         let &(camp, s) = self.stuff.get(&c).unwrap();
-        if camp != self.turn || s == Stuff::Colony {
+        if s == Stuff::Colony {
             return 0;
         }
 
         let Stuff::Marker(m) = s else {
-            panic!("Not possible")
+            panic!("not possible");
         };
-        max = max - m;
+        if camp == self.turn {
+            max = max - m;
+        } else {
+            max = max + m;
+        }
         return max;
     }
 }

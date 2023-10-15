@@ -40,7 +40,7 @@ pub struct Action {
     pub trajectory: Vec<Coord>,
     pub markers: Vec<Coord>,
     pub action_phase: ActionPhase,
-    marker_slot: HashMap<Coord, u8>,
+    pub marker_slot: Vec<(Coord, u8)>,
     pub candidate: Vec<Candidate>,
 }
 
@@ -56,7 +56,7 @@ impl Action {
             trajectory: Vec::new(),
             markers: Vec::new(),
             action_phase: ActionPhase::SetMap,
-            marker_slot: HashMap::new(),
+            marker_slot: Vec::new(),
             candidate: Vec::new(),
         };
     }
@@ -219,6 +219,14 @@ impl Action {
         g: &Game,
         to: Coord,
     ) -> Result<&'static str, &'static str> {
+        let target_index = self.trajectory.len();
+        let mut temp_candidate = self.candidate.clone();
+        temp_candidate.retain(|candidate| candidate.trajectory[target_index] == to);
+        if temp_candidate.len() == 0 {
+            return Err("Ex23");
+        }
+        self.candidate
+            .retain(|candidate| candidate.trajectory[target_index] == to);
         // impossible number as a implicit assertion
         let mut from = Coord::new(-999, -999);
         if let Some(x) = self.trajectory.last() {
@@ -303,6 +311,18 @@ impl Action {
         // of available grids: excluding opponent's characters,
         // own's colony, and already full due to neighboring
         // colony ones.
+        self.prepare_for_marker(g);
+
+        self.character = Some(to);
+        if self.marker_slot.len() == 0 {
+            // Also, after excluding all, we should juist return DONE?
+            return Ok("Ix02");
+        } else {
+            return Ok("Ix01");
+        }
+    }
+
+    fn prepare_for_marker(&mut self, g: &Game) {
         let mut t = self.trajectory.clone();
         t.retain(|&y| {
             let op = g.opposite(g.turn);
@@ -312,15 +332,85 @@ impl Action {
         });
         for c in t.iter() {
             let n = g.get_marker_capacity(*c);
-            self.marker_slot.insert(*c, n);
+            if n > 0 && !self.marker_slot.contains(&(*c, n)) {
+                self.marker_slot.push((*c, n));
+            }
         }
+        self.marker_slot.sort_by(|a, b| {
+            b.1.cmp(&a.1)
+                .then(a.0.x.cmp(&b.0.x))
+                .then(a.0.y.cmp(&b.0.y))
+        });
+    }
 
-        self.character = Some(to);
-        // Also, after excluding all, we should juist return DONE?
+    pub fn add_single_marker_plague(
+        &mut self,
+        g: &Game,
+        c: Coord,
+    ) -> Result<&'static str, &'static str> {
         return Ok("Ix01");
     }
 
-    pub fn add_single_marker(&mut self, g: &Game, t: Coord) -> Result<&'static str, &'static str> {
+    pub fn add_single_marker_doctor(
+        &mut self,
+        g: &Game,
+        c: Coord,
+    ) -> Result<&'static str, &'static str> {
+        // Three key factors will be reviewed for every doctor's move.
+        // 1. Quota: This is a hard one. Static and built-in.
+        // 2. Capacity count: Excluded the stuff'ed grids. In the most extreme case,
+        //    this can be zero. The minimum of 1. and 2. will be the true quota
+        //    of this SetMarker session.
+        // 3. Plague count: the plague count in the trajectory, substracted from
+        //    that of the partial action already cured. We should eliminate
+        //    them if the quota allows us.
+        let mut quota = DOCTOR_MARKER;
+        let compacity_count = self.marker_slot.iter().map(|(_, n)| n).sum::<u8>();
+        if <u8 as Into<i32>>::into(compacity_count) < quota {
+            quota = compacity_count.into();
+        }
+        if quota == 0 {
+            // This action is done
+            return Ok("Ix02");
+        }
+        let mut plague_count = 0;
+        for (c, _) in self.marker_slot.iter() {
+            if let Some((Camp::Plague, Stuff::Marker(x))) = g.stuff.get(c) {
+                let already_cured = self
+                    .markers
+                    .iter()
+                    .map(|&y| if y == *c { 1 } else { 0 })
+                    .sum::<u8>();
+                if already_cured <= *x {
+                    plague_count = plague_count + x - already_cured;
+                }
+            } else {
+                break;
+            }
+        }
+
+        if plague_count > 0 {}
+        return Ok("Ix01");
+    }
+
+    pub fn add_single_marker(&mut self, g: &Game, c: Coord) -> Result<&'static str, &'static str> {
+        let mut is_qualified = false;
+        for m in self.marker_slot.iter() {
+            if m.0 == c {
+                is_qualified = true;
+            }
+        }
+        if !is_qualified {
+            return Err("Ex22");
+        }
+
+        let mut res = Ok("Ix01");
+        if g.turn == Camp::Doctor {
+            res = self.add_single_marker_doctor(g, c);
+        } else {
+            res = self.add_single_marker_plague(g, c);
+        };
+
         let quota = if g.turn == Camp::Doctor {
             DOCTOR_MARKER
         } else {
@@ -329,17 +419,17 @@ impl Action {
 
         let op = g.opposite(g.turn);
         if let Some(oph) = g.character.get(&(self.world.unwrap(), op)) {
-            if *oph == t {
+            if *oph == c {
                 return Err("Ex08");
             }
         }
 
-        if !self.trajectory.contains(&t) {
+        if !self.trajectory.contains(&c) {
             return Err("Ex09");
         }
 
         // Update action
-        self.markers.push(t);
+        self.markers.push(c);
         if self.markers.len() > quota.try_into().unwrap() {
             // technically, this is not possible for all servers we have now.
             return Err("Ex0A");
@@ -728,10 +818,10 @@ mod tests {
         assert_eq!(r2, Ok("Ix01"));
         assert_eq!(a.action_phase, ActionPhase::BoardMove);
         if let Err(e) = a.add_board_single_step(&g, Coord::new(0, 5)) {
-            assert_eq!(e, "Ex03");
+            assert_eq!(e, "Ex23");
         }
         if let Err(e) = a.add_board_single_step(&g, Coord::new(2, 5)) {
-            assert_eq!(e, "Ex03");
+            assert_eq!(e, "Ex23");
         }
         let r4 = a.add_board_single_step(&g, Coord::new(1, 5));
         assert!(r4.is_ok());
@@ -830,5 +920,30 @@ mod tests {
         // Since we have comment the [bd] colony out, this should be
         // fixed accordingly.
         // assert_eq!(Err("Ex21"), r3);
+    }
+
+    #[test]
+    fn test_preparation() {
+        let s0 = "(;FF[4]GM[41]SZ[6]GN[https://boardgamegeek.com/boardgame/369862/pathogen];C[Setup0]AW[fa][ef][ed][eb][cf][cc][dc][ca][ad][fe][ab][db][bb][be][fb][ae][ac][df];C[Setup0]AB[af][ba][dd][da][ff][bf][ee][bc][de][ec][cb][aa][ea][bd][ce][fc][cd][fd];C[Setup1]AB[ee];C[Setup1]AB[cf];C[Setup1]AB[fa];C[Setup1]AB[bc];C[Setup2]AW[bf];C[Setup2]AB[ce];C[Setup2]AW[db];C[Setup2]AB[eb];C[Setup3]AW[ih];B[jg][ce][de][dd][ce][ce][de][de])"
+        .to_string();
+        let mut iter = s0.trim().chars().peekable();
+        let t = TreeNode::new(&mut iter, None);
+        let mut g = Game::init(Some(t));
+        let _s1 = "(;W[ii][hk][bf][bd][bc][ec][bc][bf][bf][bf][bd])";
+        let mut a = Action::new();
+        // check test_fail_to_lockdown
+        let r1 = a.add_map_step(&g, "ii".to_map());
+        assert_eq!(Ok("Ix01"), r1);
+        let r2 = a.add_lockdown_by_coord(&g, "hk".to_map());
+        assert_eq!(Ok("Ix01"), r2);
+        let r3 = a.add_character(&g, "bf".to_env());
+        assert_eq!(Ok("Ix01"), r3);
+        let r4 = a.add_board_single_step(&g, "bd".to_env());
+        assert_eq!(Ok("Ix01"), r4);
+        let r5 = a.add_board_single_step(&g, "bc".to_env());
+        assert_eq!(Ok("Ix01"), r5);
+        let r6 = a.add_board_single_step(&g, "ec".to_env());
+        assert_eq!(Ok("Ix01"), r6);
+        println!("{:?}", a.marker_slot);
     }
 }
