@@ -928,7 +928,7 @@ mod tests {
         .to_string();
         let mut iter = s0.trim().chars().peekable();
         let t = TreeNode::new(&mut iter, None);
-        let mut g = Game::init(Some(t));
+        let g = Game::init(Some(t));
         let _s1 = "(;W[ii][hk][bf][bd][bc][ec][bc][bf][bf][bf][bd])";
         let mut a = Action::new();
         // check test_fail_to_lockdown

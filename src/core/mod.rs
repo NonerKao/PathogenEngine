@@ -721,24 +721,44 @@ impl Game {
         }
     }
 
-    pub fn get_marker_capacity(&self, c: Coord) -> u8 {
-        // is a Colony near within the same quadrant?
-        let mut near_colony = false;
+    fn near_colony(&self, c: Coord, oa: Option<&Action>) -> bool {
+        // if a is not None, we are in the middle of SetMarker,
+        // do the complicated additions here.
         let iter = vec![0..(SIZE / 2), (SIZE / 2)..(SIZE)];
         let q: usize = c.to_quad().try_into().unwrap();
-        'check_quadrant: for xi in iter[q % 2].clone() {
+        for xi in iter[q % 2].clone() {
             for yi in iter[q / 2].clone() {
-                if let Some(&(ci, si)) = self.stuff.get(&Coord::new(xi, yi)) {
-                    if ci != self.turn {
+                let ci = Coord::new(xi, yi);
+                if let Some(&(t, si)) = self.stuff.get(&ci) {
+                    if t != self.turn {
                         continue;
                     }
                     if si == Stuff::Colony {
-                        near_colony = true;
-                        break 'check_quadrant;
+                        return true;
+                    } else if let Some(a) = oa {
+                        let Stuff::Marker(m) = si else {
+                            panic!("Not possible");
+                        };
+                        let added = a
+                            .markers
+                            .iter()
+                            .map(|&ctemp| if ctemp == ci { 1 } else { 0 })
+                            .sum::<u8>();
+                        // Everytime a.markers is updated, it must have already
+                        // checked this function. So this should be OK.
+                        if m + added > MAX_MARKER {
+                            return true;
+                        }
                     }
                 }
             }
         }
+        return false;
+    }
+
+    pub fn get_marker_capacity(&self, c: Coord) -> u8 {
+        // is a Colony near within the same quadrant?
+        let near_colony = self.near_colony(c, None);
 
         let mut max = MAX_MARKER + if near_colony { 0 } else { 1 };
         if self.stuff.get(&c) == None {
@@ -1315,5 +1335,25 @@ mod tests {
         g.character
             .insert((World::Underworld, Camp::Doctor), "dd".to_env());
         assert_eq!(Err("Ex20"), a.add_map_step(&g, "jg".to_env()));
+    }
+
+    #[test]
+    fn test_clolonized() {
+        let s0 = "(;FF[4]GM[41]SZ[6]GN[https://boardgamegeek.com/boardgame/369862/pathogen];C[Setup0]AW[fa][ef][ed][eb][cf][cc][dc][ca][ad][fe][ab][db][bb][be][fb][ae][ac][df];C[Setup0]AB[af][ba][dd][da][ff][bf][ee][bc][de][ec][cb][aa][ea][bd][ce][fc][cd][fd];C[Setup1]AB[ee];C[Setup1]AB[cf];C[Setup1]AB[fa];C[Setup1]AB[bc];C[Setup2]AW[bf];C[Setup2]AB[ce];C[Setup2]AW[db];C[Setup2]AB[eb];C[Setup3]AW[ih])"
+        .to_string();
+        let mut iter = s0.trim().chars().peekable();
+        let t = TreeNode::new(&mut iter, None);
+        let mut g = Game::init(Some(t));
+        let mut a = Action::new();
+
+        g.stuff.insert("ff".to_env(), (Camp::Plague, Stuff::Colony));
+        assert_eq!(g.near_colony("dd".to_env(), None), true);
+        assert_eq!(g.near_colony("da".to_env(), None), false);
+        g.stuff
+            .insert("af".to_env(), (Camp::Plague, Stuff::Marker(4)));
+        a.markers.push("af".to_env());
+        assert_eq!(g.near_colony("ad".to_env(), Some(&a)), false);
+        a.markers.push("af".to_env());
+        assert_eq!(g.near_colony("ad".to_env(), Some(&a)), true);
     }
 }
