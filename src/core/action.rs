@@ -351,7 +351,26 @@ impl Action {
         g: &Game,
         c: Coord,
     ) -> Result<&'static str, &'static str> {
+        let max = (PLAGUE_MARKER as f64 / self.marker_slot.len() as f64).ceil() as u8;
+        let min = (PLAGUE_MARKER as f64 / self.marker_slot.len() as f64).floor() as u8;
         return Ok("Ix01");
+    }
+
+    fn doctor_is_free(&self, g: &Game, c: Coord) -> bool {
+        let mut is_free = false;
+        let cure_count = self
+            .markers
+            .iter()
+            .map(|mc| if *mc == c { 1 } else { 0 })
+            .sum::<u8>();
+        if let Some((Camp::Plague, Stuff::Marker(x))) = g.stuff.get(&c) {
+            if *x - cure_count <= 0 {
+                is_free = true;
+            }
+        } else {
+            is_free = true;
+        }
+        return is_free;
     }
 
     pub fn add_single_marker_doctor(
@@ -359,17 +378,40 @@ impl Action {
         g: &Game,
         c: Coord,
     ) -> Result<&'static str, &'static str> {
+        // Can we freely distribute vaccines now?
+        // With the assumption that the sickness is sorted.
         // We should be safe to do so because marker_slot.len() == 0
         // implies DONE in previous SetMarker.
         match g.stuff.get(&self.marker_slot[0].0) {
-            Some((Camp::Plague, Stuff::Marker(x))) => {
-                if c != self.marker_slot[0].0 {
+            Some((Camp::Plague, Stuff::Marker(_))) => {
+                if c != self.marker_slot[0].0 && !self.doctor_is_free(g, self.marker_slot[0].0) {
                     return Err("Ex24");
                 }
             }
             _ => {}
         }
 
+        self.update_marker_slot(g, c);
+
+        if self.is_done(g, DOCTOR_MARKER) {
+            // This action is done
+            return Ok("Ix02");
+        }
+
+        return Ok("Ix01");
+    }
+
+    fn is_done(&self, g: &Game, q: i32) -> bool {
+        if self.marker_slot.iter().map(|(_, n)| n).sum::<u8>() == 0 {
+            return true;
+        }
+        if self.markers.len() as i32 - q >= 0 {
+            return true;
+        }
+        return false;
+    }
+
+    fn update_marker_slot(&mut self, g: &Game, c: Coord) {
         let mut temp_marker_slot = self.marker_slot.clone();
         temp_marker_slot.retain(|&(mc, n)| mc != c || (mc == c && n > 1));
         // for get_marker_slot
@@ -378,28 +420,12 @@ impl Action {
         }
         temp_marker_slot.retain(|&(_, n)| n != 0);
         temp_marker_slot.sort_by(|a, b| {
-            let mut a_sick = false;
-            let mut b_sick = false;
-            if let Some((Camp::Plague, Stuff::Marker(_))) = g.stuff.get(&a.0) {
-                a_sick = true;
-            }
-            if let Some((Camp::Plague, Stuff::Marker(_))) = g.stuff.get(&b.0) {
-                b_sick = true;
-            }
+            let a_sick = self.doctor_is_free(g, a.0);
+            let b_sick = self.doctor_is_free(g, b.0);
             b_sick.cmp(&a_sick)
         });
 
-        let compacity_count = temp_marker_slot.iter().map(|(_, n)| n).sum::<u8>();
-        let mut quota = DOCTOR_MARKER;
-        if <u8 as Into<i32>>::into(compacity_count) < quota {
-            quota = compacity_count.into();
-        }
-        if quota == 0 {
-            // This action is done
-            return Ok("Ix02");
-        }
-
-        return Ok("Ix01");
+        self.marker_slot = temp_marker_slot;
     }
 
     pub fn add_single_marker(&mut self, g: &Game, c: Coord) -> Result<&'static str, &'static str> {
@@ -417,7 +443,7 @@ impl Action {
         // Update action
         self.markers.push(c);
         if g.turn == Camp::Doctor {
-            res = self.add_single_marker_doctor(g, c);
+            return self.add_single_marker_doctor(g, c);
         } else {
             res = self.add_single_marker_plague(g, c);
         };
@@ -500,7 +526,7 @@ impl Action {
             self.transit(g);
             return Ok("Ix02");
         }
-        return Ok("Ix01");
+        return res;
     }
 
     pub fn to_sgf_string(&self, g: &Game) -> String {
@@ -517,15 +543,21 @@ impl Action {
             v.push(cp.map_to_sgf());
         }
 
-        // trajectory: in reverse order
-        let mut i = self.steps;
-        while i > 0 {
-            v.push(self.trajectory[i - 1].env_to_sgf());
-            i = i - 1;
+        if g.turn == Camp::Doctor {
+            for i in 0..=self.steps {
+                v.push(self.trajectory[i].env_to_sgf());
+            }
+        } else {
+            // trajectory: in reverse order
+            let mut i = self.steps;
+            while i > 0 {
+                v.push(self.trajectory[i - 1].env_to_sgf());
+                i = i - 1;
+            }
+            // character
+            let ch = self.character.unwrap();
+            v.push(ch.env_to_sgf());
         }
-        // character
-        let ch = self.character.unwrap();
-        v.push(ch.env_to_sgf());
 
         // markers
         for c in self.markers.iter() {
@@ -988,6 +1020,11 @@ mod tests {
         let r7 = a.add_single_marker(&g, "bc".to_env());
         assert_eq!(Err("Ex24"), r7);
         let r8 = a.add_single_marker(&g, "bf".to_env());
-        assert_eq!(Err("Ix01"), r8);
+        assert_eq!(Ok("Ix01"), r8);
+        let _ = a.add_single_marker(&g, "bf".to_env());
+        let _ = a.add_single_marker(&g, "bf".to_env());
+        let _ = a.add_single_marker(&g, "bf".to_env());
+        let r9 = a.add_single_marker(&g, "bf".to_env());
+        assert_eq!(Ok("Ix02"), r9);
     }
 }
