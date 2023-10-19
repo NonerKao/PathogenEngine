@@ -533,7 +533,7 @@ mod tests {
         const LEN: usize = 391 + (1 + 391) * 10;
         let mut buf_origin: [u8; LEN] = [0; LEN];
         let buf = &mut buf_origin[..];
-        let s1 = ";W[ii][hh][aa][ab][bb][ab][ab][ab][aa][aa]";
+        let s1 = ";W[ii][hh][aa][ab][bb][ab][aa][ab][aa][ab]";
         buf[391] = 46;
         buf[392 * 2 - 1] = 40;
         buf[392 * 3 - 1] = 0;
@@ -575,7 +575,7 @@ mod tests {
         let buf = &mut buf_origin[..];
         // in real correct SGF file, of course we cannot assign "hi" as the
         // lockdown position, but this is for a demo
-        let s1 = ";W[ii][hi][hh][aa][ab][bb][ab][ab][ab][aa][aa]";
+        let s1 = ";W[ii][hi][hh][aa][ab][bb][ab][aa][ab][aa][ab]";
         buf[391] = 46;
         buf[392 * 2 - 1] = 45;
         buf[392 * 3 - 1] = 40;
@@ -622,7 +622,7 @@ mod tests {
         // character cannot work together. BUT! Even now, there is no
         // way to do the check, so theoretically it should still fail.
         //
-        let s1 = ";W[ii][hh][bf][aa][ab][bb][ab][ab][ab][aa][aa]";
+        let s1 = ";W[ii][hh][bf][aa][ab][bb][ab][aa][ab][aa][ab]";
         buf[391] = 46;
         buf[392 * 2 - 1] = 40;
         buf[392 * 3 - 1] = 31;
@@ -661,7 +661,7 @@ mod tests {
         let mut g = Game::init(Some(t));
 
         const LEN: usize = 391 + (1 + 391) * 11;
-        let s2 = ";W[ii][hh][af][aa][ab][bb][ab][ab][ab][aa][aa]";
+        let s2 = ";W[ii][hh][af][aa][ab][bb][ab][aa][ab][aa][ab]";
         let mut buf_origin2: [u8; LEN] = [0; LEN];
         let buf2 = &mut buf_origin2[..];
         buf2[391] = 46;
@@ -704,7 +704,7 @@ mod tests {
         const LEN: usize = 391 + (1 + 391) * 12;
         let mut buf_origin: [u8; LEN] = [0; LEN];
         let buf = &mut buf_origin[..];
-        let s1 = ";W[ii][hh][aa][dd][ab][ac][bb][ab][ab][ab][aa][aa]";
+        let s1 = ";W[ii][hh][aa][dd][ab][ac][bb][ab][aa][ab][aa][ab]";
         buf[391] = 46;
         buf[392 * 2 - 1] = 40;
         buf[392 * 3 - 1] = 0;
@@ -759,11 +759,11 @@ mod tests {
         buf[392 * 8 - 1] = 0;
         buf[392 * 9 - 1] = 0;
         buf[392 * 10 - 1] = 0;
-        buf[392 * 11 - 1] = 0;
+        buf[392 * 11 - 1] = 6;
         buf[392 * 12 - 1] = 0;
         buf[392 * 13 - 1] = 0;
         buf[392 * 14 - 1] = 0;
-        buf[392 * 15 - 1] = 6;
+        buf[392 * 15 - 1] = 0;
         let mut fake_stream = Cursor::new(buf);
         assert!(handle_client(&mut fake_stream, &mut g) == true);
         let mut buffer = String::new();

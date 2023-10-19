@@ -42,6 +42,7 @@ pub struct Action {
     pub action_phase: ActionPhase,
     pub marker_slot: Vec<(Coord, u8)>,
     pub candidate: Vec<Candidate>,
+    num_plague_candidates: usize,
 }
 
 impl Action {
@@ -58,6 +59,7 @@ impl Action {
             action_phase: ActionPhase::SetMap,
             marker_slot: Vec::new(),
             candidate: Vec::new(),
+            num_plague_candidates: 0,
         };
     }
 
@@ -344,6 +346,11 @@ impl Action {
             }
             b_sick.cmp(&a_sick)
         });
+
+        // Plague's marker completion requires all markers being balanced ditributed.
+        // This is difficult to track in a per-step basis, unless we have some
+        // extra space for storing the states.
+        if g.turn == Camp::Plague {}
     }
 
     pub fn add_single_marker_plague(
@@ -351,8 +358,62 @@ impl Action {
         g: &Game,
         c: Coord,
     ) -> Result<&'static str, &'static str> {
-        let max = (PLAGUE_MARKER as f64 / self.marker_slot.len() as f64).ceil() as u8;
-        let min = (PLAGUE_MARKER as f64 / self.marker_slot.len() as f64).floor() as u8;
+        if self.markers.len() == 1 {
+            self.num_plague_candidates = self.marker_slot.len();
+        }
+        if self.markers.len() <= self.num_plague_candidates {
+            let mut is_balanced = true;
+            for i in 0..self.markers.len() {
+                for j in (i + 1)..self.markers.len() {
+                    if self.markers[i] == self.markers[j] {
+                        is_balanced = false;
+                    }
+                }
+            }
+            if !is_balanced {
+                // When num_plague_candidates was originally 2, this can happen for a (2, 0);
+                // When num_plague_candidates was originally 3, this can happen for a (2, 1, 0) or (2, 0, 0);
+                // When num_plague_candidates was originally 4, this can happen for a (2, 1, 1, 0) or (2, 1, 0, 0) or (2, 0, 0, 0);
+                for ms in self.marker_slot.iter() {
+                    let mut is_marked = false;
+                    for i in 0..self.markers.len() {
+                        if self.markers[i] == ms.0 {
+                            is_marked = true;
+                        }
+                    }
+                    if !is_marked {
+                        return Err("Ex0C");
+                    }
+                }
+            }
+        } else {
+            // When num_plague_candidates was originally 2, check its 3rd and 4th here;
+            // When num_plague_candidates was originally 3, check its 4th here;
+
+            // forget it, just check num_plague_candidates==2 and its 4th
+            // This is so ugly that it will not be possible for any variant regarding
+            // markers to use it.
+
+            if self.num_plague_candidates == 2
+                && self.markers.len() == PLAGUE_MARKER.try_into().unwrap()
+            {
+                let mut count = 1;
+                for i in 1..PLAGUE_MARKER.try_into().unwrap() {
+                    if self.markers[0] == self.markers[i] {
+                        count = count + 1;
+                    }
+                }
+                if count != 2 && self.marker_slot.len() == 2 {
+                    return Err("Ex0C");
+                }
+            }
+        }
+
+        self.update_marker_slot(g, c);
+
+        if self.is_done(g) {
+            return Ok("Ix02");
+        }
         return Ok("Ix01");
     }
 
@@ -362,9 +423,9 @@ impl Action {
             .markers
             .iter()
             .map(|mc| if *mc == c { 1 } else { 0 })
-            .sum::<u8>();
+            .sum::<i32>();
         if let Some((Camp::Plague, Stuff::Marker(x))) = g.stuff.get(&c) {
-            if *x - cure_count <= 0 {
+            if *x as i32 - cure_count <= 0 {
                 is_free = true;
             }
         } else {
@@ -393,15 +454,19 @@ impl Action {
 
         self.update_marker_slot(g, c);
 
-        if self.is_done(g, DOCTOR_MARKER) {
-            // This action is done
+        if self.is_done(g) {
             return Ok("Ix02");
         }
 
         return Ok("Ix01");
     }
 
-    fn is_done(&self, g: &Game, q: i32) -> bool {
+    fn is_done(&self, g: &Game) -> bool {
+        let q = if g.turn == Camp::Doctor {
+            DOCTOR_MARKER
+        } else {
+            PLAGUE_MARKER
+        };
         if self.marker_slot.iter().map(|(_, n)| n).sum::<u8>() == 0 {
             return true;
         }
@@ -430,20 +495,20 @@ impl Action {
 
     pub fn add_single_marker(&mut self, g: &Game, c: Coord) -> Result<&'static str, &'static str> {
         let mut is_qualified = false;
+        let mut res = Err("Ex22");
         for m in self.marker_slot.iter() {
             if m.0 == c {
                 is_qualified = true;
             }
         }
         if !is_qualified {
-            return Err("Ex22");
+            return res;
         }
 
-        let mut res = Ok("Ix01");
         // Update action
         self.markers.push(c);
         if g.turn == Camp::Doctor {
-            return self.add_single_marker_doctor(g, c);
+            res = self.add_single_marker_doctor(g, c);
         } else {
             res = self.add_single_marker_plague(g, c);
         };
@@ -451,80 +516,8 @@ impl Action {
         if res == Ok("Ix02") {
             self.transit(g);
             return res;
-        }
-
-        let quota = if g.turn == Camp::Doctor {
-            DOCTOR_MARKER
-        } else {
-            PLAGUE_MARKER
-        };
-
-        let op = g.opposite(g.turn);
-        if let Some(oph) = g.character.get(&(self.world.unwrap(), op)) {
-            if *oph == c {
-                return Err("Ex08");
-            }
-        }
-
-        if !self.trajectory.contains(&c) {
-            return Err("Ex09");
-        }
-
-        if self.markers.len() > quota.try_into().unwrap() {
-            // technically, this is not possible for all servers we have now.
-            return Err("Ex0A");
-        } else if self.markers.len() == quota.try_into().unwrap() {
-            // when all markers are given ... most checks are here
-            // 1. if there is overflow
-            // 2. (Doctor) if any plagues are ignored
-            // 3. (Plague) if distributed evenly
-            let last = self.trajectory.len() - 1;
-            let recover = self.trajectory.remove(last);
-
-            // This sort-and-traverse was for Plague only because it would be easier to calculate max/min,
-            // but now we need to check if any marker overflows to Colony. Move Plague check here as well
-            self.markers.sort_by(|a, b| {
-                let na = a.x + SIZE * a.y;
-                let nb = b.x + SIZE * b.y;
-                nb.cmp(&na)
-            });
-            let mut cur = 1;
-            let m = &self.markers;
-            let t = &mut self.trajectory;
-
-            // both side shouldn't count the grid occupied by an opponent
-            t.retain(|&y| {
-                let hh = *g.character.get(&(World::Humanity, op)).unwrap();
-                let hu = *g.character.get(&(World::Underworld, op)).unwrap();
-                y != hh && y != hu
-            });
-            let max = (PLAGUE_MARKER as f64 / t.len() as f64).ceil() as u8;
-            let min = (PLAGUE_MARKER as f64 / t.len() as f64).floor() as u8;
-            for i in 1..=m.len() {
-                // check the total markers under two conditions
-                // 1. all markers reside in the same position, or
-                // 2. there are different markers in this move
-                if i == m.len() || m[i - 1] != m[i] {
-                    if let Some((c, Stuff::Marker(x))) = g.stuff.get(&m[i - 1]) {
-                        if *c == g.turn && MAX_MARKER < x + cur {
-                            self.markers = Vec::new();
-                            self.trajectory.push(recover);
-                            return Err("Ex0B");
-                        }
-                    }
-                    if g.turn == Camp::Plague && cur != max && cur != min {
-                        self.markers = Vec::new();
-                        self.trajectory.push(recover);
-                        return Err("Ex0C");
-                    }
-                    cur = 1;
-                } else {
-                    cur += 1;
-                }
-            }
-
-            self.transit(g);
-            return Ok("Ix02");
+        } else if let Err(e) = res {
+            let _ = self.markers.pop();
         }
         return res;
     }
@@ -543,20 +536,9 @@ impl Action {
             v.push(cp.map_to_sgf());
         }
 
-        if g.turn == Camp::Doctor {
-            for i in 0..=self.steps {
-                v.push(self.trajectory[i].env_to_sgf());
-            }
-        } else {
-            // trajectory: in reverse order
-            let mut i = self.steps;
-            while i > 0 {
-                v.push(self.trajectory[i - 1].env_to_sgf());
-                i = i - 1;
-            }
-            // character
-            let ch = self.character.unwrap();
-            v.push(ch.env_to_sgf());
+        for i in 0..=self.steps {
+            // Invariance: The first is the character, followed by its route
+            v.push(self.trajectory[i].env_to_sgf());
         }
 
         // markers
@@ -777,7 +759,7 @@ mod tests {
     #[test]
     fn test_lockdown_and_character() {
         let s0 = "(;FF[4]GM[41]SZ[6]GN[https://boardgamegeek.com/boardgame/369862/pathogen];C[Setup0]AW[fa][ef][ed][eb][cf][cc][dc][ca][ad][fe][ab][db][bb][be][fd][ae][ac][df];C[Setup0]AB[af][ba][dd][da][ff][bf][ee][bc][de][ec][cb][aa][ea][bd][ce][fc][cd][fb];C[Setup1]AB[ee];C[Setup1]AB[cf];C[Setup1]AB[fa];C[Setup1]AB[bc];C[Setup2]AW[bf];C[Setup2]AB[ce];C[Setup2]AW[db];C[Setup2]AB[eb];C[Setup3]AW[ih]
-        ;B[hj][eb][db][dc][df][eb][eb][dc][dc]
+        ;B[hj][eb][db][dc][df][eb][dc][eb][dc]
         )"
         .to_string();
         let mut iter = s0.trim().chars().peekable();
@@ -910,7 +892,7 @@ mod tests {
 
     #[test]
     fn test_fail_to_lockdown() {
-        let s0 = "(;FF[4]GM[41]SZ[6]GN[https://boardgamegeek.com/boardgame/369862/pathogen];C[Setup0]AW[fa][ef][ed][eb][cf][cc][dc][ca][ad][fe][ab][db][bb][be][fb][ae][ac][df];C[Setup0]AB[af][ba][dd][da][ff][bf][ee][bc][de][ec][cb][aa][ea][bd][ce][fc][cd][fd];C[Setup1]AB[ee];C[Setup1]AB[cf];C[Setup1]AB[fa];C[Setup1]AB[bc];C[Setup2]AW[bf];C[Setup2]AB[ce];C[Setup2]AW[db];C[Setup2]AB[eb];C[Setup3]AW[ih];B[jg][ce][de][dd][ce][ce][de][de])"
+        let s0 = "(;FF[4]GM[41]SZ[6]GN[https://boardgamegeek.com/boardgame/369862/pathogen];C[Setup0]AW[fa][ef][ed][eb][cf][cc][dc][ca][ad][fe][ab][db][bb][be][fb][ae][ac][df];C[Setup0]AB[af][ba][dd][da][ff][bf][ee][bc][de][ec][cb][aa][ea][bd][ce][fc][cd][fd];C[Setup1]AB[ee];C[Setup1]AB[cf];C[Setup1]AB[fa];C[Setup1]AB[bc];C[Setup2]AW[bf];C[Setup2]AB[ce];C[Setup2]AW[db];C[Setup2]AB[eb];C[Setup3]AW[ih];B[jg][ce][de][dd][ce][de][ce][de])"
         .to_string();
         let mut iter = s0.trim().chars().peekable();
         let t = TreeNode::new(&mut iter, None);
@@ -937,7 +919,7 @@ mod tests {
 
     #[test]
     fn test_doctor_marker() {
-        let s0 = "(;FF[4]GM[41]SZ[6]GN[https://boardgamegeek.com/boardgame/369862/pathogen];C[Setup0]AW[fa][ef][ed][eb][cf][cc][dc][ca][ad][fe][ab][db][bb][be][fb][ae][ac][df];C[Setup0]AB[af][ba][dd][da][ff][bf][ee][bc][de][ec][cb][aa][ea][bd][ce][fc][cd][fd];C[Setup1]AB[ee];C[Setup1]AB[cf];C[Setup1]AB[fa];C[Setup1]AB[bc];C[Setup2]AW[bf];C[Setup2]AB[ce];C[Setup2]AW[db];C[Setup2]AB[eb];C[Setup3]AW[ih];B[jg][ce][de][dd][ce][ce][de][de])"
+        let s0 = "(;FF[4]GM[41]SZ[6]GN[https://boardgamegeek.com/boardgame/369862/pathogen];C[Setup0]AW[fa][ef][ed][eb][cf][cc][dc][ca][ad][fe][ab][db][bb][be][fb][ae][ac][df];C[Setup0]AB[af][ba][dd][da][ff][bf][ee][bc][de][ec][cb][aa][ea][bd][ce][fc][cd][fd];C[Setup1]AB[ee];C[Setup1]AB[cf];C[Setup1]AB[fa];C[Setup1]AB[bc];C[Setup2]AW[bf];C[Setup2]AB[ce];C[Setup2]AW[db];C[Setup2]AB[eb];C[Setup3]AW[ih];B[jg][ce][de][dd][ce][de][ce][de])"
         .to_string();
         let mut iter = s0.trim().chars().peekable();
         let t = TreeNode::new(&mut iter, None);
@@ -970,7 +952,7 @@ mod tests {
 
     #[test]
     fn test_doctor_marker2() {
-        let s0 = "(;FF[4]GM[41]SZ[6]GN[https://boardgamegeek.com/boardgame/369862/pathogen];C[Setup0]AW[fa][ef][ed][eb][cf][cc][dc][ca][ad][fe][ab][db][bb][be][fb][ae][ac][df];C[Setup0]AB[af][ba][dd][da][ff][bf][ee][bc][de][ec][cb][aa][ea][bd][ce][fc][cd][fd];C[Setup1]AB[ee];C[Setup1]AB[cf];C[Setup1]AB[fa];C[Setup1]AB[bc];C[Setup2]AW[bf];C[Setup2]AB[ce];C[Setup2]AW[db];C[Setup2]AB[eb];C[Setup3]AW[ih];B[jg][ce][de][dd][ce][ce][de][de])"
+        let s0 = "(;FF[4]GM[41]SZ[6]GN[https://boardgamegeek.com/boardgame/369862/pathogen];C[Setup0]AW[fa][ef][ed][eb][cf][cc][dc][ca][ad][fe][ab][db][bb][be][fb][ae][ac][df];C[Setup0]AB[af][ba][dd][da][ff][bf][ee][bc][de][ec][cb][aa][ea][bd][ce][fc][cd][fd];C[Setup1]AB[ee];C[Setup1]AB[cf];C[Setup1]AB[fa];C[Setup1]AB[bc];C[Setup2]AW[bf];C[Setup2]AB[ce];C[Setup2]AW[db];C[Setup2]AB[eb];C[Setup3]AW[ih];B[jg][ce][de][dd][ce][de][ce][de])"
         .to_string();
         let mut iter = s0.trim().chars().peekable();
         let t = TreeNode::new(&mut iter, None);
@@ -1000,7 +982,7 @@ mod tests {
 
     #[test]
     fn test_doctor_marker3() {
-        let s0 = "(;FF[4]GM[41]SZ[6]GN[https://boardgamegeek.com/boardgame/369862/pathogen];C[Setup0]AW[fa][ef][ed][eb][cf][cc][dc][ca][ad][fe][ab][db][bb][be][fb][ae][ac][df];C[Setup0]AB[af][ba][dd][da][ff][bf][ee][bc][de][ec][cb][aa][ea][bd][ce][fc][cd][fd];C[Setup1]AB[ee];C[Setup1]AB[cf];C[Setup1]AB[fa];C[Setup1]AB[bc];C[Setup2]AW[bf];C[Setup2]AB[ce];C[Setup2]AW[db];C[Setup2]AB[eb];C[Setup3]AW[ih];B[jg][ce][de][dd][ce][ce][de][de])"
+        let s0 = "(;FF[4]GM[41]SZ[6]GN[https://boardgamegeek.com/boardgame/369862/pathogen];C[Setup0]AW[fa][ef][ed][eb][cf][cc][dc][ca][ad][fe][ab][db][bb][be][fb][ae][ac][df];C[Setup0]AB[af][ba][dd][da][ff][bf][ee][bc][de][ec][cb][aa][ea][bd][ce][fc][cd][fd];C[Setup1]AB[ee];C[Setup1]AB[cf];C[Setup1]AB[fa];C[Setup1]AB[bc];C[Setup2]AW[bf];C[Setup2]AB[ce];C[Setup2]AW[db];C[Setup2]AB[eb];C[Setup3]AW[ih];B[jg][ce][de][dd][ce][de][ce][de])"
         .to_string();
         let mut iter = s0.trim().chars().peekable();
         let t = TreeNode::new(&mut iter, None);
@@ -1025,6 +1007,33 @@ mod tests {
         let _ = a.add_single_marker(&g, "bf".to_env());
         let _ = a.add_single_marker(&g, "bf".to_env());
         let r9 = a.add_single_marker(&g, "bf".to_env());
+        assert_eq!(Ok("Ix02"), r9);
+    }
+
+    #[test]
+    fn test_plague_marker1() {
+        let s0 = "(;FF[4]GM[41]SZ[6]GN[https://boardgamegeek.com/boardgame/369862/pathogen];C[Setup0]AW[fa][ef][ed][eb][cf][cc][dc][ca][ad][fe][ab][db][bb][be][fb][ae][ac][df];C[Setup0]AB[af][ba][dd][da][ff][bf][ee][bc][de][ec][cb][aa][ea][bd][ce][fc][cd][fd];C[Setup1]AB[ee];C[Setup1]AB[cf];C[Setup1]AB[fa];C[Setup1]AB[bc];C[Setup2]AW[bf];C[Setup2]AB[ce];C[Setup2]AW[db];C[Setup2]AB[eb];C[Setup3]AW[ih];B[jg][ce][de][dd][de][ce][de][ce];W[ii][hk][bf][bd][bc][ec][bc][bf][bf][bf][bd])"
+        .to_string();
+        let mut iter = s0.trim().chars().peekable();
+        let t = TreeNode::new(&mut iter, None);
+        let mut g = Game::init(Some(t));
+        let _s1 = "(;B[hh][dd][cd][cb][dd][cd][dd][cd])";
+        let mut a = Action::new();
+        let _ = a.add_map_step(&g, "hh".to_map());
+        let _ = a.add_character(&g, "dd".to_env());
+        let _ = a.add_board_single_step(&g, "cd".to_env());
+        let _ = a.add_board_single_step(&g, "cb".to_env());
+        let r4 = a.add_single_marker(&g, "dd".to_env());
+        assert_eq!(Ok("Ix01"), r4);
+        let r5 = a.add_single_marker(&g, "dd".to_env());
+        assert_eq!(Err("Ex0C"), r5);
+        let r6 = a.add_single_marker(&g, "cd".to_env());
+        assert_eq!(Ok("Ix01"), r6);
+        let r7 = a.add_single_marker(&g, "dd".to_env());
+        assert_eq!(Ok("Ix01"), r7);
+        let r8 = a.add_single_marker(&g, "dd".to_env());
+        assert_eq!(Err("Ex0C"), r8);
+        let r9 = a.add_single_marker(&g, "cd".to_env());
         assert_eq!(Ok("Ix02"), r9);
     }
 }
