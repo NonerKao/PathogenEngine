@@ -1023,6 +1023,8 @@ mod tests {
         let _ = a.add_character(&g, "dd".to_env());
         let _ = a.add_board_single_step(&g, "cd".to_env());
         let _ = a.add_board_single_step(&g, "cb".to_env());
+        let r3 = a.add_single_marker(&g, "ad".to_env());
+        assert_eq!(Err("Ex22"), r3);
         let r4 = a.add_single_marker(&g, "dd".to_env());
         assert_eq!(Ok("Ix01"), r4);
         let r5 = a.add_single_marker(&g, "dd".to_env());
@@ -1035,5 +1037,121 @@ mod tests {
         assert_eq!(Err("Ex0C"), r8);
         let r9 = a.add_single_marker(&g, "cd".to_env());
         assert_eq!(Ok("Ix02"), r9);
+    }
+
+    #[test]
+    fn test_plague_marker2() {
+        let s0 = "(;FF[4]GM[41]SZ[6]GN[https://boardgamegeek.com/boardgame/369862/pathogen];C[Setup0]AW[fa][ef][ed][eb][cf][cc][dc][ca][ad][fe][ab][db][bb][be][fb][ae][ac][df];C[Setup0]AB[af][ba][dd][da][ff][bf][ee][bc][de][ec][cb][aa][ea][bd][ce][fc][cd][fd];C[Setup1]AB[ee];C[Setup1]AB[cf];C[Setup1]AB[fa];C[Setup1]AB[bc];C[Setup2]AW[bf];C[Setup2]AB[ce];C[Setup2]AW[db];C[Setup2]AB[eb];C[Setup3]AW[ih];B[jg][ce][de][dd][de][ce][de][ce];W[ii][hk][bf][bd][bc][ec][bc][bf][bf][bf][bd])"
+        .to_string();
+        let mut iter = s0.trim().chars().peekable();
+        let t = TreeNode::new(&mut iter, None);
+        let mut g = Game::init(Some(t));
+        let _s1 = "(;B[hh][dd][cd][cb][dd][cd][cd][cd])";
+        let mut a = Action::new();
+        let _ = a.add_map_step(&g, "hh".to_map());
+        let _ = a.add_character(&g, "dd".to_env());
+        let _ = a.add_board_single_step(&g, "cd".to_env());
+        let _ = a.add_board_single_step(&g, "cb".to_env());
+        g.stuff
+            .insert("dd".to_env(), (Camp::Plague, Stuff::Marker(5)));
+        let r3 = a.add_single_marker(&g, "ad".to_env());
+        assert_eq!(Err("Ex22"), r3);
+        let r4 = a.add_single_marker(&g, "dd".to_env());
+        assert_eq!(Ok("Ix01"), r4);
+        let r5 = a.add_single_marker(&g, "dd".to_env());
+        assert_eq!(Err("Ex22"), r5);
+        let r6 = a.add_single_marker(&g, "cd".to_env());
+        assert_eq!(Ok("Ix01"), r6);
+        let r7 = a.add_single_marker(&g, "cd".to_env());
+        assert_eq!(Ok("Ix01"), r7);
+        let r8 = a.add_single_marker(&g, "cd".to_env());
+        assert_eq!(Ok("Ix02"), r8);
+    }
+
+    #[test]
+    fn test_plague_marker3() {
+        let s0 = "(;FF[4]GM[41]SZ[6]GN[https://boardgamegeek.com/boardgame/369862/pathogen];C[Setup0]AW[fa][ef][ed][eb][cf][cc][dc][ca][ad][fe][ab][db][bb][be][fb][ae][ac][df];C[Setup0]AB[af][ba][dd][da][ff][bf][ee][bc][de][ec][cb][aa][ea][bd][ce][fc][cd][fd];C[Setup1]AB[ee];C[Setup1]AB[cf];C[Setup1]AB[fa];C[Setup1]AB[bc];C[Setup2]AW[bf];C[Setup2]AB[ce];C[Setup2]AW[db];C[Setup2]AB[eb];C[Setup3]AW[ih];B[jg][ce][de][dd][de][ce][de][ce];W[jh][db][dc][db][db][db][db][db])"
+        .to_string();
+        let mut iter = s0.trim().chars().peekable();
+        let t = TreeNode::new(&mut iter, None);
+        let mut g = Game::init(Some(t));
+        let _s1 = "(;B[hj][eb][ed][ef][df][cf][ed][eb][ef][df])";
+        let mut a = Action::new();
+        let _ = a.add_map_step(&g, "hj".to_map());
+        let _ = a.add_character(&g, "eb".to_env());
+        let _ = a.add_board_single_step(&g, "ed".to_env());
+        let _ = a.add_board_single_step(&g, "ef".to_env());
+        let _ = a.add_board_single_step(&g, "df".to_env());
+        let _ = a.add_board_single_step(&g, "cf".to_env());
+        let r3 = a.add_single_marker(&g, "ed".to_env());
+        assert_eq!(Ok("Ix01"), r3);
+        let r4 = a.add_single_marker(&g, "eb".to_env());
+        assert_eq!(Ok("Ix01"), r4);
+        let r5 = a.add_single_marker(&g, "ef".to_env());
+        assert_eq!(Ok("Ix01"), r5);
+        let r6 = a.add_single_marker(&g, "df".to_env());
+        assert_eq!(Ok("Ix02"), r6);
+    }
+
+    #[test]
+    fn test_plague_marker4() {
+        let s0 = "(;FF[4]GM[41]SZ[6]GN[https://boardgamegeek.com/boardgame/369862/pathogen];C[Setup0]AW[fa][ef][ed][eb][cf][cc][dc][ca][ad][fe][ab][db][bb][be][fb][ae][ac][df];C[Setup0]AB[af][ba][dd][da][ff][bf][ee][bc][de][ec][cb][aa][ea][bd][ce][fc][cd][fd];C[Setup1]AB[ee];C[Setup1]AB[cf];C[Setup1]AB[fa];C[Setup1]AB[bc];C[Setup2]AW[bf];C[Setup2]AB[ce];C[Setup2]AW[db];C[Setup2]AB[eb];C[Setup3]AW[ih];B[jg][ce][de][dd][de][ce][de][ce];W[jh][db][dc][db][db][db][db][db])"
+        .to_string();
+        let mut iter = s0.trim().chars().peekable();
+        let t = TreeNode::new(&mut iter, None);
+        let mut g = Game::init(Some(t));
+        let _s1 = "(;B[hj][eb][ed][ef][df][cf][ed][eb][eb][db])";
+        let mut a = Action::new();
+        let _ = a.add_map_step(&g, "hj".to_map());
+        let _ = a.add_character(&g, "eb".to_env());
+        let _ = a.add_board_single_step(&g, "ed".to_env());
+        let _ = a.add_board_single_step(&g, "ef".to_env());
+        let _ = a.add_board_single_step(&g, "df".to_env());
+        let _ = a.add_board_single_step(&g, "cf".to_env());
+        g.stuff
+            .insert("ed".to_env(), (Camp::Plague, Stuff::Marker(5)));
+        g.stuff
+            .insert("ef".to_env(), (Camp::Plague, Stuff::Marker(5)));
+        g.stuff
+            .insert("df".to_env(), (Camp::Plague, Stuff::Marker(5)));
+        let r3 = a.add_single_marker(&g, "ed".to_env());
+        assert_eq!(Ok("Ix01"), r3);
+        let r4 = a.add_single_marker(&g, "eb".to_env());
+        assert_eq!(Ok("Ix01"), r4);
+        let r5 = a.add_single_marker(&g, "eb".to_env());
+        assert_eq!(Ok("Ix01"), r5);
+        let r6 = a.add_single_marker(&g, "eb".to_env());
+        assert_eq!(Ok("Ix02"), r6);
+    }
+
+    #[test]
+    fn test_plague_marker5() {
+        let s0 = "(;FF[4]GM[41]SZ[6]GN[https://boardgamegeek.com/boardgame/369862/pathogen];C[Setup0]AW[fa][ef][ed][eb][cf][cc][dc][ca][ad][fe][ab][db][bb][be][fb][ae][ac][df];C[Setup0]AB[af][ba][dd][da][ff][bf][ee][bc][de][ec][cb][aa][ea][bd][ce][fc][cd][fd];C[Setup1]AB[ee];C[Setup1]AB[cf];C[Setup1]AB[fa];C[Setup1]AB[bc];C[Setup2]AW[bf];C[Setup2]AB[ce];C[Setup2]AW[db];C[Setup2]AB[eb];C[Setup3]AW[ih];B[jg][ce][de][dd][de][ce][de][ce];W[jh][db][dc][db][db][db][db][db])"
+        .to_string();
+        let mut iter = s0.trim().chars().peekable();
+        let t = TreeNode::new(&mut iter, None);
+        let mut g = Game::init(Some(t));
+        let _s1 = "(;B[hj][eb][ed][ef][df][cf][ed][eb][ef])";
+        let mut a = Action::new();
+        let _ = a.add_map_step(&g, "hj".to_map());
+        let _ = a.add_character(&g, "eb".to_env());
+        let _ = a.add_board_single_step(&g, "ed".to_env());
+        let _ = a.add_board_single_step(&g, "ef".to_env());
+        let _ = a.add_board_single_step(&g, "df".to_env());
+        let _ = a.add_board_single_step(&g, "cf".to_env());
+        g.stuff
+            .insert("ed".to_env(), (Camp::Plague, Stuff::Marker(5)));
+        g.stuff
+            .insert("ef".to_env(), (Camp::Plague, Stuff::Marker(4)));
+        g.stuff
+            .insert("df".to_env(), (Camp::Plague, Stuff::Marker(5)));
+        g.stuff
+            .insert("eb".to_env(), (Camp::Plague, Stuff::Marker(5)));
+        let r3 = a.add_single_marker(&g, "ed".to_env());
+        assert_eq!(Ok("Ix01"), r3);
+        let r4 = a.add_single_marker(&g, "eb".to_env());
+        assert_eq!(Ok("Ix01"), r4);
+        let r5 = a.add_single_marker(&g, "ef".to_env());
+        assert_eq!(Ok("Ix02"), r5);
     }
 }
