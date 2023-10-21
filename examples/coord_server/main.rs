@@ -6,8 +6,7 @@ use std::net::{TcpListener, TcpStream};
 
 use pathogen_engine::core::action::Action;
 use pathogen_engine::core::action::ActionPhase;
-use pathogen_engine::core::grid_coord::Coord;
-use pathogen_engine::core::grid_coord::MAP_OFFSET;
+use pathogen_engine::core::grid_coord::{Coord, MAP_OFFSET};
 use pathogen_engine::core::tree::TreeNode;
 use pathogen_engine::core::*;
 
@@ -55,11 +54,25 @@ fn encode(g: &Game, a: &Action) -> Array1<u8> {
             }
         }
     }
+    for i in 0..a.markers.len() {
+        e[[
+            a.markers[i].x as usize,
+            a.markers[i].y as usize,
+            8, /*Extra Marker*/
+        ]] += 1;
+    }
     for ((_, camp), c) in g.character.iter() {
         if *camp == Camp::Doctor {
-            e[[c.y as usize, c.x as usize, 2 /*Doctor Hero*/]] = 1;
+            e[[c.x as usize, c.y as usize, 2 /*Doctor Hero*/]] = 1;
         } else {
-            e[[c.y as usize, c.x as usize, 3 /*Plague Hero*/]] = 1;
+            e[[c.x as usize, c.y as usize, 3 /*Plague Hero*/]] = 1;
+        }
+        for i in 1..a.trajectory.len() {
+            e[[
+                a.trajectory[i].x as usize,
+                a.trajectory[i].y as usize,
+                if g.turn == Camp::Doctor { 2 } else { 3 }, /*Doctor Hero*/
+            ]] = 1;
         }
     }
     // 2 for the two sides
@@ -68,23 +81,31 @@ fn encode(g: &Game, a: &Action) -> Array1<u8> {
         |(_, _, _)| 0 as u8,
     );
 
-    for (camp, c) in g.map.iter() {
+    for (camp, mc) in g.map.iter() {
+        let c = if a.action_phase > ActionPhase::SetMap && *camp == g.turn {
+            a.map.unwrap()
+        } else {
+            *mc
+        };
         if *camp == Camp::Doctor {
             m[[
-                (c.y + MAP_OFFSET.y) as usize,
                 (c.x + MAP_OFFSET.x) as usize,
+                (c.y + MAP_OFFSET.y) as usize,
                 0, /* Doctor Marker */
             ]] = 1;
         } else {
+            let c = if a.action_phase > ActionPhase::Lockdown {
+                mc.lockdown(a.lockdown)
+            } else {
+                *mc
+            };
             m[[
-                (c.y + MAP_OFFSET.y) as usize,
                 (c.x + MAP_OFFSET.x) as usize,
+                (c.y + MAP_OFFSET.y) as usize,
                 1, /* Plague Marker */
             ]] = 1;
         }
     }
-
-    // apply the effect of a partial Action to the Game
 
     // wrap it up
     let ret = e
@@ -549,6 +570,110 @@ mod tests {
         let mut buffer = String::new();
         g.history.borrow().to_string(&mut buffer);
         assert_eq!(buffer, s1);
+        let buf_after = fake_stream.get_ref();
+        let env_offset = 324;
+        // SetMap
+        assert_eq!(buf_after[env_offset + 2 * 5 * 2 + 3 * 2] /* "ij" */, 1);
+        // Lockdown
+        let mut base_offset = 392;
+        assert_eq!(
+            buf_after[base_offset + env_offset + 2 * 5 * 2 + 3 * 2], /* "ij" */
+            0
+        );
+        assert_eq!(
+            buf_after[base_offset + env_offset + 2 * 5 * 2 + 2 * 2], /* "ii" */
+            1
+        );
+        assert_eq!(
+            buf_after[base_offset + env_offset + 3 * 5 * 2 + 3 * 2 + 1], /* "jj" */
+            1
+        );
+        // SetCharacter
+        base_offset = base_offset + 392;
+        assert_eq!(
+            buf_after[base_offset + env_offset + 3 * 5 * 2 + 3 * 2 + 1], /* "jj" */
+            0
+        );
+        assert_eq!(
+            buf_after[base_offset + env_offset + 1 * 5 * 2 + 1 * 2 + 1], /* "hh" */
+            1
+        );
+        assert_eq!(
+            buf_after[base_offset + 0 * 6 * 9 + 0 * 9 + 2], /* "aa" */
+            1
+        );
+        // BoardMove
+        base_offset = base_offset + 392;
+        assert_eq!(
+            buf_after[base_offset + env_offset + 1 * 5 * 2 + 1 * 2 + 1], /* "hh" */
+            1
+        );
+        assert_eq!(
+            buf_after[base_offset + 0 * 6 * 9 + 0 * 9 + 2], /* "aa" */
+            1
+        );
+        // BoardMove: first step
+        base_offset = base_offset + 392;
+        assert_eq!(
+            buf_after[base_offset + 0 * 6 * 9 + 0 * 9 + 2], /* "aa" */
+            1
+        );
+        assert_eq!(
+            buf_after[base_offset + 0 * 6 * 9 + 1 * 9 + 2], /* "ab" */
+            1
+        );
+        assert_eq!(
+            buf_after[base_offset + 1 * 6 * 9 + 1 * 9 + 2], /* "bb" */
+            0
+        );
+        // BoardMove: 2nd step
+        base_offset = base_offset + 392;
+        assert_eq!(
+            buf_after[base_offset + 0 * 6 * 9 + 0 * 9 + 2], /* "aa" */
+            1
+        );
+        assert_eq!(
+            buf_after[base_offset + 0 * 6 * 9 + 1 * 9 + 2], /* "ab" */
+            1
+        );
+        assert_eq!(
+            buf_after[base_offset + 1 * 6 * 9 + 1 * 9 + 2], /* "bb" */
+            1
+        );
+        // SetMarker: 1
+        base_offset = base_offset + 392;
+        assert_eq!(
+            buf_after[base_offset + 0 * 6 * 9 + 1 * 9 + 8], /* "ab" */
+            1
+        );
+        assert_eq!(
+            buf_after[base_offset + 0 * 6 * 9 + 0 * 9 + 8], /* "aa" */
+            0
+        );
+        // SetMarker: 2
+        base_offset = base_offset + 392;
+        assert_eq!(
+            buf_after[base_offset + 0 * 6 * 9 + 0 * 9 + 8], /* "aa" */
+            1
+        );
+        // SetMarker: 3
+        base_offset = base_offset + 392;
+        assert_eq!(
+            buf_after[base_offset + 0 * 6 * 9 + 1 * 9 + 8], /* "ab" */
+            2
+        );
+        // SetMarker: 4
+        base_offset = base_offset + 392;
+        assert_eq!(
+            buf_after[base_offset + 0 * 6 * 9 + 0 * 9 + 8], /* "aa" */
+            2
+        );
+        // Done: SetMarker: 4
+        base_offset = base_offset + 392;
+        assert_eq!(
+            buf_after[base_offset + 0 * 6 * 9 + 1 * 9 + 8], /* "ab" */
+            3
+        );
     }
 
     #[test]
