@@ -516,7 +516,7 @@ impl Action {
         if res == Ok("Ix02") {
             self.transit(g);
             return res;
-        } else if let Err(e) = res {
+        } else if let Err(_e) = res {
             let _ = self.markers.pop();
         }
         return res;
@@ -1016,7 +1016,7 @@ mod tests {
         .to_string();
         let mut iter = s0.trim().chars().peekable();
         let t = TreeNode::new(&mut iter, None);
-        let mut g = Game::init(Some(t));
+        let g = Game::init(Some(t));
         let _s1 = "(;B[hh][dd][cd][cb][dd][cd][dd][cd])";
         let mut a = Action::new();
         let _ = a.add_map_step(&g, "hh".to_map());
@@ -1074,7 +1074,7 @@ mod tests {
         .to_string();
         let mut iter = s0.trim().chars().peekable();
         let t = TreeNode::new(&mut iter, None);
-        let mut g = Game::init(Some(t));
+        let g = Game::init(Some(t));
         let _s1 = "(;B[hj][eb][ed][ef][df][cf][ed][eb][ef][df])";
         let mut a = Action::new();
         let _ = a.add_map_step(&g, "hj".to_map());

@@ -721,38 +721,6 @@ impl Game {
         }
     }
 
-    fn is_colony(&self, c: Coord, oa: Option<&Action>) -> bool {
-        match self.stuff.get(&c) {
-            Some((t, Stuff::Colony)) => {
-                if *t != self.turn {
-                    return false;
-                } else {
-                    return true;
-                }
-            }
-            Some((t, Stuff::Marker(m))) => {
-                if *t != self.turn {
-                    return false;
-                } else if let None = oa {
-                    return false;
-                } else if let Some(a) = oa {
-                    let added = a
-                        .markers
-                        .iter()
-                        .map(|&ctemp| if ctemp == c { 1 } else { 0 })
-                        .sum::<u8>();
-                    if m + added > MAX_MARKER {
-                        return true;
-                    }
-                }
-            }
-            None => {
-                return false;
-            }
-        }
-        return false;
-    }
-
     fn near_but_not_colony(&self, c: Coord, oa: Option<&Action>) -> bool {
         // if a is not None, we are in the middle of SetMarker,
         // do the complicated additions here.
@@ -1393,10 +1361,8 @@ mod tests {
             .insert("af".to_env(), (Camp::Plague, Stuff::Marker(4)));
         a.markers.push("af".to_env());
         assert_eq!(g.near_but_not_colony("ad".to_env(), Some(&a)), false);
-        assert_eq!(g.is_colony("af".to_env(), Some(&a)), false);
         a.markers.push("af".to_env());
         assert_eq!(g.near_but_not_colony("ad".to_env(), Some(&a)), true);
-        assert_eq!(g.is_colony("af".to_env(), Some(&a)), true);
     }
 
     #[test]
