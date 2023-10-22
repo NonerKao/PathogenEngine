@@ -82,7 +82,7 @@ fn encode(g: &Game, a: &Action) -> Array1<u8> {
     );
 
     for (camp, mc) in g.map.iter() {
-        let c = if a.action_phase > ActionPhase::SetMap && *camp == g.turn {
+        let c = if a.action_phase > ActionPhase::SetMap && *camp == g.turn && a.map != None {
             a.map.unwrap()
         } else {
             *mc
@@ -123,74 +123,62 @@ fn encode(g: &Game, a: &Action) -> Array1<u8> {
     ret
 }
 
+const MIN_MAP_CODE: u8 = 100;
+const MAX_ENV_CODE: u8 = 36;
+
 trait ActionCoord {
     fn to_coord(&self) -> Coord;
 }
 
 impl ActionCoord for u8 {
     fn to_coord(&self) -> Coord {
-        match *self {
-            // env
-            0 => Coord::new(0, 0),
-            1 => Coord::new(1, 0),
-            2 => Coord::new(2, 0),
-            3 => Coord::new(3, 0),
-            4 => Coord::new(4, 0),
-            5 => Coord::new(5, 0),
-            6 => Coord::new(0, 1),
-            7 => Coord::new(1, 1),
-            8 => Coord::new(2, 1),
-            9 => Coord::new(3, 1),
-            10 => Coord::new(4, 1),
-            11 => Coord::new(5, 1),
-            12 => Coord::new(0, 2),
-            13 => Coord::new(1, 2),
-            14 => Coord::new(2, 2),
-            15 => Coord::new(3, 2),
-            16 => Coord::new(4, 2),
-            17 => Coord::new(5, 2),
-            18 => Coord::new(0, 3),
-            19 => Coord::new(1, 3),
-            20 => Coord::new(2, 3),
-            21 => Coord::new(3, 3),
-            22 => Coord::new(4, 3),
-            23 => Coord::new(5, 3),
-            24 => Coord::new(0, 4),
-            25 => Coord::new(1, 4),
-            26 => Coord::new(2, 4),
-            27 => Coord::new(3, 4),
-            28 => Coord::new(4, 4),
-            29 => Coord::new(5, 4),
-            30 => Coord::new(0, 5),
-            31 => Coord::new(1, 5),
-            32 => Coord::new(2, 5),
-            33 => Coord::new(3, 5),
-            34 => Coord::new(4, 5),
-            35 => Coord::new(5, 5),
-            // map
-            36 => Coord::new(-1, -2),
-            37 => Coord::new(0, -2),
-            38 => Coord::new(1, -2),
-            39 => Coord::new(-2, -1),
-            40 => Coord::new(-1, -1),
-            41 => Coord::new(0, -1),
-            42 => Coord::new(1, -1),
-            43 => Coord::new(2, -1),
-            44 => Coord::new(-2, 0),
-            45 => Coord::new(-1, 0),
-            46 => Coord::new(0, 0),
-            47 => Coord::new(1, 0),
-            48 => Coord::new(2, 0),
-            49 => Coord::new(-2, 1),
-            50 => Coord::new(-1, 1),
-            51 => Coord::new(0, 1),
-            52 => Coord::new(1, 1),
-            53 => Coord::new(2, 1),
-            54 => Coord::new(-1, 2),
-            55 => Coord::new(0, 2),
-            56 => Coord::new(1, 2),
-            // The rest are not supposed to happen
-            _ => Coord::new(-2, -2),
+        if *self >= MIN_MAP_CODE {
+            let cv = *self - MIN_MAP_CODE;
+            let cvx = cv / MAP_SIZE as u8;
+            let cvy = cv % MAP_SIZE as u8;
+            Coord::new(cvx as i32 - 2, cvy as i32 - 2)
+        } else {
+            let cv = *self;
+            let cvx = cv / SIZE as u8;
+            let cvy = cv % SIZE as u8;
+            Coord::new(cvx as i32, cvy as i32)
+        }
+    }
+}
+
+trait EncodeCoord {
+    fn to_map_encode(&self) -> u8;
+    fn to_env_encode(&self) -> u8;
+}
+
+impl EncodeCoord for Coord {
+    fn to_map_encode(&self) -> u8 {
+        let ms: i32 = (MAP_SIZE as i32).try_into().unwrap();
+        let base: i32 = (MIN_MAP_CODE as i32).try_into().unwrap();
+        (base + ((self.x + 2) * ms + (self.y + 2)))
+            .try_into()
+            .unwrap()
+    }
+    fn to_env_encode(&self) -> u8 {
+        ((self.x) * SIZE + (self.y)).try_into().unwrap()
+    }
+}
+
+struct ActionMonitor {
+    action: Action,
+}
+
+impl ActionMonitor {
+    fn new() -> ActionMonitor {
+        let action = Action::new();
+        ActionMonitor { action }
+    }
+}
+
+impl Drop for ActionMonitor {
+    fn drop(&mut self) {
+        if self.action.action_phase != ActionPhase::Done {
+            println!("{:?}", self.action);
         }
     }
 }
@@ -202,6 +190,24 @@ fn handle_client<T: Read + ReaderExtra + Write + WriterExtra>(
     g: &mut Game,
 ) -> bool {
     let mut buffer = [0; 1]; // to read the 1-byte action from agent
+    fn get_action<T>(stream: &mut T, buffer: &mut [u8]) -> bool
+    where
+        T: std::io::Read,
+    {
+        match stream.read(buffer) {
+            Ok(0) => {
+                return false;
+            }
+            Err(x) => {
+                println!("{}", x);
+                return false;
+            }
+            _ => {
+                println!("{:?}", buffer[0]);
+                return true;
+            }
+        }
+    }
 
     let ea = Action::new();
     let ec: [u8; FC_LEN] = [0; FC_LEN];
@@ -216,54 +222,24 @@ fn handle_client<T: Read + ReaderExtra + Write + WriterExtra>(
                 return false;
             }
             Ok(_) => {
-                let mut a = Action::new();
+                let mut am = ActionMonitor::new();
                 let mut fc: [u8; FC_LEN] = [0; FC_LEN];
 
                 // Check tree.rs:to_action() function for the following
                 // big block of state machine. s for status code in the spec.
 
                 // Add the map move first
-                assert_eq!(a.action_phase, ActionPhase::SetMap);
+                assert_eq!(am.action.action_phase, ActionPhase::SetMap);
                 fc[0 /* set map */] = 1;
                 'set_map: loop {
-                    let bytes_read = stream.read(&mut buffer).unwrap();
-                    if bytes_read == 0 {
+                    if !get_action(stream, &mut buffer) {
                         return false;
                     }
-                    let c = (buffer[0] as u8).to_coord();
-                    match a.add_map_step(g, c) {
-                        Err(e) => {
-                            s = e;
-                        }
-                        Ok(o) => {
-                            s = o;
-                        }
-                    }
-                    if stream.update_agent(g, &a, &fc, &s) == false {
-                        return false;
+                    if buffer[0] < MIN_MAP_CODE {
+                        s = "Ex26";
                     } else {
-                        if s.as_bytes()[0] == b'E' {
-                            continue 'set_map;
-                        } else if s == "Ix00" {
-                            /* Skip!? */
-                            next(g, &a);
-                            return true;
-                        }
-                        break;
-                    }
-                }
-
-                // Optional for Doctor: lockdown?
-                if a.action_phase == ActionPhase::Lockdown {
-                    fc[0 /* set map */] = 0;
-                    fc[1 /* lockdown */] = 1;
-                    'lockdown: loop {
-                        let bytes_read = stream.read(&mut buffer).unwrap();
-                        if bytes_read == 0 {
-                            return false;
-                        }
                         let c = (buffer[0] as u8).to_coord();
-                        match a.add_lockdown_by_coord(g, c) {
+                        match am.action.add_map_step(g, c) {
                             Err(e) => {
                                 s = e;
                             }
@@ -271,7 +247,43 @@ fn handle_client<T: Read + ReaderExtra + Write + WriterExtra>(
                                 s = o;
                             }
                         }
-                        if stream.update_agent(g, &a, &fc, &s) == false {
+                    }
+                    if stream.update_agent(g, &am.action, &fc, &s) == false {
+                        return false;
+                    } else {
+                        if s.as_bytes()[0] == b'E' {
+                            continue 'set_map;
+                        } else if s == "Ix00" {
+                            /* Skip!? */
+                            next(g, &am.action);
+                            return true;
+                        }
+                        break;
+                    }
+                }
+
+                // Optional for Doctor: lockdown?
+                if am.action.action_phase == ActionPhase::Lockdown {
+                    fc[0 /* set map */] = 0;
+                    fc[1 /* lockdown */] = 1;
+                    'lockdown: loop {
+                        if !get_action(stream, &mut buffer) {
+                            return false;
+                        }
+                        if buffer[0] < MIN_MAP_CODE {
+                            s = "Ex26";
+                        } else {
+                            let c = (buffer[0] as u8).to_coord();
+                            match am.action.add_lockdown_by_coord(g, c) {
+                                Err(e) => {
+                                    s = e;
+                                }
+                                Ok(o) => {
+                                    s = o;
+                                }
+                            }
+                        }
+                        if stream.update_agent(g, &am.action, &fc, &s) == false {
                             return false;
                         } else {
                             if s.as_bytes()[0] == b'E' {
@@ -283,27 +295,30 @@ fn handle_client<T: Read + ReaderExtra + Write + WriterExtra>(
                 }
 
                 // Set the character
-                assert_eq!(a.action_phase, ActionPhase::SetCharacter);
+                assert_eq!(am.action.action_phase, ActionPhase::SetCharacter);
                 fc[0 /* set map */] = 0;
                 fc[1 /* lockdown */] = 0;
-                for i in 0..=a.steps {
+                for i in 0..=am.action.steps {
                     fc[2 /* set character */ + i] = 1;
                 }
                 'set_character: loop {
-                    let bytes_read = stream.read(&mut buffer).unwrap();
-                    if bytes_read == 0 {
+                    if !get_action(stream, &mut buffer) {
                         return false;
                     }
-                    let c = (buffer[0] as u8).to_coord();
-                    match a.add_character(g, c) {
-                        Err(e) => {
-                            s = e;
-                        }
-                        Ok(o) => {
-                            s = o;
+                    if buffer[0] > MAX_ENV_CODE {
+                        s = "Ex27";
+                    } else {
+                        let c = (buffer[0] as u8).to_coord();
+                        match am.action.add_character(g, c) {
+                            Err(e) => {
+                                s = e;
+                            }
+                            Ok(o) => {
+                                s = o;
+                            }
                         }
                     }
-                    if stream.update_agent(g, &a, &fc, &s) == false {
+                    if stream.update_agent(g, &am.action, &fc, &s) == false {
                         return false;
                     } else {
                         if s.as_bytes()[0] == b'E' {
@@ -314,30 +329,33 @@ fn handle_client<T: Read + ReaderExtra + Write + WriterExtra>(
                 }
 
                 // Move the character on the board
-                assert_eq!(a.action_phase, ActionPhase::BoardMove);
+                assert_eq!(am.action.action_phase, ActionPhase::BoardMove);
                 fc[2 /* set character */] = 0;
-                for i in 0..a.steps {
+                for i in 0..am.action.steps {
                     'board_move: loop {
-                        let bytes_read = stream.read(&mut buffer).unwrap();
-                        if bytes_read == 0 {
+                        if !get_action(stream, &mut buffer) {
                             return false;
                         }
-                        let c = (buffer[0] as u8).to_coord();
-                        match a.add_board_single_step(g, c) {
-                            Err(e) => {
-                                s = e;
-                            }
-                            Ok(o) => {
-                                s = o;
+                        if buffer[0] > MAX_ENV_CODE {
+                            s = "Ex27";
+                        } else {
+                            let c = (buffer[0] as u8).to_coord();
+                            match am.action.add_board_single_step(g, c) {
+                                Err(e) => {
+                                    s = e;
+                                }
+                                Ok(o) => {
+                                    s = o;
+                                }
                             }
                         }
-                        if stream.update_agent(g, &a, &fc, &s) == false {
+                        if stream.update_agent(g, &am.action, &fc, &s) == false {
                             return false;
                         } else {
                             if s.as_bytes()[0] == b'E' {
                                 continue 'board_move;
                             } else if s == "Ix02" {
-                                next(g, &a);
+                                next(g, &am.action);
                                 return true;
                             }
                             break;
@@ -349,7 +367,7 @@ fn handle_client<T: Read + ReaderExtra + Write + WriterExtra>(
                 // Set the markers
                 assert!(fc.iter().all(|&x| x == 0));
                 'set_marker: loop {
-                    assert_eq!(a.action_phase, ActionPhase::SetMarkers);
+                    assert_eq!(am.action.action_phase, ActionPhase::SetMarkers);
                     for i in 0..DOCTOR_MARKER as usize {
                         fc[8 /* set character */ + i] = 1;
                     }
@@ -361,22 +379,25 @@ fn handle_client<T: Read + ReaderExtra + Write + WriterExtra>(
                         if fc[i] == 0 {
                             continue;
                         }
-                        let bytes_read = stream.read(&mut buffer).unwrap();
-                        if bytes_read == 0 {
+                        if !get_action(stream, &mut buffer) {
                             return false;
                         }
-                        let c = (buffer[0] as u8).to_coord();
-                        match a.add_single_marker(g, c) {
-                            Err(e) => {
-                                s = e;
-                            }
-                            Ok(o) => {
-                                s = o;
-                                fc[i] = 0;
-                                i = i + 1;
+                        if buffer[0] > MAX_ENV_CODE {
+                            s = "Ex27";
+                        } else {
+                            let c = (buffer[0] as u8).to_coord();
+                            match am.action.add_single_marker(g, c) {
+                                Err(e) => {
+                                    s = e;
+                                }
+                                Ok(o) => {
+                                    s = o;
+                                    fc[i] = 0;
+                                    i = i + 1;
+                                }
                             }
                         }
-                        if stream.update_agent(g, &a, &fc, &s) == false {
+                        if stream.update_agent(g, &am.action, &fc, &s) == false {
                             return false;
                         } else {
                             if s.as_bytes()[0] == b'E' {
@@ -388,13 +409,13 @@ fn handle_client<T: Read + ReaderExtra + Write + WriterExtra>(
                     }
                 }
                 // commit the action to the game
-                assert_eq!(a.action_phase, ActionPhase::Done);
+                assert_eq!(am.action.action_phase, ActionPhase::Done);
                 //assert!(fc.iter().all(|&x| x == 0));
                 // Holy shit, the order of the following two lines
                 // is tricky. You shouldn't commit it first and then
                 // try to interpret the Action with the new Game
                 // status.
-                next(g, &a);
+                next(g, &am.action);
                 break;
             }
             Err(e) => {
@@ -419,6 +440,7 @@ trait WriterExtra {
 impl WriterExtra for TcpStream {
     fn update_agent(&mut self, g: &Game, a: &Action, fc: &[u8; FC_LEN], s: &'static str) -> bool {
         let encoded = encode(g, &a);
+        println!("{:?}", s);
         let sb = s.as_bytes();
         let enc = encoded.as_slice().unwrap();
 
@@ -477,18 +499,6 @@ fn main() -> Result<(), std::io::Error> {
     let ea = Action::new();
     let ec: [u8; FC_LEN] = [0; FC_LEN];
     while w_live || b_live {
-        if w_live {
-            w_live = handle_client(&mut w, &mut g);
-        } else {
-            b.update_agent(&g, &ea, &ec, &"Ix06");
-            drop(b);
-            break;
-        }
-        if g.end() {
-            w.update_agent(&g, &ea, &ec, &"Ix04");
-            b.update_agent(&g, &ea, &ec, &"Ix05");
-            break;
-        }
         if b_live {
             b_live = handle_client(&mut b, &mut g);
         } else {
@@ -499,6 +509,18 @@ fn main() -> Result<(), std::io::Error> {
         if g.end() {
             b.update_agent(&g, &ea, &ec, &"Ix04");
             w.update_agent(&g, &ea, &ec, &"Ix05");
+            break;
+        }
+        if w_live {
+            w_live = handle_client(&mut w, &mut g);
+        } else {
+            b.update_agent(&g, &ea, &ec, &"Ix06");
+            drop(b);
+            break;
+        }
+        if g.end() {
+            w.update_agent(&g, &ea, &ec, &"Ix04");
+            b.update_agent(&g, &ea, &ec, &"Ix05");
             break;
         }
     }
@@ -585,16 +607,16 @@ mod tests {
         let mut buf_origin: [u8; LEN] = [0; LEN];
         let buf = &mut buf_origin[..];
         let s1 = ";W[ii][hh][aa][ab][bb][ab][aa][ab][aa][ab]";
-        buf[391] = 46;
-        buf[392 * 2 - 1] = 40;
-        buf[392 * 3 - 1] = 0;
-        buf[392 * 4 - 1] = 6;
-        buf[392 * 5 - 1] = 7;
-        buf[392 * 6 - 1] = 6;
-        buf[392 * 7 - 1] = 0;
-        buf[392 * 8 - 1] = 6;
-        buf[392 * 9 - 1] = 0;
-        buf[392 * 10 - 1] = 6;
+        buf[391] = "ii".to_map().to_map_encode();
+        buf[392 * 2 - 1] = "hh".to_map().to_map_encode();
+        buf[392 * 3 - 1] = "aa".to_env().to_env_encode();
+        buf[392 * 4 - 1] = "ab".to_env().to_env_encode();
+        buf[392 * 5 - 1] = "bb".to_env().to_env_encode();
+        buf[392 * 6 - 1] = "ab".to_env().to_env_encode();
+        buf[392 * 7 - 1] = "aa".to_env().to_env_encode();
+        buf[392 * 8 - 1] = "ab".to_env().to_env_encode();
+        buf[392 * 9 - 1] = "aa".to_env().to_env_encode();
+        buf[392 * 10 - 1] = "ab".to_env().to_env_encode();
         let mut fake_stream = Cursor::new(buf);
         assert!(handle_client(&mut fake_stream, &mut g) == true);
         let mut buffer = String::new();
@@ -731,17 +753,17 @@ mod tests {
         // in real correct SGF file, of course we cannot assign "hi" as the
         // lockdown position, but this is for a demo
         let s1 = ";W[ii][hi][hh][aa][ab][bb][ab][aa][ab][aa][ab]";
-        buf[391] = 46;
-        buf[392 * 2 - 1] = 45;
-        buf[392 * 3 - 1] = 40;
-        buf[392 * 4 - 1] = 0;
-        buf[392 * 5 - 1] = 6;
-        buf[392 * 6 - 1] = 7;
-        buf[392 * 7 - 1] = 6;
-        buf[392 * 8 - 1] = 0;
-        buf[392 * 9 - 1] = 6;
-        buf[392 * 10 - 1] = 0;
-        buf[392 * 11 - 1] = 6;
+        buf[391] = "ii".to_map().to_map_encode();
+        buf[392 * 2 - 1] = "hi".to_map().to_map_encode();
+        buf[392 * 3 - 1] = "hh".to_map().to_map_encode();
+        buf[392 * 4 - 1] = "aa".to_env().to_env_encode();
+        buf[392 * 5 - 1] = "ab".to_env().to_env_encode();
+        buf[392 * 6 - 1] = "bb".to_env().to_env_encode();
+        buf[392 * 7 - 1] = "ab".to_env().to_env_encode();
+        buf[392 * 8 - 1] = "aa".to_env().to_env_encode();
+        buf[392 * 9 - 1] = "ab".to_env().to_env_encode();
+        buf[392 * 10 - 1] = "aa".to_env().to_env_encode();
+        buf[392 * 11 - 1] = "ab".to_env().to_env_encode();
         let mut fake_stream = Cursor::new(buf);
         assert!(handle_client(&mut fake_stream, &mut g) == true);
         let mut buffer = String::new();
@@ -778,17 +800,17 @@ mod tests {
         // way to do the check, so theoretically it should still fail.
         //
         let s1 = ";W[ii][hh][bf][aa][ab][bb][ab][aa][ab][aa][ab]";
-        buf[391] = 46;
-        buf[392 * 2 - 1] = 40;
-        buf[392 * 3 - 1] = 31;
-        buf[392 * 4 - 1] = 0;
-        buf[392 * 5 - 1] = 6;
-        buf[392 * 6 - 1] = 7;
-        buf[392 * 7 - 1] = 6;
-        buf[392 * 8 - 1] = 0;
-        buf[392 * 9 - 1] = 6;
-        buf[392 * 10 - 1] = 0;
-        buf[392 * 11 - 1] = 6;
+        buf[391] = "ii".to_map().to_map_encode();
+        buf[392 * 2 - 1] = "hh".to_map().to_map_encode();
+        buf[392 * 3 - 1] = "bf".to_env().to_env_encode();
+        buf[392 * 4 - 1] = "aa".to_env().to_env_encode();
+        buf[392 * 5 - 1] = "ab".to_env().to_env_encode();
+        buf[392 * 6 - 1] = "bb".to_env().to_env_encode();
+        buf[392 * 7 - 1] = "ab".to_env().to_env_encode();
+        buf[392 * 8 - 1] = "aa".to_env().to_env_encode();
+        buf[392 * 9 - 1] = "ab".to_env().to_env_encode();
+        buf[392 * 10 - 1] = "aa".to_env().to_env_encode();
+        buf[392 * 11 - 1] = "ab".to_env().to_env_encode();
         let mut fake_stream = Cursor::new(buf);
         assert!(handle_client(&mut fake_stream, &mut g) == true);
         let mut buffer = String::new();
@@ -819,17 +841,17 @@ mod tests {
         let s2 = ";W[ii][hh][af][aa][ab][bb][ab][aa][ab][aa][ab]";
         let mut buf_origin2: [u8; LEN] = [0; LEN];
         let buf2 = &mut buf_origin2[..];
-        buf2[391] = 46;
-        buf2[392 * 2 - 1] = 40;
-        buf2[392 * 3 - 1] = 30;
-        buf2[392 * 4 - 1] = 0;
-        buf2[392 * 5 - 1] = 6;
-        buf2[392 * 6 - 1] = 7;
-        buf2[392 * 7 - 1] = 6;
-        buf2[392 * 8 - 1] = 0;
-        buf2[392 * 9 - 1] = 6;
-        buf2[392 * 10 - 1] = 0;
-        buf2[392 * 11 - 1] = 6;
+        buf2[391] = "ii".to_map().to_map_encode();
+        buf2[392 * 2 - 1] = "hh".to_map().to_map_encode();
+        buf2[392 * 3 - 1] = "af".to_env().to_env_encode();
+        buf2[392 * 4 - 1] = "aa".to_env().to_env_encode();
+        buf2[392 * 5 - 1] = "ab".to_env().to_env_encode();
+        buf2[392 * 6 - 1] = "bb".to_env().to_env_encode();
+        buf2[392 * 7 - 1] = "ab".to_env().to_env_encode();
+        buf2[392 * 8 - 1] = "aa".to_env().to_env_encode();
+        buf2[392 * 9 - 1] = "ab".to_env().to_env_encode();
+        buf2[392 * 10 - 1] = "aa".to_env().to_env_encode();
+        buf2[392 * 11 - 1] = "ab".to_env().to_env_encode();
         let mut fake_stream = Cursor::new(buf2);
         assert!(handle_client(&mut fake_stream, &mut g) == true);
         let mut buffer = String::new();
@@ -860,18 +882,18 @@ mod tests {
         let mut buf_origin: [u8; LEN] = [0; LEN];
         let buf = &mut buf_origin[..];
         let s1 = ";W[ii][hh][aa][dd][ab][ac][bb][ab][aa][ab][aa][ab]";
-        buf[391] = 46;
-        buf[392 * 2 - 1] = 40;
-        buf[392 * 3 - 1] = 0;
-        buf[392 * 4 - 1] = 21;
-        buf[392 * 5 - 1] = 6;
-        buf[392 * 6 - 1] = 12;
-        buf[392 * 7 - 1] = 7;
-        buf[392 * 8 - 1] = 6;
-        buf[392 * 9 - 1] = 0;
-        buf[392 * 10 - 1] = 6;
-        buf[392 * 11 - 1] = 0;
-        buf[392 * 12 - 1] = 6;
+        buf[391] = "ii".to_map().to_map_encode();
+        buf[392 * 2 - 1] = "hh".to_map().to_map_encode();
+        buf[392 * 3 - 1] = "aa".to_env().to_env_encode();
+        buf[392 * 4 - 1] = "dd".to_env().to_env_encode();
+        buf[392 * 5 - 1] = "ab".to_env().to_env_encode();
+        buf[392 * 6 - 1] = "ac".to_env().to_env_encode();
+        buf[392 * 7 - 1] = "bb".to_env().to_env_encode();
+        buf[392 * 8 - 1] = "ab".to_env().to_env_encode();
+        buf[392 * 9 - 1] = "aa".to_env().to_env_encode();
+        buf[392 * 10 - 1] = "ab".to_env().to_env_encode();
+        buf[392 * 11 - 1] = "aa".to_env().to_env_encode();
+        buf[392 * 12 - 1] = "ab".to_env().to_env_encode();
         let mut fake_stream = Cursor::new(buf);
         assert!(handle_client(&mut fake_stream, &mut g) == true);
         let mut buffer = String::new();
@@ -904,21 +926,21 @@ mod tests {
         // in real correct SGF file, of course we cannot assign "hi" as the
         // lockdown position, but this is for a demo
         let s1 = ";W[ii][hh][aa][ab][bb][aa][aa][aa][aa][aa][ab][aa][aa][aa][aa]";
-        buf[391] = 46;
-        buf[392 * 2 - 1] = 40;
-        buf[392 * 3 - 1] = 0;
-        buf[392 * 4 - 1] = 6;
-        buf[392 * 5 - 1] = 7;
-        buf[392 * 6 - 1] = 0;
-        buf[392 * 7 - 1] = 0;
-        buf[392 * 8 - 1] = 0;
-        buf[392 * 9 - 1] = 0;
-        buf[392 * 10 - 1] = 0;
-        buf[392 * 11 - 1] = 6;
-        buf[392 * 12 - 1] = 0;
-        buf[392 * 13 - 1] = 0;
-        buf[392 * 14 - 1] = 0;
-        buf[392 * 15 - 1] = 0;
+        buf[391] = "ii".to_map().to_map_encode();
+        buf[392 * 2 - 1] = "hh".to_map().to_map_encode();
+        buf[392 * 3 - 1] = "aa".to_env().to_env_encode();
+        buf[392 * 4 - 1] = "ab".to_env().to_env_encode();
+        buf[392 * 5 - 1] = "bb".to_env().to_env_encode();
+        buf[392 * 6 - 1] = "aa".to_env().to_env_encode();
+        buf[392 * 7 - 1] = "aa".to_env().to_env_encode();
+        buf[392 * 8 - 1] = "aa".to_env().to_env_encode();
+        buf[392 * 9 - 1] = "aa".to_env().to_env_encode();
+        buf[392 * 10 - 1] = "aa".to_env().to_env_encode();
+        buf[392 * 11 - 1] = "ab".to_env().to_env_encode();
+        buf[392 * 12 - 1] = "aa".to_env().to_env_encode();
+        buf[392 * 13 - 1] = "aa".to_env().to_env_encode();
+        buf[392 * 14 - 1] = "aa".to_env().to_env_encode();
+        buf[392 * 15 - 1] = "aa".to_env().to_env_encode();
         let mut fake_stream = Cursor::new(buf);
         assert!(handle_client(&mut fake_stream, &mut g) == true);
         let mut buffer = String::new();

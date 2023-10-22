@@ -346,7 +346,7 @@ impl Game {
             t,
             &dir,
             |i| Coord::new(i, 0),
-            |c| c.x == SIZE - 1,
+            |c| c.y == SIZE - 1,
         ) {
             return true;
         }
@@ -356,7 +356,7 @@ impl Game {
             t,
             &dir,
             |i| Coord::new(0, i),
-            |c| c.y == SIZE - 1,
+            |c| c.x == SIZE - 1,
         ) {
             return true;
         }
@@ -1358,7 +1358,7 @@ mod tests {
         g.stuff.insert("fb".to_env(), (Camp::Doctor, Stuff::Colony));
         g.character
             .insert((World::Underworld, Camp::Doctor), "dd".to_env());
-        assert_eq!(Err("Ex20"), a.add_map_step(&g, "jg".to_env()));
+        assert_eq!(Err("Ex20"), a.add_map_step(&g, "jg".to_map()));
     }
 
     #[test]

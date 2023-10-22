@@ -78,6 +78,7 @@ impl Action {
             // XXX: But then, who will do the transition?
             // Also remove the match g.phase block below because it doesn't make
             // sense that the Plague must not skip at the 1st round.
+            self.action_phase = ActionPhase::Done;
             return Ok("Ix00");
         }
         if !c.is_valid() {
@@ -317,6 +318,7 @@ impl Action {
         self.character = Some(to);
         if self.marker_slot.len() == 0 {
             // Also, after excluding all, we should juist return DONE?
+            self.action_phase = ActionPhase::Done;
             return Ok("Ix02");
         } else {
             return Ok("Ix01");
@@ -518,6 +520,7 @@ impl Action {
 
         if res == Ok("Ix02") {
             self.transit(g);
+            self.action_phase = ActionPhase::Done;
             return res;
         } else if let Err(_e) = res {
             let _ = self.markers.pop();

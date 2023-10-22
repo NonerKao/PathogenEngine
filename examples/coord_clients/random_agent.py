@@ -5,28 +5,45 @@ from base import Agent
 class RandomAgent(Agent):
     def __init__(self, f):
         super().__init__(f)
-        self.fixmap = [i for i in range(57)]
+        self.fixmap = list(range(36)) + list(range(100, 121))
         self.map = self.fixmap
         self.action = -1
         self.count = 0
 
     def analyze(self, data):
-        print(data[-4:])
         if ord('E') == data[-4]:
 	    # Exclude current self.action from self.map
             self.map.remove(self.action)
-        elif b'Ix02' == data[-4:] or b'Ix04' == data[-4:] or b'Ix05' == data[-4:]:
+        elif data[-4] in (b'Ix00', b'Ix02', b'Ix04', b'Ix05'):
             # Shouldn't be used after an action commited and before the opponant's next move
             self.action = -1
             return
-        elif data[-4:] == b'Ix03' or data[-4:] == b'Ix01':
+        elif data[-4:] in (b'Ix01', b'Ix03'):
             # every move needs a new map
             self.map = self.fixmap.copy()
-        self.action = random.choice(self.map)
-        if self.count > 10000:
-            panic
+        if len(self.map) != 0:
+            self.action = random.choice(self.map)
         else:
-            self.count = self.count + 1
+            print("This doesn't make any sense. Check it. Resign...")
+            output(data)
+            data[-4:] = b'Ix05'
+
+def output(data):
+    for i in range(6):
+        for j in range(6):
+            print(f"({i}, {j})", end=' ')
+            print(data[i*6*9 + j*9 : i*6*9 + j*9 + 9])
+
+    print()
+
+    # The second loop outputs the 5*5*2 bytes
+    for i in range(5):
+        for j in range(5):
+            print(f"({i-2}, {j-2})", end=' ')
+            print(data[i*5*2 + j*2 : i*5*2 + j*2 + 2])
+
+    print()
+    print(data[374:387])
 
 
 if __name__ == "__main__":
