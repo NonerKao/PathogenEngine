@@ -227,8 +227,9 @@ fn handle_client<T: Read + ReaderExtra + Write + WriterExtra>(
                 fc[0 /* set map */] = 1;
                 'set_map: loop {
                     let bytes_read = stream.read(&mut buffer).unwrap();
-                    assert_eq!(bytes_read, 1);
-                    println!("{:?}", buffer);
+                    if bytes_read == 0 {
+                        return false;
+                    }
                     let c = (buffer[0] as u8).to_coord();
                     match a.add_map_step(g, c) {
                         Err(e) => {
@@ -243,10 +244,9 @@ fn handle_client<T: Read + ReaderExtra + Write + WriterExtra>(
                     } else {
                         if s.as_bytes()[0] == b'E' {
                             continue 'set_map;
-                        } else if s == "Ix00"
-                        /* Skip!? */
-                        {
-                            g.switch();
+                        } else if s == "Ix00" {
+                            /* Skip!? */
+                            next(g, &a);
                             return true;
                         }
                         break;
@@ -259,12 +259,12 @@ fn handle_client<T: Read + ReaderExtra + Write + WriterExtra>(
                     fc[1 /* lockdown */] = 1;
                     'lockdown: loop {
                         let bytes_read = stream.read(&mut buffer).unwrap();
-                        assert_eq!(bytes_read, 1);
-                        println!("{:?}", buffer);
+                        if bytes_read == 0 {
+                            return false;
+                        }
                         let c = (buffer[0] as u8).to_coord();
                         match a.add_lockdown_by_coord(g, c) {
                             Err(e) => {
-                                println!("{}", e);
                                 s = e;
                             }
                             Ok(o) => {
@@ -291,8 +291,9 @@ fn handle_client<T: Read + ReaderExtra + Write + WriterExtra>(
                 }
                 'set_character: loop {
                     let bytes_read = stream.read(&mut buffer).unwrap();
-                    assert_eq!(bytes_read, 1);
-                    println!("sc {:?}", buffer);
+                    if bytes_read == 0 {
+                        return false;
+                    }
                     let c = (buffer[0] as u8).to_coord();
                     match a.add_character(g, c) {
                         Err(e) => {
@@ -318,8 +319,9 @@ fn handle_client<T: Read + ReaderExtra + Write + WriterExtra>(
                 for i in 0..a.steps {
                     'board_move: loop {
                         let bytes_read = stream.read(&mut buffer).unwrap();
-                        assert_eq!(bytes_read, 1);
-                        println!("{:?}", buffer);
+                        if bytes_read == 0 {
+                            return false;
+                        }
                         let c = (buffer[0] as u8).to_coord();
                         match a.add_board_single_step(g, c) {
                             Err(e) => {
@@ -334,6 +336,9 @@ fn handle_client<T: Read + ReaderExtra + Write + WriterExtra>(
                         } else {
                             if s.as_bytes()[0] == b'E' {
                                 continue 'board_move;
+                            } else if s == "Ix02" {
+                                next(g, &a);
+                                return true;
                             }
                             break;
                         }
@@ -357,8 +362,9 @@ fn handle_client<T: Read + ReaderExtra + Write + WriterExtra>(
                             continue;
                         }
                         let bytes_read = stream.read(&mut buffer).unwrap();
-                        assert_eq!(bytes_read, 1);
-                        println!("{:?}", buffer);
+                        if bytes_read == 0 {
+                            return false;
+                        }
                         let c = (buffer[0] as u8).to_coord();
                         match a.add_single_marker(g, c) {
                             Err(e) => {
@@ -383,14 +389,12 @@ fn handle_client<T: Read + ReaderExtra + Write + WriterExtra>(
                 }
                 // commit the action to the game
                 assert_eq!(a.action_phase, ActionPhase::Done);
-                assert!(fc.iter().all(|&x| x == 0));
+                //assert!(fc.iter().all(|&x| x == 0));
                 // Holy shit, the order of the following two lines
                 // is tricky. You shouldn't commit it first and then
                 // try to interpret the Action with the new Game
                 // status.
-                g.append_history_with_new_tree(&a.to_sgf_string(g));
-                g.commit_action(&a);
-                g.next();
+                next(g, &a);
                 break;
             }
             Err(e) => {
@@ -400,6 +404,12 @@ fn handle_client<T: Read + ReaderExtra + Write + WriterExtra>(
         }
     }
     return true;
+}
+
+fn next(g: &mut Game, a: &Action) {
+    g.append_history_with_new_tree(&a.to_sgf_string(g));
+    g.commit_action(&a);
+    g.next();
 }
 
 trait WriterExtra {
@@ -419,7 +429,7 @@ impl WriterExtra for TcpStream {
                 println!("Client disconnected.");
                 return false;
             }
-            _ => {
+            Ok(_) => {
                 return true;
             }
         }
@@ -464,12 +474,32 @@ fn main() -> Result<(), std::io::Error> {
     let mut w_live = true;
     let mut b_live = true;
 
+    let ea = Action::new();
+    let ec: [u8; FC_LEN] = [0; FC_LEN];
     while w_live || b_live {
         if w_live {
             w_live = handle_client(&mut w, &mut g);
+        } else {
+            b.update_agent(&g, &ea, &ec, &"Ix06");
+            drop(b);
+            break;
+        }
+        if g.end() {
+            w.update_agent(&g, &ea, &ec, &"Ix04");
+            b.update_agent(&g, &ea, &ec, &"Ix05");
+            break;
         }
         if b_live {
             b_live = handle_client(&mut b, &mut g);
+        } else {
+            w.update_agent(&g, &ea, &ec, &"Ix06");
+            drop(w);
+            break;
+        }
+        if g.end() {
+            b.update_agent(&g, &ea, &ec, &"Ix04");
+            w.update_agent(&g, &ea, &ec, &"Ix05");
+            break;
         }
     }
 

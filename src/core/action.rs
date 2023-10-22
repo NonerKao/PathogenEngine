@@ -2,7 +2,7 @@ use super::grid_coord::*;
 use super::*;
 use std::collections::HashMap;
 
-#[derive(Debug, PartialEq)]
+#[derive(Debug, PartialEq, PartialOrd)]
 pub enum ActionPhase {
     SetMap,
     Lockdown,
@@ -526,8 +526,16 @@ impl Action {
         let mut v = Vec::<String>::new();
         let m = if g.turn == Camp::Doctor { "(;W" } else { "(;B" };
         // map
-        let temp = self.map.unwrap();
-        v.push(temp.map_to_sgf());
+        match self.map {
+            Some(x) => {
+                v.push(x.map_to_sgf());
+            }
+            None => {
+                let temp = g.map.get(&g.turn).unwrap();
+                let s = String::from(m) + "[" + &temp.map_to_sgf() + "])";
+                return s;
+            }
+        }
 
         // lockdown
         if self.lockdown != Lockdown::Normal {
@@ -1153,5 +1161,42 @@ mod tests {
         assert_eq!(Ok("Ix01"), r4);
         let r5 = a.add_single_marker(&g, "ef".to_env());
         assert_eq!(Ok("Ix02"), r5);
+    }
+
+    #[test]
+    fn test_enum() {
+        assert!(ActionPhase::SetMap < ActionPhase::Lockdown);
+        assert!(ActionPhase::SetMap < ActionPhase::SetCharacter);
+    }
+
+    #[test]
+    #[should_panic(expected = "Ex21")]
+    fn test_coord_server() {
+        let s0 = "(;FF[4]GM[41]SZ[6]GN[https://boardgamegeek.com/boardgame/369862/pathogen]
+        ;C[Setup0]AW[ba][bc][cc][ce][fc][fd][fe][ee]
+        ;C[Setup0]AB[aa][ca][cd][dc][dd][de][ec]
+        ;C[Setup0]AW[ab][ac][ad][ae][af][cb][cf][ea][eb][ed][ef]
+        ;C[Setup0]AB[bb][bd][be][bf][da][db][df][fa][fb][ff]
+        ;C[Setup1]AB[ab];C[Setup1]AB[ed];C[Setup1]AB[cf];C[Setup1]AB[fc]
+        ;C[Setup2]AW[ca]
+        ;C[Setup2]AB[ce]
+        ;C[Setup2]AW[cc]
+        ;C[Setup2]AB[ec]
+        ;C[Setup3]AW[jj]
+        ;B[ki][ce][cc][fc][ce][ce][ce][ce]
+        ;W[ji][cc][bc][cc][cc][cc][cc][cc]
+        ;B[ik][ec][dc][dd][de][ec][dc][dd][dd]
+        ;W[ji]
+        ;B[jh][de][dd][de][de][de][de]
+        ;W[ih][ca][aa][ca][ca][ca][ca][ca]
+        ;B[gj][fc][fd][fe][ee][ce][fc][fd][fe][ee]
+        ;W[ij][bc][cc][fc][bc][bc][bc][bc][cc]
+        ;B[hj][dd][cd][dd][dd][dd][dd]
+        ;W[ii][jj][aa]
+        )"
+        .to_string();
+        let mut iter = s0.trim().chars().peekable();
+        let t = TreeNode::new(&mut iter, None);
+        let _g = Game::init(Some(t));
     }
 }

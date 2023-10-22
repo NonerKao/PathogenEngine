@@ -60,6 +60,7 @@ pub fn str_to_full_msg(s: &'static str) -> &'static str {
         513 => return "Invalid map position: Lockdown now",
         512 => return "Invalid map position: Collide with opponent",
         // Ix01 and beyond: Currently used only in coord_server
+        6 => return "DROP",
         5 => return "LOSE",
         4 => return "WIN",
         3 => return "TURN",

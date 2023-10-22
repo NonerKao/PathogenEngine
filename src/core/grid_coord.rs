@@ -79,11 +79,11 @@ impl Coord {
     pub fn to_direction(&self) -> Direction {
         if *self == Coord::new(1, 0) {
             Direction::Right
-        } else if *self == Coord::new(0, 1) {
+        } else if *self == Coord::new(0, -1) {
             Direction::Up
         } else if *self == Coord::new(-1, 0) {
             Direction::Left
-        } else if *self == Coord::new(0, -1) {
+        } else if *self == Coord::new(0, 1) {
             Direction::Down
         } else {
             panic!("not meant for this usage")
@@ -103,9 +103,9 @@ impl Direction {
     pub fn to_coord(&self) -> Coord {
         match *self {
             Direction::Right => Coord::new(1, 0),
-            Direction::Up => Coord::new(0, 1),
+            Direction::Up => Coord::new(0, -1),
             Direction::Left => Coord::new(-1, 0),
-            Direction::Down => Coord::new(0, -1),
+            Direction::Down => Coord::new(0, 1),
         }
     }
 }

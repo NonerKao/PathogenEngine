@@ -10,34 +10,19 @@ class RandomAgent(Agent):
         self.action = -1
         self.count = 0
 
-        self.is_replaying = False
-        self.replay = []
-        self.tail = 0
-        self.head = 0
-
     def analyze(self, data):
-        if b'Ex0B' == data[-4:] or b'Ex0C' == data[-4:] or b'Ex0D' == data[-4:]:
-	    # SetMarker finished but not passed the check
-            print(data[-17:-4])
-        elif ord('E') == data[-4]:
+        if ord('E') == data[-4]:
 	    # Exclude current self.action from self.map
-            if self.head < self.tail:
-                self.action = self.replay[self.head]
-                self.head = self.head + 1
-                return
             self.map.remove(self.action)
-        elif b'Ix02' == data[-4:]:
-            self.replay = []
-            self.tail = 0
+        elif b'Ix02' == data[-4:] or b'Ix04' == data[-4:] or b'Ix05' == data[-4:]:
+            # Shouldn't be used after an action commited and before the opponant's next move
+            self.action = -1
             return
-        elif b'Ix01' == data[-4:]:
-            self.replay.append(self.action)
-            self.tail = self.tail + 1
-            return
-        else:
+        elif data[-4:] == b'Ix03' or data[-4:] == b'Ix01':
+            # every move needs a new map
             self.map = self.fixmap.copy()
         self.action = random.choice(self.map)
-        if self.count > 100:
+        if self.count > 10000:
             panic
         else:
             self.count = self.count + 1

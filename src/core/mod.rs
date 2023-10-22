@@ -48,7 +48,7 @@ pub enum Phase {
     Main(u32),
 }
 
-trait SGFCoord {
+pub trait SGFCoord {
     fn to_map(&self) -> Coord;
     fn to_env(&self) -> Coord;
 }
@@ -479,7 +479,12 @@ impl Game {
             let c_start = *self.map.get(&Camp::Plague).unwrap();
             self.set_map(Camp::Plague, c_start.lockdown(a.lockdown));
         }
-        self.set_map(self.turn, a.map.unwrap());
+        if a.map != None {
+            self.set_map(self.turn, a.map.unwrap());
+        } else {
+            // been skipped
+            return;
+        }
         self.character
             .insert((a.world.unwrap(), self.turn), a.character.unwrap());
         let m = a.markers.clone();

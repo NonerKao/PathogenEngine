@@ -183,7 +183,14 @@ impl TreeNode {
         let mut vi = 0;
         let c = self.properties[0].value[vi].as_str().to_map();
         vi = vi + 1;
-        a.add_map_step(g, c)?;
+        match a.add_map_step(g, c) {
+            Err(e) => return Err(e),
+            Ok("Ix00") => {
+                return Ok(a);
+            }
+            _ => {}
+        }
+
         if c == Coord::new(0, 0) && g.turn == Camp::Doctor {
             a.add_lockdown_by_coord(g, self.properties[0].value[vi].as_str().to_map())?;
             vi = vi + 1;
