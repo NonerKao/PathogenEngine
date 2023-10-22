@@ -80,6 +80,9 @@ impl Action {
             // sense that the Plague must not skip at the 1st round.
             return Ok("Ix00");
         }
+        if !c.is_valid() {
+            return Err("Ex25");
+        }
         if (g.lockdown() && g.turn == Camp::Plague) || g.turn == Camp::Doctor {
             // Plague cannot outbreak when lockdown
             if c.x < -1 || c.x > 1 || c.y < -1 || c.y > 1 {

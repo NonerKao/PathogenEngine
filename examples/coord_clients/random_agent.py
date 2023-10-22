@@ -11,6 +11,7 @@ class RandomAgent(Agent):
         self.count = 0
 
     def analyze(self, data):
+        print(data[-4:])
         if ord('E') == data[-4]:
 	    # Exclude current self.action from self.map
             self.map.remove(self.action)
@@ -26,9 +27,6 @@ class RandomAgent(Agent):
             panic
         else:
             self.count = self.count + 1
-            print(self.action)
-            print(self.map)
-            print(data[-4:])
 
 
 if __name__ == "__main__":

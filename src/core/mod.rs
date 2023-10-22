@@ -46,6 +46,7 @@ pub enum Phase {
     Setup2, // Put characteres on the board
     Setup3, // Doctor to put the marker on the map
     Main(u32),
+    End,
 }
 
 pub trait SGFCoord {
@@ -278,6 +279,9 @@ impl Game {
             g.append_history_with_new_tree(&us);
             g.phase = Phase::Setup1;
         }
+        if g.end() {
+            g.phase = Phase::End;
+        }
         g
     }
 
@@ -471,10 +475,17 @@ impl Game {
         if let Phase::Main(x) = self.phase {
             self.phase = Phase::Main(x + 1);
         }
+        if self.end() {
+            self.phase = Phase::End;
+        }
         return;
     }
 
     pub fn commit_action(&mut self, a: &Action) {
+        if self.phase == Phase::End {
+            panic!("no effect");
+            return;
+        }
         if a.lockdown != Lockdown::Normal {
             let c_start = *self.map.get(&Camp::Plague).unwrap();
             self.set_map(Camp::Plague, c_start.lockdown(a.lockdown));

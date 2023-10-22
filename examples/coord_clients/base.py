@@ -22,6 +22,7 @@ class Agent(ABC):
         self.analyze(data)
         if data[-4:] == b'Ix03' or data[-4:] == b'Ix01':
             self.s.sendall(bytes([self.action]))
+            print(self.action)
         elif data[-4:] == b'Ix02':
             pass
         elif data[-4:] == b'Ix04':
@@ -36,6 +37,7 @@ class Agent(ABC):
         else:
             #print("Your foul!")
             self.s.sendall(bytes([self.action]))
+            print(self.action)
 
         return True
 

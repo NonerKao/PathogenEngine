@@ -18,6 +18,7 @@ pub fn str_to_full_msg(s: &'static str) -> &'static str {
     }
 
     match index {
+        549 => return "Invalid map position: Out of the possible 21 grids",
         548 => return "Invalid set-marker choice: Doctor should prioritize",
         547 => return "Invalid move choice: No possible route",
         546 => return "Invalid lockdown choice: No possible route",

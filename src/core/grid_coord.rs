@@ -17,6 +17,17 @@ impl Coord {
         Coord { x: x, y: y }
     }
 
+    pub fn is_valid(&self) -> bool {
+        if self.x < -MAP_OFFSET.x
+            || self.x > MAP_OFFSET.x
+            || self.y < -MAP_OFFSET.y
+            || self.y > MAP_OFFSET.y
+        {
+            return false;
+        }
+        return true;
+    }
+
     pub fn env_to_sgf(&self) -> String {
         let mut s = String::new();
         let base: i32 = 'a' as i32;
