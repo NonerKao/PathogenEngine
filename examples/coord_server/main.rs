@@ -489,7 +489,7 @@ fn main() -> Result<(), std::io::Error> {
     let t = TreeNode::new(&mut iter, None);
     let mut g = Game::init(Some(t));
     if !g.is_setup() {
-        panic!("The game is not ready");
+        panic!("The game is either not ready or finished");
     }
 
     let (mut w, mut b) = network_setup()?;

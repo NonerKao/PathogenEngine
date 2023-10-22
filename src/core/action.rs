@@ -544,7 +544,8 @@ impl Action {
         }
 
         // lockdown
-        if self.lockdown != Lockdown::Normal {
+        // Yes, make this sgf attribute even if it is Normal
+        if g.turn == Camp::Doctor && self.map.unwrap() == "ii".to_map() {
             let mut cp = *g.map.get(&Camp::Plague).unwrap();
             cp = cp.lockdown(self.lockdown);
             v.push(cp.map_to_sgf());
