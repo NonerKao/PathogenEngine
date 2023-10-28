@@ -506,7 +506,7 @@ fn main() -> Result<(), std::io::Error> {
             drop(w);
             break;
         }
-        if g.end() {
+        if g.is_ended() {
             b.update_agent(&g, &ea, &ec, &"Ix04");
             w.update_agent(&g, &ea, &ec, &"Ix05");
             break;
@@ -518,7 +518,7 @@ fn main() -> Result<(), std::io::Error> {
             drop(b);
             break;
         }
-        if g.end() {
+        if g.is_ended() {
             w.update_agent(&g, &ea, &ec, &"Ix04");
             b.update_agent(&g, &ea, &ec, &"Ix05");
             break;

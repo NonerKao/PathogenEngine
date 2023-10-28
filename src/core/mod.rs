@@ -230,6 +230,9 @@ impl Game {
                         }
                         g.next();
                     }
+                    Phase::End => {
+                        // do nothing more
+                    }
                     Phase::Setup0 => { //game-info?
                     }
                     _ => {
@@ -279,14 +282,24 @@ impl Game {
             g.append_history_with_new_tree(&us);
             g.phase = Phase::Setup1;
         }
-        if g.end() {
-            g.phase = Phase::End;
-        }
         g
     }
 
-    pub fn end(&self) -> bool {
-        return self.end1() || self.end2();
+    pub fn is_ended(&self) -> bool {
+        if self.phase == Phase::End {
+            return true;
+        }
+        false
+    }
+    fn check_and_set_end(&mut self) -> bool {
+        if self.is_ended() {
+            return true;
+        }
+        if self.end1() || self.end2() {
+            self.phase = Phase::End;
+            return true;
+        }
+        false
     }
 
     fn end1(&self) -> bool {
@@ -475,16 +488,12 @@ impl Game {
         if let Phase::Main(x) = self.phase {
             self.phase = Phase::Main(x + 1);
         }
-        if self.end() {
-            self.phase = Phase::End;
-        }
         return;
     }
 
     pub fn commit_action(&mut self, a: &Action) {
         if self.phase == Phase::End {
-            panic!("no effect");
-            return;
+            panic!("The game is finished. Not expected here.");
         }
         if a.lockdown != Lockdown::Normal {
             let c_start = *self.map.get(&Camp::Plague).unwrap();
@@ -502,6 +511,9 @@ impl Game {
         let t = self.turn;
         for c in m.iter() {
             self.add_marker(c, &t);
+        }
+        if self.check_and_set_end() {
+            return;
         }
     }
 
