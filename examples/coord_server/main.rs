@@ -199,11 +199,17 @@ fn handle_client<T: Read + ReaderExtra + Write + WriterExtra>(
                 return false;
             }
             Err(x) => {
-                println!("{}", x);
+                #[cfg(debug_assertions)]
+                {
+                    println!("{}", x);
+                }
                 return false;
             }
             _ => {
-                println!("{:?}", buffer[0]);
+                #[cfg(debug_assertions)]
+                {
+                    println!("{:?}", buffer[0]);
+                }
                 return true;
             }
         }
@@ -440,7 +446,10 @@ trait WriterExtra {
 impl WriterExtra for TcpStream {
     fn update_agent(&mut self, g: &Game, a: &Action, fc: &[u8; FC_LEN], s: &'static str) -> bool {
         let encoded = encode(g, &a);
-        println!("{:?}", s);
+        #[cfg(debug_assertions)]
+        {
+            println!("{:?}", s);
+        }
         let sb = s.as_bytes();
         let enc = encoded.as_slice().unwrap();
 
@@ -492,35 +501,22 @@ fn main() -> Result<(), std::io::Error> {
         panic!("The game is either not ready or finished");
     }
 
-    let (mut w, mut b) = network_setup()?;
-    let mut w_live = true;
-    let mut b_live = true;
+    let (w, b) = network_setup()?;
+    let mut s: [TcpStream; 2] = [w, b];
 
     let ea = Action::new();
     let ec: [u8; FC_LEN] = [0; FC_LEN];
-    while w_live || b_live {
-        if b_live {
-            b_live = handle_client(&mut b, &mut g);
-        } else {
-            w.update_agent(&g, &ea, &ec, &"Ix06");
-            drop(w);
+    while let Phase::Main(x) = g.phase {
+        let turn: usize = x.try_into().unwrap();
+        if !handle_client(&mut s[turn % 2], &mut g) {
+            s[turn % 2].update_agent(&g, &ea, &ec, &"Ix06");
+            s[1 - turn % 2].update_agent(&g, &ea, &ec, &"Ix06");
+            drop(s);
             break;
         }
         if g.is_ended() {
-            b.update_agent(&g, &ea, &ec, &"Ix04");
-            w.update_agent(&g, &ea, &ec, &"Ix05");
-            break;
-        }
-        if w_live {
-            w_live = handle_client(&mut w, &mut g);
-        } else {
-            b.update_agent(&g, &ea, &ec, &"Ix06");
-            drop(b);
-            break;
-        }
-        if g.is_ended() {
-            w.update_agent(&g, &ea, &ec, &"Ix04");
-            b.update_agent(&g, &ea, &ec, &"Ix05");
+            s[turn % 2].update_agent(&g, &ea, &ec, &"Ix04");
+            s[1 - turn % 2].update_agent(&g, &ea, &ec, &"Ix05");
             break;
         }
     }

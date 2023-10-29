@@ -291,15 +291,40 @@ impl Game {
         }
         false
     }
-    fn check_and_set_end(&mut self) -> bool {
+    fn check_and_set_end(&mut self) {
         if self.is_ended() {
-            return true;
+            return;
+        }
+        #[cfg(debug_assertions)]
+        {
+            println!("{:?} by {:?}", self.phase, self.turn);
+            for i in 0..SIZE {
+                for j in 0..SIZE {
+                    let c = Coord::new(j, i);
+                    let mut ch = "0";
+                    match self.stuff.get(&c) {
+                        Some((Camp::Plague, Stuff::Marker(_))) => {
+                            ch = "p";
+                        }
+                        Some((Camp::Doctor, Stuff::Marker(_))) => {
+                            ch = "d";
+                        }
+                        Some((Camp::Plague, Stuff::Colony)) => {
+                            ch = "P";
+                        }
+                        Some((Camp::Doctor, Stuff::Colony)) => {
+                            ch = "D";
+                        }
+                        _ => {}
+                    }
+                    print!("{}", ch);
+                }
+                println!("");
+            }
         }
         if self.end1() || self.end2() {
             self.phase = Phase::End;
-            return true;
         }
-        false
     }
 
     fn end1(&self) -> bool {
@@ -503,6 +528,7 @@ impl Game {
             self.set_map(self.turn, a.map.unwrap());
         } else {
             // been skipped
+            self.check_and_set_end();
             return;
         }
         self.character
@@ -512,9 +538,7 @@ impl Game {
         for c in m.iter() {
             self.add_marker(c, &t);
         }
-        if self.check_and_set_end() {
-            return;
-        }
+        self.check_and_set_end();
     }
 
     pub fn is_setup0_done(&self) -> bool {

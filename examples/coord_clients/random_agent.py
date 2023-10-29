@@ -5,7 +5,7 @@ from base import Agent
 class RandomAgent(Agent):
     def __init__(self, f):
         super().__init__(f)
-        self.fixmap = list(range(36)) + list(range(100, 121))
+        self.fixmap = list(range(36)) + list(range(100, 125))
         self.map = self.fixmap
         self.action = -1
         self.count = 0
@@ -48,10 +48,15 @@ def output(data):
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description='A Random Agent for Pathogen')
+    parser.add_argument('--seed', type=str, help='Seed for the random number generator')
     parser.add_argument('-s', '--side', choices=['Doctor', 'Plague'], required=True,
                         help='Choose either "Docter" or "Plague"')
-    
+
     args = parser.parse_args()
+    if args.seed is not None:
+        random.seed(args.seed)
+        print("Seed is set to:", args.seed)
+
     d = RandomAgent(args.side)
     while d.play():
         continue
