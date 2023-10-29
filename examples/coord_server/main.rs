@@ -107,6 +107,19 @@ fn encode(g: &Game, a: &Action) -> Array1<u8> {
         }
     }
 
+    let mm = m.clone();
+    let mut count = 0;
+    for i in 0..5 {
+        for j in 0..5 {
+            for k in 0..2 {
+                if mm[[i, j, k]] > 0 {
+                    count += 1;
+                }
+            }
+        }
+    }
+    assert_eq!(2, count);
+
     // wrap it up
     let ret = e
         .into_shape(((SIZE as usize) * (SIZE as usize) * 9,))
@@ -372,15 +385,15 @@ fn handle_client<T: Read + ReaderExtra + Write + WriterExtra>(
 
                 // Set the markers
                 assert!(fc.iter().all(|&x| x == 0));
+                let mut i = 8;
+                for i in 0..DOCTOR_MARKER as usize {
+                    fc[8 /* set marker */ + i] = 1;
+                }
+                if g.turn == Camp::Plague {
+                    fc[12 /* final one: Plague has only 4 markers */] = 0;
+                }
                 'set_marker: loop {
                     assert_eq!(am.action.action_phase, ActionPhase::SetMarkers);
-                    for i in 0..DOCTOR_MARKER as usize {
-                        fc[8 /* set character */ + i] = 1;
-                    }
-                    if g.turn == Camp::Plague {
-                        fc[12 /* final one: Plague has only 4 markers */] = 0;
-                    }
-                    let mut i = 8;
                     while i < FC_LEN {
                         if fc[i] == 0 {
                             continue;
