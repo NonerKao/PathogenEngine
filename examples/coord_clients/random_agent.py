@@ -1,6 +1,6 @@
 import random
-import argparse
 from base import Agent
+from utils import output
 
 class RandomAgent(Agent):
     def __init__(self, f):
@@ -9,6 +9,10 @@ class RandomAgent(Agent):
         self.map = self.fixmap
         self.action = -1
         self.count = 0
+        while self.play():
+            continue
+        if self.record is not None:
+            self.record.close()
 
     def analyze(self, data):
         if ord('E') == data[-4]:
@@ -27,40 +31,5 @@ class RandomAgent(Agent):
             print("This doesn't make any sense. Check it. Resign...")
             output(data)
             data[-4:] = b'Ix05'
-
-def output(data):
-    output_env(data)
-    print()
-    output_map(data[324:374])
-    print()
-    print(data[374:387])
-
-def output_env(data):
-    for i in range(6):
-        for j in range(6):
-            print(f"({i}, {j})", end=' ')
-            print(data[i*6*9 + j*9 : i*6*9 + j*9 + 9])
-
-def output_map(data):
-    # The second loop outputs the 5*5*2 bytes
-    for i in range(5):
-        for j in range(5):
-            print(f"({i-2}, {j-2})", end=' ')
-            print(data[i*5*2 + j*2 : i*5*2 + j*2 + 2])
-
-
-
-if __name__ == "__main__":
-    parser = argparse.ArgumentParser(description='A Random Agent for Pathogen')
-    parser.add_argument('--seed', type=str, help='Seed for the random number generator')
-    parser.add_argument('-s', '--side', choices=['Doctor', 'Plague'], required=True,
-                        help='Choose either "Docter" or "Plague"')
-
-    args = parser.parse_args()
-    if args.seed is not None:
-        random.seed(args.seed)
-        print("Seed is set to:", args.seed)
-
-    d = RandomAgent(args.side)
-    while d.play():
-        continue
+        if self.record is not None:
+            self.record.write(self.action.to_bytes(1, 'little'))
