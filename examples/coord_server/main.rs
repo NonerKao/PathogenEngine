@@ -229,7 +229,8 @@ fn handle_client<T: Read + ReaderExtra + Write + WriterExtra>(
     }
 
     let ea = Action::new();
-    let ec: [u8; FC_LEN] = [0; FC_LEN];
+    let mut ec: [u8; FC_LEN] = [0; FC_LEN];
+    ec[0 /* set map */] = 1;
     let mut s = "Ix03";
     if stream.update_agent(g, &ea, &ec, &s) == false {
         return false;
@@ -411,8 +412,6 @@ fn handle_client<T: Read + ReaderExtra + Write + WriterExtra>(
                                 }
                                 Ok(o) => {
                                     s = o;
-                                    fc[i] = 0;
-                                    i = i + 1;
                                 }
                             }
                         }
@@ -424,8 +423,11 @@ fn handle_client<T: Read + ReaderExtra + Write + WriterExtra>(
                             } else if s == "Ix02" {
                                 break 'set_marker;
                             }
+                            break;
                         }
                     }
+                    fc[i] = 0;
+                    i = i + 1;
                 }
                 // commit the action to the game
                 assert_eq!(am.action.action_phase, ActionPhase::Done);
