@@ -468,7 +468,7 @@ impl WriterExtra for TcpStream {
         let sb = s.as_bytes();
         let enc = encoded.as_slice().unwrap();
 
-        let response = [&enc[..], &fc[..], &sb].concat();
+        let response = [&sb, &enc[..], &fc[..]].concat();
         assert!(response.len() == 391);
         match self.write(&response) {
             Err(_) => {

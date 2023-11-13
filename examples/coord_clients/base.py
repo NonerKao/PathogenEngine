@@ -15,7 +15,7 @@ class Agent(ABC):
         self.s.setblocking(1)
         self.s.settimeout(None)
         if a.record is not None:
-            # regex pattern is like ((391, 1)\+ 391)*
+            # regex pattern is like 4, (387, 1, 4)\+, for now
             self.record = open(a.record, 'wb')
         else:
             self.record = None
@@ -26,33 +26,38 @@ class Agent(ABC):
         if self.record is not None:
             self.record.write(data)
         if self.verbose:
-            print(data[-4:])
-        # if b'' == data:
-        #    return True
-        if data[-4:] in (b'Ix01', b'Ix03'):
-            self.analyze(data)
+            print(data[0:4])
+        # There are three groups of status code:
+        #    1. Errors
+        #    2. Starters
+        #    3. Closers
+        # they all returns usable self.action
+        self.analyze(data)
+        if self.record is not None:
+            self.record.write(self.action.to_bytes(1, 'little'))
+        if data[0:4] in (b'Ix01', b'Ix03'):
             self.s.sendall(bytes([self.action]))
             if self.verbose:
                 print(self.action)
-        elif data[-4:] in (b'Ix00', b'Ix02'):
-            pass
-        elif data[-4:] == b'Ix04':
+        elif data[0] != ord('I'):
+            self.s.sendall(bytes([self.action]))
             if self.verbose:
-                print("win!")
-            return False;
-        elif data[-4:] == b'Ix05':
-            if self.verbose:
-                print("lose!")
-            return False;
-        elif data[-4:] == b'Ix06':
-            if self.verbose:
-                print("disconnected")
-            return False;
+                print(self.action)
         else:
-            self.analyze(data)
-            self.s.sendall(bytes([self.action]))
-            if self.verbose:
-                print(self.action)
+            if data[0:4] in (b'Ix00', b'Ix02'):
+                pass
+            elif data[0:4] == b'Ix04':
+                if self.verbose:
+                    print("win!")
+                return False;
+            elif data[0:4] == b'Ix05':
+                if self.verbose:
+                    print("lose!")
+                return False;
+            elif data[0:4] == b'Ix06':
+                if self.verbose:
+                    print("disconnected")
+                return False;
 
         return True
 
