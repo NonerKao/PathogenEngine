@@ -9,7 +9,7 @@ if [ ! -d $DIR ]; then
 	mkdir $DIR
 fi
 
-ITER=2
+ITER=1000
 for i in $(seq 1 $ITER); 
 do 
 	seed=$(date +%N)
