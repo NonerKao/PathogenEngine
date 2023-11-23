@@ -147,7 +147,7 @@ if __name__ == "__main__":
                         loss = loss_func(outputs, labels)
                         print(loss)
                         model.train()
-        sys.exit(0)
+        os.sys.exit(0)
     if args.validate:
         model.eval()
         torch.no_grad()
