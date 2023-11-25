@@ -1,4 +1,6 @@
 
+This is a preliminary experiment: with supervised learning, tell if a sub-move is legal or not. The distribution of the dataset is from normal playthrough by two random agents.
+
 ## Generate Dataset
 
 ```

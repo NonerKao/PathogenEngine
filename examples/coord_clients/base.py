@@ -1,5 +1,6 @@
 import socket
 from abc import ABC, abstractmethod
+from constant import *
 
 class Agent(ABC):
     def __init__(self, a):
@@ -15,14 +16,14 @@ class Agent(ABC):
         self.s.setblocking(1)
         self.s.settimeout(None)
         if a.record is not None:
-            # regex pattern is like 4, (387, 1, 4)\+, for now
+            # regex pattern is like 4, (389, 1, 4)\+, for now
             self.record = open(a.record, 'wb')
         else:
             self.record = None
         self.verbose = a.verbose
 
     def play(self):
-        data = self.s.recv(391)
+        data = self.s.recv(CODE_DATA+BOARD_DATA+MAP_DATA+FLOW_DATA+TURN_DATA)
         if self.record is not None:
             self.record.write(data)
         if self.verbose:

@@ -1,9 +1,11 @@
+from constant import *
+
 def output(data):
-    output_env(data)
+    print(data[0:CODE_DATA])
     print()
-    output_map(data[324:374])
+    output_env(data[CODE_DATA:CODE_DATA+BOARD_DATA])
     print()
-    print(data[374:387])
+    output_map(data[CODE_DATA+BOARD_DATA:CODE_DATA+BOARD_DATA+MAP_DATA])
 
 def output_env(data):
     for i in range(6):

@@ -12,6 +12,15 @@ use pathogen_engine::core::*;
 
 const MAX_STEPS: usize = 5;
 
+const BOARD_DATA: usize = 324 /*6x6x9*/;
+const MAP_DATA: usize = 50 /*5x5x2*/;
+const FLOW_DATA: usize = 13;
+const TURN_DATA: usize = 2;
+
+const CODE_DATA: usize = 4;
+
+const DATA_UNIT: usize = BOARD_DATA + MAP_DATA + FLOW_DATA + TURN_DATA + CODE_DATA;
+
 #[derive(Parser, Debug)]
 #[command(author, version, about, long_about = None)]
 struct Args {
@@ -467,9 +476,13 @@ impl WriterExtra for TcpStream {
         }
         let sb = s.as_bytes();
         let enc = encoded.as_slice().unwrap();
+        let turn: [u8; TURN_DATA] = [
+            if g.turn == Camp::Doctor { 1 } else { 0 },
+            if g.turn == Camp::Plague { 1 } else { 0 },
+        ];
 
-        let response = [&sb, &enc[..], &fc[..]].concat();
-        assert!(response.len() == 391);
+        let response = [&sb, &enc[..], &fc[..], &turn].concat();
+        assert!(response.len() == DATA_UNIT);
         match self.write(&response) {
             Err(_) => {
                 println!("Client disconnected.");
@@ -576,9 +589,13 @@ impl WriterExtra for std::io::Cursor<&mut [u8]> {
         let encoded = encode(g, &a);
         let sb = s.as_bytes();
         let enc = encoded.as_slice().unwrap();
+        let turn: [u8; TURN_DATA] = [
+            if g.turn == Camp::Doctor { 1 } else { 0 },
+            if g.turn == Camp::Plague { 1 } else { 0 },
+        ];
 
-        let response = [&enc[..], &fc[..], &sb].concat();
-        assert!(response.len() == 391);
+        let response = [&sb, &enc[..], &fc[..], &turn].concat();
+        assert!(response.len() == DATA_UNIT);
         match self.write(&response) {
             Err(_) => {
                 println!("Client disconnected.");
@@ -614,31 +631,31 @@ mod tests {
         let t = TreeNode::new(&mut iter, None);
         let mut g = Game::init(Some(t));
 
-        const LEN: usize = 391 + (1 + 391) * 10;
+        const LEN: usize = DATA_UNIT + (1 + DATA_UNIT) * 10;
         let mut buf_origin: [u8; LEN] = [0; LEN];
         let buf = &mut buf_origin[..];
         let s1 = ";W[ii][hh][aa][ab][bb][ab][aa][ab][aa][ab]";
-        buf[391] = "ii".to_map().to_map_encode();
-        buf[392 * 2 - 1] = "hh".to_map().to_map_encode();
-        buf[392 * 3 - 1] = "aa".to_env().to_env_encode();
-        buf[392 * 4 - 1] = "ab".to_env().to_env_encode();
-        buf[392 * 5 - 1] = "bb".to_env().to_env_encode();
-        buf[392 * 6 - 1] = "ab".to_env().to_env_encode();
-        buf[392 * 7 - 1] = "aa".to_env().to_env_encode();
-        buf[392 * 8 - 1] = "ab".to_env().to_env_encode();
-        buf[392 * 9 - 1] = "aa".to_env().to_env_encode();
-        buf[392 * 10 - 1] = "ab".to_env().to_env_encode();
+        buf[DATA_UNIT] = "ii".to_map().to_map_encode();
+        buf[(DATA_UNIT + 1) * 2 - 1] = "hh".to_map().to_map_encode();
+        buf[(DATA_UNIT + 1) * 3 - 1] = "aa".to_env().to_env_encode();
+        buf[(DATA_UNIT + 1) * 4 - 1] = "ab".to_env().to_env_encode();
+        buf[(DATA_UNIT + 1) * 5 - 1] = "bb".to_env().to_env_encode();
+        buf[(DATA_UNIT + 1) * 6 - 1] = "ab".to_env().to_env_encode();
+        buf[(DATA_UNIT + 1) * 7 - 1] = "aa".to_env().to_env_encode();
+        buf[(DATA_UNIT + 1) * 8 - 1] = "ab".to_env().to_env_encode();
+        buf[(DATA_UNIT + 1) * 9 - 1] = "aa".to_env().to_env_encode();
+        buf[(DATA_UNIT + 1) * 10 - 1] = "ab".to_env().to_env_encode();
         let mut fake_stream = Cursor::new(buf);
         assert!(handle_client(&mut fake_stream, &mut g) == true);
         let mut buffer = String::new();
         g.history.borrow().to_string(&mut buffer);
         assert_eq!(buffer, s1);
         let buf_after = fake_stream.get_ref();
-        let env_offset = 324;
+        let env_offset = CODE_DATA + BOARD_DATA;
         // SetMap
         assert_eq!(buf_after[env_offset + 2 * 5 * 2 + 3 * 2] /* "ij" */, 1);
         // Lockdown
-        let mut base_offset = 392;
+        let mut base_offset = DATA_UNIT + 1;
         assert_eq!(
             buf_after[base_offset + env_offset + 2 * 5 * 2 + 3 * 2], /* "ij" */
             0
@@ -652,7 +669,7 @@ mod tests {
             1
         );
         // SetCharacter
-        base_offset = base_offset + 392;
+        base_offset = base_offset + (DATA_UNIT + 1);
         assert_eq!(
             buf_after[base_offset + env_offset + 3 * 5 * 2 + 3 * 2 + 1], /* "jj" */
             0
@@ -662,79 +679,79 @@ mod tests {
             1
         );
         assert_eq!(
-            buf_after[base_offset + 0 * 6 * 9 + 0 * 9 + 2], /* "aa" */
+            buf_after[base_offset + CODE_DATA + 0 * 6 * 9 + 0 * 9 + 2], /* "aa" */
             1
         );
         // BoardMove
-        base_offset = base_offset + 392;
+        base_offset = base_offset + (DATA_UNIT + 1);
         assert_eq!(
             buf_after[base_offset + env_offset + 1 * 5 * 2 + 1 * 2 + 1], /* "hh" */
             1
         );
         assert_eq!(
-            buf_after[base_offset + 0 * 6 * 9 + 0 * 9 + 2], /* "aa" */
+            buf_after[base_offset + CODE_DATA + 0 * 6 * 9 + 0 * 9 + 2], /* "aa" */
             1
         );
         // BoardMove: first step
-        base_offset = base_offset + 392;
+        base_offset = base_offset + (DATA_UNIT + 1);
         assert_eq!(
-            buf_after[base_offset + 0 * 6 * 9 + 0 * 9 + 2], /* "aa" */
+            buf_after[base_offset + CODE_DATA + 0 * 6 * 9 + 0 * 9 + 2], /* "aa" */
             1
         );
         assert_eq!(
-            buf_after[base_offset + 0 * 6 * 9 + 1 * 9 + 2], /* "ab" */
+            buf_after[base_offset + CODE_DATA + 0 * 6 * 9 + 1 * 9 + 2], /* "ab" */
             1
         );
         assert_eq!(
-            buf_after[base_offset + 1 * 6 * 9 + 1 * 9 + 2], /* "bb" */
+            buf_after[base_offset + CODE_DATA + 1 * 6 * 9 + 1 * 9 + 2], /* "bb" */
             0
         );
         // BoardMove: 2nd step
-        base_offset = base_offset + 392;
+        base_offset = base_offset + (DATA_UNIT + 1);
         assert_eq!(
-            buf_after[base_offset + 0 * 6 * 9 + 0 * 9 + 2], /* "aa" */
+            buf_after[base_offset + CODE_DATA + 0 * 6 * 9 + 0 * 9 + 2], /* "aa" */
             1
         );
         assert_eq!(
-            buf_after[base_offset + 0 * 6 * 9 + 1 * 9 + 2], /* "ab" */
+            buf_after[base_offset + CODE_DATA + 0 * 6 * 9 + 1 * 9 + 2], /* "ab" */
             1
         );
         assert_eq!(
-            buf_after[base_offset + 1 * 6 * 9 + 1 * 9 + 2], /* "bb" */
+            buf_after[base_offset + CODE_DATA + 1 * 6 * 9 + 1 * 9 + 2], /* "bb" */
             1
         );
         // SetMarker: 1
-        base_offset = base_offset + 392;
+        base_offset = base_offset + (DATA_UNIT + 1);
         assert_eq!(
-            buf_after[base_offset + 0 * 6 * 9 + 1 * 9 + 8], /* "ab" */
+            buf_after[base_offset + CODE_DATA + 0 * 6 * 9 + 1 * 9 + 8], /* "ab" */
             1
         );
         assert_eq!(
-            buf_after[base_offset + 0 * 6 * 9 + 0 * 9 + 8], /* "aa" */
+            buf_after[base_offset + CODE_DATA + 0 * 6 * 9 + 0 * 9 + 8], /* "aa" */
             0
         );
         // SetMarker: 2
-        base_offset = base_offset + 392;
+        base_offset = base_offset + (DATA_UNIT + 1);
         assert_eq!(
-            buf_after[base_offset + 0 * 6 * 9 + 0 * 9 + 8], /* "aa" */
+            buf_after[base_offset + CODE_DATA + 0 * 6 * 9 + 0 * 9 + 8], /* "aa" */
             1
         );
         // SetMarker: 3
-        base_offset = base_offset + 392;
+        base_offset = base_offset + (DATA_UNIT + 1);
         assert_eq!(
-            buf_after[base_offset + 0 * 6 * 9 + 1 * 9 + 8], /* "ab" */
+            buf_after[base_offset + CODE_DATA + 0 * 6 * 9 + 1 * 9 + 8], /* "ab" */
             2
         );
         // SetMarker: 4
-        base_offset = base_offset + 392;
+        base_offset = base_offset + (DATA_UNIT + 1);
         assert_eq!(
-            buf_after[base_offset + 0 * 6 * 9 + 0 * 9 + 8], /* "aa" */
+            buf_after[base_offset + CODE_DATA + 0 * 6 * 9 + 0 * 9 + 8], /* "aa" */
             2
         );
         // Done: SetMarker: 4
-        base_offset = base_offset + 392;
+        base_offset = base_offset + (DATA_UNIT + 1);
         assert_eq!(
-            buf_after[base_offset + 0 * 6 * 9 + 1 * 9 + 8], /* "ab" */
+            buf_after[base_offset + CODE_DATA + 0 * 6 * 9 + 1 * 9 + 8], /* "ab" */
             3
         );
     }
@@ -758,23 +775,23 @@ mod tests {
         let t = TreeNode::new(&mut iter, None);
         let mut g = Game::init(Some(t));
 
-        const LEN: usize = 391 + (1 + 391) * 11;
+        const LEN: usize = DATA_UNIT + (1 + DATA_UNIT) * 11;
         let mut buf_origin: [u8; LEN] = [0; LEN];
         let buf = &mut buf_origin[..];
         // in real correct SGF file, of course we cannot assign "hi" as the
         // lockdown position, but this is for a demo
         let s1 = ";W[ii][hi][hh][aa][ab][bb][ab][aa][ab][aa][ab]";
-        buf[391] = "ii".to_map().to_map_encode();
-        buf[392 * 2 - 1] = "hi".to_map().to_map_encode();
-        buf[392 * 3 - 1] = "hh".to_map().to_map_encode();
-        buf[392 * 4 - 1] = "aa".to_env().to_env_encode();
-        buf[392 * 5 - 1] = "ab".to_env().to_env_encode();
-        buf[392 * 6 - 1] = "bb".to_env().to_env_encode();
-        buf[392 * 7 - 1] = "ab".to_env().to_env_encode();
-        buf[392 * 8 - 1] = "aa".to_env().to_env_encode();
-        buf[392 * 9 - 1] = "ab".to_env().to_env_encode();
-        buf[392 * 10 - 1] = "aa".to_env().to_env_encode();
-        buf[392 * 11 - 1] = "ab".to_env().to_env_encode();
+        buf[DATA_UNIT] = "ii".to_map().to_map_encode();
+        buf[(DATA_UNIT + 1) * 2 - 1] = "hi".to_map().to_map_encode();
+        buf[(DATA_UNIT + 1) * 3 - 1] = "hh".to_map().to_map_encode();
+        buf[(DATA_UNIT + 1) * 4 - 1] = "aa".to_env().to_env_encode();
+        buf[(DATA_UNIT + 1) * 5 - 1] = "ab".to_env().to_env_encode();
+        buf[(DATA_UNIT + 1) * 6 - 1] = "bb".to_env().to_env_encode();
+        buf[(DATA_UNIT + 1) * 7 - 1] = "ab".to_env().to_env_encode();
+        buf[(DATA_UNIT + 1) * 8 - 1] = "aa".to_env().to_env_encode();
+        buf[(DATA_UNIT + 1) * 9 - 1] = "ab".to_env().to_env_encode();
+        buf[(DATA_UNIT + 1) * 10 - 1] = "aa".to_env().to_env_encode();
+        buf[(DATA_UNIT + 1) * 11 - 1] = "ab".to_env().to_env_encode();
         let mut fake_stream = Cursor::new(buf);
         assert!(handle_client(&mut fake_stream, &mut g) == true);
         let mut buffer = String::new();
@@ -801,7 +818,7 @@ mod tests {
         let t = TreeNode::new(&mut iter, None);
         let mut g = Game::init(Some(t));
 
-        const LEN: usize = 391 + (1 + 391) * 11;
+        const LEN: usize = DATA_UNIT + (1 + DATA_UNIT) * 11;
         let mut buf_origin: [u8; LEN] = [0; LEN];
         let buf = &mut buf_origin[..];
         // It's difficult to reason why it was ([bf] was [af]) working.
@@ -811,17 +828,17 @@ mod tests {
         // way to do the check, so theoretically it should still fail.
         //
         let s1 = ";W[ii][hh][bf][aa][ab][bb][ab][aa][ab][aa][ab]";
-        buf[391] = "ii".to_map().to_map_encode();
-        buf[392 * 2 - 1] = "hh".to_map().to_map_encode();
-        buf[392 * 3 - 1] = "bf".to_env().to_env_encode();
-        buf[392 * 4 - 1] = "aa".to_env().to_env_encode();
-        buf[392 * 5 - 1] = "ab".to_env().to_env_encode();
-        buf[392 * 6 - 1] = "bb".to_env().to_env_encode();
-        buf[392 * 7 - 1] = "ab".to_env().to_env_encode();
-        buf[392 * 8 - 1] = "aa".to_env().to_env_encode();
-        buf[392 * 9 - 1] = "ab".to_env().to_env_encode();
-        buf[392 * 10 - 1] = "aa".to_env().to_env_encode();
-        buf[392 * 11 - 1] = "ab".to_env().to_env_encode();
+        buf[DATA_UNIT] = "ii".to_map().to_map_encode();
+        buf[(DATA_UNIT + 1) * 2 - 1] = "hh".to_map().to_map_encode();
+        buf[(DATA_UNIT + 1) * 3 - 1] = "bf".to_env().to_env_encode();
+        buf[(DATA_UNIT + 1) * 4 - 1] = "aa".to_env().to_env_encode();
+        buf[(DATA_UNIT + 1) * 5 - 1] = "ab".to_env().to_env_encode();
+        buf[(DATA_UNIT + 1) * 6 - 1] = "bb".to_env().to_env_encode();
+        buf[(DATA_UNIT + 1) * 7 - 1] = "ab".to_env().to_env_encode();
+        buf[(DATA_UNIT + 1) * 8 - 1] = "aa".to_env().to_env_encode();
+        buf[(DATA_UNIT + 1) * 9 - 1] = "ab".to_env().to_env_encode();
+        buf[(DATA_UNIT + 1) * 10 - 1] = "aa".to_env().to_env_encode();
+        buf[(DATA_UNIT + 1) * 11 - 1] = "ab".to_env().to_env_encode();
         let mut fake_stream = Cursor::new(buf);
         assert!(handle_client(&mut fake_stream, &mut g) == true);
         let mut buffer = String::new();
@@ -848,21 +865,21 @@ mod tests {
         let t = TreeNode::new(&mut iter, None);
         let mut g = Game::init(Some(t));
 
-        const LEN: usize = 391 + (1 + 391) * 11;
+        const LEN: usize = DATA_UNIT + (1 + DATA_UNIT) * 11;
         let s2 = ";W[ii][hh][af][aa][ab][bb][ab][aa][ab][aa][ab]";
         let mut buf_origin2: [u8; LEN] = [0; LEN];
         let buf2 = &mut buf_origin2[..];
-        buf2[391] = "ii".to_map().to_map_encode();
-        buf2[392 * 2 - 1] = "hh".to_map().to_map_encode();
-        buf2[392 * 3 - 1] = "af".to_env().to_env_encode();
-        buf2[392 * 4 - 1] = "aa".to_env().to_env_encode();
-        buf2[392 * 5 - 1] = "ab".to_env().to_env_encode();
-        buf2[392 * 6 - 1] = "bb".to_env().to_env_encode();
-        buf2[392 * 7 - 1] = "ab".to_env().to_env_encode();
-        buf2[392 * 8 - 1] = "aa".to_env().to_env_encode();
-        buf2[392 * 9 - 1] = "ab".to_env().to_env_encode();
-        buf2[392 * 10 - 1] = "aa".to_env().to_env_encode();
-        buf2[392 * 11 - 1] = "ab".to_env().to_env_encode();
+        buf2[DATA_UNIT] = "ii".to_map().to_map_encode();
+        buf2[(DATA_UNIT + 1) * 2 - 1] = "hh".to_map().to_map_encode();
+        buf2[(DATA_UNIT + 1) * 3 - 1] = "af".to_env().to_env_encode();
+        buf2[(DATA_UNIT + 1) * 4 - 1] = "aa".to_env().to_env_encode();
+        buf2[(DATA_UNIT + 1) * 5 - 1] = "ab".to_env().to_env_encode();
+        buf2[(DATA_UNIT + 1) * 6 - 1] = "bb".to_env().to_env_encode();
+        buf2[(DATA_UNIT + 1) * 7 - 1] = "ab".to_env().to_env_encode();
+        buf2[(DATA_UNIT + 1) * 8 - 1] = "aa".to_env().to_env_encode();
+        buf2[(DATA_UNIT + 1) * 9 - 1] = "ab".to_env().to_env_encode();
+        buf2[(DATA_UNIT + 1) * 10 - 1] = "aa".to_env().to_env_encode();
+        buf2[(DATA_UNIT + 1) * 11 - 1] = "ab".to_env().to_env_encode();
         let mut fake_stream = Cursor::new(buf2);
         assert!(handle_client(&mut fake_stream, &mut g) == true);
         let mut buffer = String::new();
@@ -889,22 +906,22 @@ mod tests {
         let t = TreeNode::new(&mut iter, None);
         let mut g = Game::init(Some(t));
 
-        const LEN: usize = 391 + (1 + 391) * 12;
+        const LEN: usize = DATA_UNIT + (1 + DATA_UNIT) * 12;
         let mut buf_origin: [u8; LEN] = [0; LEN];
         let buf = &mut buf_origin[..];
         let s1 = ";W[ii][hh][aa][dd][ab][ac][bb][ab][aa][ab][aa][ab]";
-        buf[391] = "ii".to_map().to_map_encode();
-        buf[392 * 2 - 1] = "hh".to_map().to_map_encode();
-        buf[392 * 3 - 1] = "aa".to_env().to_env_encode();
-        buf[392 * 4 - 1] = "dd".to_env().to_env_encode();
-        buf[392 * 5 - 1] = "ab".to_env().to_env_encode();
-        buf[392 * 6 - 1] = "ac".to_env().to_env_encode();
-        buf[392 * 7 - 1] = "bb".to_env().to_env_encode();
-        buf[392 * 8 - 1] = "ab".to_env().to_env_encode();
-        buf[392 * 9 - 1] = "aa".to_env().to_env_encode();
-        buf[392 * 10 - 1] = "ab".to_env().to_env_encode();
-        buf[392 * 11 - 1] = "aa".to_env().to_env_encode();
-        buf[392 * 12 - 1] = "ab".to_env().to_env_encode();
+        buf[DATA_UNIT] = "ii".to_map().to_map_encode();
+        buf[(DATA_UNIT + 1) * 2 - 1] = "hh".to_map().to_map_encode();
+        buf[(DATA_UNIT + 1) * 3 - 1] = "aa".to_env().to_env_encode();
+        buf[(DATA_UNIT + 1) * 4 - 1] = "dd".to_env().to_env_encode();
+        buf[(DATA_UNIT + 1) * 5 - 1] = "ab".to_env().to_env_encode();
+        buf[(DATA_UNIT + 1) * 6 - 1] = "ac".to_env().to_env_encode();
+        buf[(DATA_UNIT + 1) * 7 - 1] = "bb".to_env().to_env_encode();
+        buf[(DATA_UNIT + 1) * 8 - 1] = "ab".to_env().to_env_encode();
+        buf[(DATA_UNIT + 1) * 9 - 1] = "aa".to_env().to_env_encode();
+        buf[(DATA_UNIT + 1) * 10 - 1] = "ab".to_env().to_env_encode();
+        buf[(DATA_UNIT + 1) * 11 - 1] = "aa".to_env().to_env_encode();
+        buf[(DATA_UNIT + 1) * 12 - 1] = "ab".to_env().to_env_encode();
         let mut fake_stream = Cursor::new(buf);
         assert!(handle_client(&mut fake_stream, &mut g) == true);
         let mut buffer = String::new();
@@ -931,27 +948,27 @@ mod tests {
         let t = TreeNode::new(&mut iter, None);
         let mut g = Game::init(Some(t));
 
-        const LEN: usize = 391 + (1 + 391) * 15;
+        const LEN: usize = DATA_UNIT + (1 + DATA_UNIT) * 15;
         let mut buf_origin: [u8; LEN] = [0; LEN];
         let buf = &mut buf_origin[..];
         // in real correct SGF file, of course we cannot assign "hi" as the
         // lockdown position, but this is for a demo
         let s1 = ";W[ii][hh][aa][ab][bb][aa][aa][aa][aa][aa][ab][aa][aa][aa][aa]";
-        buf[391] = "ii".to_map().to_map_encode();
-        buf[392 * 2 - 1] = "hh".to_map().to_map_encode();
-        buf[392 * 3 - 1] = "aa".to_env().to_env_encode();
-        buf[392 * 4 - 1] = "ab".to_env().to_env_encode();
-        buf[392 * 5 - 1] = "bb".to_env().to_env_encode();
-        buf[392 * 6 - 1] = "aa".to_env().to_env_encode();
-        buf[392 * 7 - 1] = "aa".to_env().to_env_encode();
-        buf[392 * 8 - 1] = "aa".to_env().to_env_encode();
-        buf[392 * 9 - 1] = "aa".to_env().to_env_encode();
-        buf[392 * 10 - 1] = "aa".to_env().to_env_encode();
-        buf[392 * 11 - 1] = "ab".to_env().to_env_encode();
-        buf[392 * 12 - 1] = "aa".to_env().to_env_encode();
-        buf[392 * 13 - 1] = "aa".to_env().to_env_encode();
-        buf[392 * 14 - 1] = "aa".to_env().to_env_encode();
-        buf[392 * 15 - 1] = "aa".to_env().to_env_encode();
+        buf[DATA_UNIT] = "ii".to_map().to_map_encode();
+        buf[(DATA_UNIT + 1) * 2 - 1] = "hh".to_map().to_map_encode();
+        buf[(DATA_UNIT + 1) * 3 - 1] = "aa".to_env().to_env_encode();
+        buf[(DATA_UNIT + 1) * 4 - 1] = "ab".to_env().to_env_encode();
+        buf[(DATA_UNIT + 1) * 5 - 1] = "bb".to_env().to_env_encode();
+        buf[(DATA_UNIT + 1) * 6 - 1] = "aa".to_env().to_env_encode();
+        buf[(DATA_UNIT + 1) * 7 - 1] = "aa".to_env().to_env_encode();
+        buf[(DATA_UNIT + 1) * 8 - 1] = "aa".to_env().to_env_encode();
+        buf[(DATA_UNIT + 1) * 9 - 1] = "aa".to_env().to_env_encode();
+        buf[(DATA_UNIT + 1) * 10 - 1] = "aa".to_env().to_env_encode();
+        buf[(DATA_UNIT + 1) * 11 - 1] = "ab".to_env().to_env_encode();
+        buf[(DATA_UNIT + 1) * 12 - 1] = "aa".to_env().to_env_encode();
+        buf[(DATA_UNIT + 1) * 13 - 1] = "aa".to_env().to_env_encode();
+        buf[(DATA_UNIT + 1) * 14 - 1] = "aa".to_env().to_env_encode();
+        buf[(DATA_UNIT + 1) * 15 - 1] = "aa".to_env().to_env_encode();
         let mut fake_stream = Cursor::new(buf);
         assert!(handle_client(&mut fake_stream, &mut g) == true);
         let mut buffer = String::new();

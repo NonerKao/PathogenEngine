@@ -151,14 +151,21 @@ if __name__ == "__main__":
     if args.validate:
         model.eval()
         torch.no_grad()
-        count = 0
-        total = 0
+        error_count = 0
+        valid_count = 0
+        error_total = 0
+        valid_total = 0
         for inputs, labels in dataloader:
             outputs = model(inputs)
             for i in range(0, len(outputs)):
-                total = total + 1
-                if outputs[i] < 0.5 and labels[i] < 0.5:
-                    count = count + 1
-                elif outputs[i] > 0.5 and labels[i] > 0.5:
-                    count = count + 1
-        print('accuracy: ', str(count/total))
+                if labels[i] < 0.5:
+                    error_total = error_total + 1
+                    if outputs[i] < 0.5:
+                        error_count = error_count + 1
+                if labels[i] >= 0.5:
+                    valid_total = valid_total + 1
+                    if outputs[i] >= 0.5:
+                        valid_count = valid_count + 1
+        print('accuracy: ', str((error_count+valid_count)/(error_total+valid_total)))
+        print('error case accuracy: ', str(error_count/(error_total)))
+        print('valid case accuracy: ', str(valid_count/(valid_total)))
