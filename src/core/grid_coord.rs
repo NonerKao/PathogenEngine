@@ -26,7 +26,7 @@ impl Coord {
             return false;
         }
         let times = self.x * self.y;
-        if times <= -MAP_OFFSET.x * MAP_OFFSET.y || times > MAP_OFFSET.x * MAP_OFFSET.y {
+        if times <= -MAP_OFFSET.x * MAP_OFFSET.y || times >= MAP_OFFSET.x * MAP_OFFSET.y {
             return false;
         }
         return true;

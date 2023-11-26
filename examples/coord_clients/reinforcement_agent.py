@@ -235,7 +235,7 @@ class RLAgent(Agent):
         else:
             # exploit
             self.action_orig = torch.argmax(self.model(self.state).squeeze()).item()
-        if self.action_orig > BOARD_POS:
+        if self.action_orig >= BOARD_POS:
             self.action = self.action_orig + MAP_POS_OFFSET
         else:
             self.action = self.action_orig
