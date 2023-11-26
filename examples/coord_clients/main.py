@@ -2,6 +2,7 @@ import random
 import argparse
 from random_agent import RandomAgent
 from reinforcement_agent import RLAgent
+import time
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description='Pathogen Agents for the coord server')
@@ -12,6 +13,7 @@ if __name__ == "__main__":
                         help='Different types of Agent')
     parser.add_argument('-r', '--record', type=str, help='Record the game transaction in this file')
     parser.add_argument('-v', '--verbose', action='store_true', help='Detailed information')
+    parser.add_argument('-b', '--batch', type=int, help='Batch number', default = 1)
 
     # Only for ML agents
     parser.add_argument('-m', '--model', type=str, help='A trained pytorch model that provides (sub-)move to current game state', default='model.pth')
@@ -21,7 +23,9 @@ if __name__ == "__main__":
     if args.seed is not None:
         random.seed(args.seed)
 
-    if args.type == 'Random':
-        RandomAgent(args)
-    elif args.type == 'Reinforcement':
-        RLAgent(args)
+    for i in range(0, args.batch):
+        if args.type == 'Random':
+            RandomAgent(args)
+        elif args.type == 'Reinforcement':
+            RLAgent(args)
+        time.sleep(1)
