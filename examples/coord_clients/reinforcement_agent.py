@@ -50,6 +50,7 @@ class PathogenNet(torch.nn.Module):
         return torch.softmax(xs, dim=1)
 
 def init_model(model_name):
+    torch.set_default_dtype(torch.float32)
     if os.path.exists(model_name):
         # Load the model state
         model = torch.load(model_name)
@@ -60,21 +61,31 @@ def init_model(model_name):
     return model
 
 def init_optimizer(model):
-    learning_rate = 0.01
+    learning_rate = 0.005
     optimizer = torch.optim.Adam(model.parameters(), lr=learning_rate)
     return optimizer
+
+def loss_func(input, rewards):
+    try:
+        ret = torch.dot(rewards, 1/(input + 0.001)-0.999)
+    except RuntimeError:
+        print(rewards.shape)
+        print(input.shape)
+        print(torch.log(input + 0.01).shape)
+        ret = 0.0
+    return ret
 
 class RLAgent(Agent):
     torch.set_default_device(torch.device("cuda"))
     result = {}
-    result[b'Ix01'] = torch.tensor(0.1).unsqueeze(0) # SUBMOVE
-    result[b'Ix02'] = torch.tensor(0.1).unsqueeze(0) # MOVE
+    result[b'Ix01'] = torch.tensor(np.log(3.5)).to(dtype=torch.float32).unsqueeze(0) # SUBMOVE
+    result[b'Ix02'] = torch.tensor(np.log(4.0)).to(dtype=torch.float32).unsqueeze(0) # MOVE
     result[b'Ix03'] = None
-    result[b'Ix04'] = torch.tensor(2.0).unsqueeze(0) # WIN
-    result[b'Ix00'] = torch.tensor(-1.0).unsqueeze(0) # PASSIVE
-    result[b'Ix05'] = torch.tensor(2.0).unsqueeze(0) # LOSE
+    result[b'Ix04'] = torch.tensor(np.log(6.0)).to(dtype=torch.float32).unsqueeze(0) # WIN
+    result[b'Ix00'] = torch.tensor(np.log(3.0)).to(dtype=torch.float32).unsqueeze(0) # PASSIVE
+    result[b'Ix05'] = torch.tensor(np.log(5.0)).to(dtype=torch.float32).unsqueeze(0) # LOSE
     result[b'Ix06'] = None
-    result[b'Ex'] = torch.tensor(-0.01).unsqueeze(0) # ILLEGAL
+    result[b'Ex'] = torch.tensor(np.log(2.0)).to(dtype=torch.float32).unsqueeze(0) # ILLEGAL
     def __init__(self, f):
         super().__init__(f)
         self.fixmap = list(range(TOTAL_POS))
@@ -87,6 +98,7 @@ class RLAgent(Agent):
         self.valid_submove = 0
         self.move = 0
         self.score = 0
+        self.inference = True
 
         # initialize the device
         self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
@@ -112,16 +124,16 @@ class RLAgent(Agent):
                 max_value = input_tensor.max(dim = 0, keepdim=True).values
                 range_vals = max_value - min_value + 1e-5
                 return (input_tensor - min_value)/range_vals * (max - min) + min
-
-            states, actions, rewards = self.all_transitions[:, :S], self.all_transitions[:, S], self.all_transitions[:, S+1]
-            normalized_rewards = normalize(rewards)
+            def bisect(input_tensor, alpha=0.5, beta=0.01):
+                input_tensor[input_tensor >= 0] = alpha
+                input_tensor[input_tensor < 0] = beta
+                return input_tensor
+            states, actions, rewards = self.all_transitions[:, :S].clone().to(dtype=torch.float32), self.all_transitions[:, S], self.all_transitions[:, S+1]
             self.optimizer.zero_grad()
             preds = self.model(states)
             assert not torch.isnan(preds).any()
             probs = preds.gather(dim=1, index=actions.long().unsqueeze(dim=1)).squeeze().to(self.device)
-            def loss_func1(input, rewards):
-                return -1.0 * torch.dot(torch.softmax(rewards, dim=0), input)
-            loss = loss_func1(probs, normalized_rewards)
+            loss = loss_func(probs, rewards)
             loss.backward()
             self.optimizer.step()
 
@@ -149,14 +161,14 @@ class RLAgent(Agent):
             preds = self.model(states)
             assert not torch.isnan(preds).any()
             probs = preds.gather(dim=1, index=actions.long().unsqueeze(dim=1)).squeeze().to(self.device)
-            loss_func = torch.nn.MSELoss()
-            if self.win:
-                normalized_rewards = fit(normalized_rewards, head=2.0, tail=3.0)
-                normalized_probs = normalize(probs, min=2.0, max=3.0)
-            else:
-                normalized_rewards = fit(normalized_rewards, head=2.0, tail=1.0)
-                normalized_probs = normalize(probs, min=1.0, max=2.0)
-            loss = loss_func(normalized_probs, normalized_rewards)
+            # Let's learn it this way after it gets a better understanding of the rule
+            #if self.win:
+            #    normalized_rewards = fit(normalized_rewards, head=2.0, tail=3.0)
+            #    normalized_probs = normalize(probs, min=2.0, max=3.0)
+            #else:
+            #    normalized_rewards = fit(normalized_rewards, head=2.0, tail=1.0)
+            #    normalized_probs = normalize(probs, min=1.0, max=2.0)
+            loss = loss_func(probs, normalized_rewards)
             loss.backward()
             self.optimizer.step()
             torch.save(self.model, f.model)
@@ -200,19 +212,22 @@ class RLAgent(Agent):
             self.move = self.move + 1
             if data[0:4] in (b'Ix04'):
                 self.win = True
-            if self.online_training and data[0:4] in (b'Ix00', b'Ix02'):
-                temp = self.all_transitions[-self.submove:]
-                states, actions = temp[:, :S], temp[:, S]
-                self.optimizer.zero_grad()
-                preds = self.model(states)
-                assert not torch.isnan(preds).any()
-                probs = preds.gather(dim=1, index=actions.long().unsqueeze(dim=1)).squeeze().to(self.device)
-                rewards = (torch.arange(self.submove) * 1.0).flip(0)
-                rewards = torch.pow(0.7, rewards)
-                loss_func = torch.nn.MSELoss()
-                loss = loss_func(probs, rewards)
-                loss.backward()
-                self.optimizer.step()
+#            if self.online_training and data[0:4] in (b'Ix00', b'Ix02'):
+#                temp = self.all_transitions[-self.submove:].clone().to(dtype=torch.float32)
+#                states, actions = temp[:, :S], temp[:, S]
+#                self.optimizer.zero_grad()
+#                preds = self.model(states)
+#                print(self.submove)
+#                print(temp.shape)
+#                assert not torch.isnan(preds).any()
+#                probs = preds.gather(dim=1, index=actions.long().unsqueeze(dim=1)).squeeze().to(self.device)
+#                print(preds.shape)
+#                print(probs.shape)
+#                rewards = (torch.arange(self.submove) * 1.0).flip(0)
+#                rewards = torch.pow(0.7, rewards)
+#                loss = loss_func(probs, rewards)
+#                loss.backward()
+#                self.optimizer.step()
             self.action = 255
             return
         else:
@@ -221,6 +236,7 @@ class RLAgent(Agent):
             if self.online_training:
                 self.positive_transitions = torch.cat((self.positive_transitions, temp), dim=0)
             self.map = self.fixmap.copy()
+            self.inference = True
             if data[0:4] in (b'Ix01'):
                 self.submove = self.submove + 1
                 self.valid_submove = self.valid_submove + 1
@@ -236,7 +252,7 @@ class RLAgent(Agent):
             EPSILON = 0.01
         self.state = np.frombuffer(data[4:], dtype=np.uint8)
         self.state = torch.tensor(self.state).float().unsqueeze(0)
-        if random.random() < EPSILON and self.online_training:
+        if not self.inference or random.random() < EPSILON and self.online_training:
             # explore
             if len(self.map) != 0:
                 self.action_orig = random.choice(self.map)
@@ -246,7 +262,11 @@ class RLAgent(Agent):
                 sys.exit(255)
         else:
             # exploit
+            self.inference = False
+            self.model.eval()
             self.action_orig = torch.argmax(self.model(self.state).squeeze()).item()
+            if self.online_training:
+                self.model.train()
             if self.action_orig not in self.map:
                 self.action_orig = random.choice(self.map)
         if self.action_orig >= BOARD_POS:
