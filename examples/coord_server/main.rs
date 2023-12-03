@@ -536,7 +536,7 @@ fn main() -> Result<(), std::io::Error> {
     let ec: [u8; FC_LEN] = [0; FC_LEN];
     while let Phase::Main(x) = g.phase {
         let turn: usize = x.try_into().unwrap();
-        if !handle_client(&mut s[turn % 2], &mut g) {
+        if !handle_client(&mut s[turn % 2], &mut g) || x > 100 {
             s[turn % 2].update_agent(&g, &ea, &ec, &"Ix06");
             s[1 - turn % 2].update_agent(&g, &ea, &ec, &"Ix06");
             drop(s);

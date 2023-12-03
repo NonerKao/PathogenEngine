@@ -16,10 +16,9 @@ FDL = [S_FLOW+TOTAL_POS, 200, TOTAL_POS]
 TDL = [S_TURN+TOTAL_POS, 200, TOTAL_POS]
 SL = [TOTAL_POS*3, S_BOARD_MAP*60, S_BOARD_MAP*10, S_BOARD_MAP//2, TOTAL_POS]
 
-TRAIN_BATCH0 = 2
-TRAIN_BATCH1 = 0
+TRAIN_BATCH1 = 5
 TRAIN_BATCH2 = 1
-TRAIN_BATCH3 = 0
+TRAIN_BATCH3 = 1
 
 class PathogenNet(torch.nn.Module):
     def __init__(self):
@@ -66,7 +65,7 @@ def init_model(model_name):
     return model
 
 def init_optimizer(model):
-    learning_rate = 0.002
+    learning_rate = 0.00001
     optimizer = torch.optim.Adam(model.parameters(), lr=learning_rate)
     return optimizer
 
@@ -80,6 +79,8 @@ def range_remap(input_tensor, min=0.001, max=0.999):
     return input
 
 def loss_func_bisect(input, rewards):
+    if input.ndim == 0:
+        input = input.unsqueeze(0)
     input = range_remap(input)
     try:
         ret = torch.dot(rewards, (input - 0.5)/((input - 1.0)*input*input))
@@ -89,10 +90,64 @@ def loss_func_bisect(input, rewards):
     return ret
 
 def loss_func_bisect2(input, rewards):
+    print(rewards)
+    print(input)
     if input.ndim == 0:
         input = input.unsqueeze(0)
     try:
         ret = torch.dot(rewards, 12.0 * 1.0/(input - 1.01)*(input + 0.99)+13)
+        assert not torch.isnan(ret).any()
+    except RuntimeError as e:
+        print('???: ', e)
+        ret = 0.0
+    return ret
+
+def loss_func_bisect3(input, rewards):
+    print(rewards)
+    print(input)
+    if input.ndim == 0:
+        input = input.unsqueeze(0)
+    try:
+        ret = torch.dot(rewards, -10.0 * (input - 0.001)*(input -0.001)+10.0)
+        assert not torch.isnan(ret).any()
+    except RuntimeError as e:
+        print('???: ', e)
+        ret = 0.0
+    return ret
+
+def loss_func_bisect4(input, rewards):
+    print(rewards)
+    print(input)
+    if input.ndim == 0:
+        input = input.unsqueeze(0)
+    try:
+        ret = torch.dot(rewards, 1.0 / (100* input + 1))
+        assert not torch.isnan(ret).any()
+    except RuntimeError as e:
+        print('???: ', e)
+        ret = 0.0
+    return ret
+
+def loss_func_bisect5(input, rewards):
+    print(rewards)
+    print(input)
+    if input.ndim == 0:
+        input = input.unsqueeze(0)
+    try:
+        ret = torch.dot(rewards, 1000.0 / 3.0 * (input * input *input) - 105.0*(input*input) +2.0*input + 2.5)
+        assert not torch.isnan(ret).any()
+    except RuntimeError as e:
+        print('???: ', e)
+        ret = 0.0
+    return ret
+
+def loss_func_bisect6(input, rewards):
+    print(rewards)
+    print(input)
+    if input.ndim == 0:
+        input = input.unsqueeze(0)
+    try:
+        ret = torch.dot(rewards, torch.sin(4.1*input+1.53))
         assert not torch.isnan(ret).any()
     except RuntimeError as e:
         print('???: ', e)
@@ -105,9 +160,9 @@ class RLAgent(Agent):
     result[b'Ix01'] = torch.tensor(1.0).to(dtype=torch.float32).unsqueeze(0) # SUBMOVE
     result[b'Ix02'] = torch.tensor(2.0).to(dtype=torch.float32).unsqueeze(0) # MOVE
     result[b'Ix03'] = None
-    result[b'Ix04'] = torch.tensor(10000.0).to(dtype=torch.float32).unsqueeze(0) # WIN
+    result[b'Ix04'] = torch.tensor(2.0).to(dtype=torch.float32).unsqueeze(0) # WIN
     result[b'Ix00'] = torch.tensor(-10.0).to(dtype=torch.float32).unsqueeze(0) # PASSIVE
-    result[b'Ix05'] = torch.tensor(10000.0).to(dtype=torch.float32).unsqueeze(0) # LOSE
+    result[b'Ix05'] = torch.tensor(2.0).to(dtype=torch.float32).unsqueeze(0) # LOSE
     result[b'Ix06'] = None
     result[b'Ex'] = torch.tensor(-1.0).to(dtype=torch.float32).unsqueeze(0) # ILLEGAL
     def __init__(self, f):
@@ -121,6 +176,7 @@ class RLAgent(Agent):
         self.move = 0
         self.score = 0
         self.inference = True
+        self.index = 0
 
         # initialize the device
         self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
@@ -137,25 +193,7 @@ class RLAgent(Agent):
         if self.record is not None:
             self.record.close()
         if self.online_training:
-            # sort out the two views of history
-            # the first is the all history, including two negatice behaviors:
-            # illegal (sub-)moves and passes. In this phase, I want each action
-            # takes the feedback it deserves, independent from consecutive ones.
-            states, actions, rewards = self.all_transitions[:, :S].clone().to(dtype=torch.float32), self.all_transitions[:, S], self.all_transitions[:, S+1]
-            for _ in range(0, TRAIN_BATCH0):
-                self.optimizer.zero_grad()
-                preds = self.model(states)
-                assert not torch.isnan(preds).any()
-                probs = preds.gather(dim=1, index=actions.long().unsqueeze(dim=1)).squeeze().to(self.device)
-                print(probs)
-                loss = loss_func_bisect2(probs, rewards)
-                loss.backward()
-                self.optimizer.step()
-            print('BATCH0')
-            print()
-
-            # the second one counts only the valid (sub-)moves. since the
-            # actions do contributes to the results, I want the discount credit
+            # Since the actions do contributes to the results, I want the discount credit
             # assignment here.
             def discount_and_normalize(rewards, gamma=0.95):
                 # This one is a bit confusing.
@@ -175,14 +213,12 @@ class RLAgent(Agent):
                 return (input_tensor - front)/range_vals * (tail - head) + head
 
             states, actions, rewards = self.positive_transitions[:, :S], self.positive_transitions[:, S], self.positive_transitions[:, S+1]
-            normalized_rewards = discount_and_normalize(rewards.flip(0).cumsum(dim=0).flip(0))
+            #normalized_rewards = discount_and_normalize(rewards.flip(0).cumsum(dim=0).flip(0))
             for _ in range(0, TRAIN_BATCH1):
                 self.optimizer.zero_grad()
                 preds = self.model(states)
                 assert not torch.isnan(preds).any()
                 probs = preds.gather(dim=1, index=actions.long().unsqueeze(dim=1)).squeeze().to(self.device)
-                print(probs.shape)
-                print(probs)
                 if probs.ndim == 0:
                     probs = probs.unsqueeze(0)
                 # Let's learn it this way after it gets a better understanding of the rule
@@ -193,6 +229,8 @@ class RLAgent(Agent):
                 #    normalized_rewards = fit(normalized_rewards, head=2.0, tail=1.0)
                 #    normalized_probs = normalize(probs, min=1.0, max=2.0)
                 def loss_func_negative_likelihood(input, rewards):
+                    print(rewards)
+                    print(input)
                     try:
                         ret = -1.0 * torch.dot(rewards, torch.log(input + 0.001))
                         try:
@@ -207,7 +245,7 @@ class RLAgent(Agent):
                         print(input.shape)
                         ret = 0.0
                     return ret
-                loss = loss_func_negative_likelihood(probs, normalized_rewards)
+                loss = loss_func_bisect2(probs, rewards)
                 loss.backward(retain_graph=True)
                 self.optimizer.step()
             torch.save(self.model, f.model)
@@ -233,7 +271,6 @@ class RLAgent(Agent):
             # Unfortunately, the previous sub-move is illegal.
             # A minus reward included transaction goes here.
             self.submove = self.submove + 1
-            self.index = self.index + 1
         elif data[0:4] in (b'Ix00', b'Ix02', b'Ix04', b'Ix05', b'Ix06'):
             # This won't be really sent back to the server because the code
             # indicates that we have nothing to do now. This client still set a
@@ -243,28 +280,33 @@ class RLAgent(Agent):
             # Ix05: we lost...
             # Ix06: somehow, either we or the component lost the connection
             if data[0:4] not in (b'Ix00'):
-                self.positive_transitions = torch.cat((self.positive_transitions, temp), dim=0)
+                if self.online_training:
+                    self.positive_transitions = torch.cat((self.positive_transitions, temp), dim=0)
             else:
                 self.valid_submove = self.valid_submove + 1
             self.move = self.move + 1
             self.submove = self.submove + 1
-            def discount_and_normalize2(rewards, gamma=0.95):
-                # Now we apply the multinomial method, so the front are more to blame
-                # but the final one should remain
-                coef = torch.pow(gamma, torch.arange((len(rewards))*1.0))
-                coef[-1] = 1.0
-                ret = coef * rewards
-                if torch.abs(ret.max()) < 1e-8:
-                    return ret / (ret.max() + 1e-8)
-                return ret / ret.max()
-            temp = self.all_transitions[-self.index:].clone().to(dtype=torch.float32)
-            states, actions, rewards = temp[:, :S].clone().to(dtype=torch.float32), temp[:, S], temp[:, S+1]
+            if not self.online_training:
+                TRAIN_BATCH2 = 0
+            else:
+                def discount_and_normalize2(rewards, gamma=0.95):
+                    # Now we apply the multinomial method, so the front are more to blame
+                    # but the final one should remain
+                    coef = torch.pow(gamma, torch.arange((len(rewards))*1.0))
+                    coef[-1] = 1.0
+                    ret = coef * rewards
+                    if torch.abs(ret.max()) < 1e-8:
+                        return ret / (ret.max() + 1e-8)
+                    return ret / ret.max()
+                temp = self.all_transitions[:].clone().to(dtype=torch.float32)
+                states, actions, rewards = temp[:, :S].clone().to(dtype=torch.float32), temp[:, S], temp[:, S+1]
+                del self.all_transitions
+                self.all_transitions = torch.tensor([])
             for _ in range(0, TRAIN_BATCH2):
                 self.optimizer.zero_grad()
                 preds = self.model(states)
                 assert not torch.isnan(preds).any()
                 probs = preds.gather(dim=1, index=actions.long().unsqueeze(dim=1)).squeeze().to(self.device)
-                print(probs)
                 loss = loss_func_bisect2(probs, rewards)
                 loss.backward(retain_graph=True)
                 self.optimizer.step()
@@ -276,35 +318,40 @@ class RLAgent(Agent):
         else:
             # Either the previous sub-move succeeded or it is our turn now.
             # Reset the position candidate.
+            self.inference = True
             if self.online_training:
                 self.positive_transitions = torch.cat((self.positive_transitions, temp), dim=0)
-            self.inference = True
+            else:
+                TRAIN_BATCH3 = 0
             if data[0:4] in (b'Ix01'):
                 self.submove = self.submove + 1
                 self.valid_submove = self.valid_submove + 1
                 # worth some positive reward?
-                def discount_and_normalize2(rewards, gamma=0.95):
-                    # Now we apply the multinomial method, so the front are more to blame
-                    # but the final one should remain
-                    coef = torch.pow(gamma, torch.arange((len(rewards))*1.0))
-                    coef[-1] = 1.0
-                    ret = coef * rewards
-                    if torch.abs(ret.max()) < 1e-8:
-                        return ret / (ret.max() + 1e-8)
-                    return ret / ret.max()
-                temp = self.all_transitions[-self.index:].clone().to(dtype=torch.float32)
-                states, actions, rewards = temp[:, :S].clone().to(dtype=torch.float32), temp[:, S], temp[:, S+1]
-                #rewards = discount_and_normalize2(rewards)
+                if self.online_training:
+                    def discount_and_normalize2(rewards, gamma=0.95):
+                        # Now we apply the multinomial method, so the front are more to blame
+                        # but the final one should remain
+                        coef = torch.pow(gamma, torch.arange((len(rewards))*1.0))
+                        coef[-1] = 1.0
+                        ret = coef * rewards
+                        if torch.abs(ret.max()) < 1e-8:
+                            return ret / (ret.max() + 1e-8)
+                        return ret / ret.max()
+                    temp = self.all_transitions[:].clone().to(dtype=torch.float32)
+                    states, actions, rewards = temp[:, :S].clone().to(dtype=torch.float32), temp[:, S], temp[:, S+1]
+                    del self.all_transitions
+                    self.all_transitions = torch.tensor([])
+                    #rewards = discount_and_normalize2(rewards)
                 for _ in range(0, TRAIN_BATCH3):
                     self.optimizer.zero_grad()
                     preds = self.model(states)
                     assert not torch.isnan(preds).any()
                     probs = preds.gather(dim=1, index=actions.long().unsqueeze(dim=1)).squeeze().to(self.device)
-                    print(probs)
-                    loss = loss_func_bisect(probs, rewards)
+                    loss = loss_func_bisect2(probs, rewards)
                     loss.backward(retain_graph=True)
                     self.optimizer.step()
                     pass
+                print('BATCH3')
             elif data[0:4] in (b'Ix03'):
                 # start of a new move, nothing to be done here
                 pass
@@ -316,6 +363,7 @@ class RLAgent(Agent):
             # explore
             if self.index < TOTAL_POS:
                 self.action_orig = self.actions[self.index]
+                self.index = self.index + 1
             else:
                 print("This doesn't make any sense. Check it!")
                 output(data)
@@ -324,14 +372,18 @@ class RLAgent(Agent):
             # exploit
             self.inference = False
             self.model.eval()
-            self.actions = torch.multinomial(self.model(self.state).squeeze(), TOTAL_POS, replacement=False)
-            self.index = 0
-            self.action_orig = self.actions[self.index]
+            # Previously use this grant us no good...
+            if self.online_training:
+                self.actions = torch.randperm(TOTAL_POS)
+            else:
+                self.actions = torch.multinomial(self.model(self.state).squeeze(), TOTAL_POS, replacement=False)
+            self.action_orig = self.actions[0]
+            self.index = 1
             if self.online_training:
                 self.model.train()
         if self.action_orig >= BOARD_POS:
-            self.action = self.action_orig + MAP_POS_OFFSET
+            self.action = self.action_orig.long().item() + MAP_POS_OFFSET
         else:
-            self.action = self.action_orig
+            self.action = self.action_orig.long().item()
         self.action_tensor = torch.tensor(self.action_orig * 1.0).unsqueeze(0)
         
