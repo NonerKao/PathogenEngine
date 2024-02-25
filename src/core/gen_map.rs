@@ -1,8 +1,18 @@
-use rand::seq::SliceRandom;
-use rand::thread_rng;
+use rand::{SeedableRng, rngs::StdRng};
+use rand::prelude::SliceRandom;
 use rand::Rng;
 
-pub fn get_rand_matrix() -> Vec<Vec<bool>> {
+fn to_seed(es: Option<String>) -> StdRng {
+    let mut seed: [u8; 32] = [0; 32]; // Initialize with zeros
+
+    if let Some(s) = es {
+        let bytes = s.as_bytes();
+        seed[..bytes.len()].copy_from_slice(bytes);
+    }
+    StdRng::from_seed(seed)
+}
+
+pub fn get_rand_matrix(es: Option<String>) -> Vec<Vec<bool>> {
     let vec_of_bools = vec![
         vec![true, true, false],
         vec![true, false, true],
@@ -12,7 +22,7 @@ pub fn get_rand_matrix() -> Vec<Vec<bool>> {
         vec![false, false, true],
     ];
 
-    let mut rng = thread_rng();
+    let mut rng = to_seed(es);
 
     // Randomly select two distinct elements from the vector
     let random_vecs: Vec<_> = vec_of_bools.choose_multiple(&mut rng, 3).collect();
@@ -41,7 +51,7 @@ pub fn get_rand_matrix() -> Vec<Vec<bool>> {
     let matrix = vec![random_vec1, random_vec2, random_vec3];
 
     // Randomly transform the matrix
-    random_transform(matrix)
+    random_transform(matrix, &mut rng)
 }
 
 // Rotate the matrix clockwise by 90 degrees
@@ -59,9 +69,7 @@ fn rotate_matrix(matrix: &Vec<Vec<bool>>) -> Vec<Vec<bool>> {
 }
 
 // Randomly transform the matrix by rotating it or mirroring it horizontally/vertically
-fn random_transform(matrix1: Vec<Vec<bool>>) -> Vec<Vec<bool>> {
-    let mut rng = thread_rng();
-
+fn random_transform(matrix1: Vec<Vec<bool>>, rng: &mut StdRng) -> Vec<Vec<bool>> {
     let operation1 = rng.gen_range(0..3);
     let matrix2 = match operation1 {
         0 => matrix1,

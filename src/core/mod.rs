@@ -253,7 +253,7 @@ impl Game {
             //    2. the SGF file provides no setup0 info
             for k in 0..=1 {
                 for l in 0..=1 {
-                    let m = get_rand_matrix();
+                    let m = get_rand_matrix(None);
                     for i in 0..SIZE / 2 {
                         for j in 0..SIZE / 2 {
                             let mut w = World::Humanity;

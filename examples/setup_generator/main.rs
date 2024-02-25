@@ -46,7 +46,7 @@ fn main() -> std::io::Result<()> {
 
     // main
     let tn = TreeNode::new(&mut iter, None);
-    let mut g = Game::init(Some(tn.clone()));
+    let mut g = Game::init(Some(tn.clone()));//, args.seed);
     if g.is_setup() {
         to_file(&g)?;
         return Ok(());
@@ -117,21 +117,11 @@ fn to_file(g: &Game) -> std::io::Result<()> {
 }
 
 fn from_seed(es: Option<String>) -> StdRng {
-    let mut seed: [u8; 32] = [
-        1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25,
-        26, 27, 28, 29, 30, 31, 32,
-    ];
-    match es {
-        Some(s) => {
-            for (index, c) in s.chars().enumerate() {
-                if index as i32 >= 32 {
-                    break;
-                }
-                seed[index] = c as u8;
-            }
-        }
-        None => {}
+    let mut seed: [u8; 32] = [0; 32]; // Initialize with zeros
+
+    if let Some(s) = es {
+        let bytes = s.as_bytes();
+        seed[..bytes.len()].copy_from_slice(bytes);
     }
-    let rng = StdRng::from_seed(seed);
-    rng
+    StdRng::from_seed(seed)
 }
