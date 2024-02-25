@@ -46,7 +46,8 @@ fn main() -> std::io::Result<()> {
 
     // main
     let tn = TreeNode::new(&mut iter, None);
-    let mut g = Game::init(Some(tn.clone()));//, args.seed);
+    let mut rng = from_seed(args.seed);
+    let mut g = Game::init_with_rng(Some(tn.clone()), &mut rng);
     if g.is_setup() {
         to_file(&g)?;
         return Ok(());
@@ -74,8 +75,7 @@ fn main() -> std::io::Result<()> {
         }
     }
 
-    // setup seed
-    let mut rng = from_seed(args.seed);
+    // Generate
     let env_full = env_coord_pool.clone();
     loop {
         let c = env_coord_pool.choose(&mut rng).unwrap().clone();

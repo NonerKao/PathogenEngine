@@ -1,18 +1,8 @@
-use rand::{SeedableRng, rngs::StdRng};
+use rand::rngs::StdRng;
 use rand::prelude::SliceRandom;
 use rand::Rng;
 
-fn to_seed(es: Option<String>) -> StdRng {
-    let mut seed: [u8; 32] = [0; 32]; // Initialize with zeros
-
-    if let Some(s) = es {
-        let bytes = s.as_bytes();
-        seed[..bytes.len()].copy_from_slice(bytes);
-    }
-    StdRng::from_seed(seed)
-}
-
-pub fn get_rand_matrix(es: Option<String>) -> Vec<Vec<bool>> {
+pub fn get_rand_matrix(rng: &mut StdRng) -> Vec<Vec<bool>> {
     let vec_of_bools = vec![
         vec![true, true, false],
         vec![true, false, true],
@@ -22,10 +12,8 @@ pub fn get_rand_matrix(es: Option<String>) -> Vec<Vec<bool>> {
         vec![false, false, true],
     ];
 
-    let mut rng = to_seed(es);
-
     // Randomly select two distinct elements from the vector
-    let random_vecs: Vec<_> = vec_of_bools.choose_multiple(&mut rng, 3).collect();
+    let random_vecs: Vec<_> = vec_of_bools.choose_multiple(rng, 3).collect();
 
     // Assign the two random elements to variables
     let random_vec1 = random_vecs[0].clone();
@@ -51,7 +39,7 @@ pub fn get_rand_matrix(es: Option<String>) -> Vec<Vec<bool>> {
     let matrix = vec![random_vec1, random_vec2, random_vec3];
 
     // Randomly transform the matrix
-    random_transform(matrix, &mut rng)
+    random_transform(matrix, rng)
 }
 
 // Rotate the matrix clockwise by 90 degrees
@@ -95,10 +83,14 @@ fn random_transform(matrix1: Vec<Vec<bool>>, rng: &mut StdRng) -> Vec<Vec<bool>>
 #[cfg(test)]
 mod tests {
     use super::*;
+    use rand::rngs::StdRng;
+    use rand::SeedableRng;
 
     #[test]
     fn test_env() {
-        let rm = get_rand_matrix();
+        let seed: [u8; 32] = [0; 32];
+        let mut rng = StdRng::from_seed(seed);
+        let rm = get_rand_matrix(&mut rng);
         assert_eq!(
             rm[2]
                 .get(0)

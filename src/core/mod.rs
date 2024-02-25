@@ -12,6 +12,8 @@ use std::cell::RefCell;
 use std::collections::HashMap;
 use std::rc::Rc;
 use tree::TreeNode;
+use rand::rngs::StdRng;
+use rand::SeedableRng;
 
 #[derive(Hash, PartialEq, Eq, Debug, Clone, Copy)]
 pub enum World {
@@ -94,6 +96,11 @@ const SETUP1_MARKER: usize = 4;
 
 impl Game {
     pub fn init(file: Option<Rc<RefCell<TreeNode>>>) -> Game {
+        let seed: [u8; 32] = [0; 32];
+        let mut rng = StdRng::from_seed(seed);
+        Self::init_with_rng(file, &mut rng)
+    }
+    pub fn init_with_rng(file: Option<Rc<RefCell<TreeNode>>>, rng: &mut StdRng) -> Game {
         let mut iter = "".trim().chars().peekable();
         // The default SGF history starts with a common game-info node
         let mut g = Game {
@@ -253,7 +260,7 @@ impl Game {
             //    2. the SGF file provides no setup0 info
             for k in 0..=1 {
                 for l in 0..=1 {
-                    let m = get_rand_matrix(None);
+                    let m = get_rand_matrix(rng);
                     for i in 0..SIZE / 2 {
                         for j in 0..SIZE / 2 {
                             let mut w = World::Humanity;
