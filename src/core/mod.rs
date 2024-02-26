@@ -84,6 +84,10 @@ pub struct Game {
     pub phase: Phase,
     // Given history, given empty tree for recording, or None
     pub history: Rc<RefCell<TreeNode>>,
+
+    rng: StdRng,
+    auto_pla: bool,
+    auto_doc: bool,
 }
 
 pub const SIZE: i32 = 6;
@@ -95,12 +99,15 @@ pub const MAX_MARKER: u8 = 5;
 const SETUP1_MARKER: usize = 4;
 
 impl Game {
-    pub fn init(file: Option<Rc<RefCell<TreeNode>>>) -> Game {
+    pub fn init(file: Option<Rc<RefCell<TreeNode>>>) -> Self {
         let seed: [u8; 32] = [0; 32];
         let mut rng = StdRng::from_seed(seed);
         Self::init_with_rng(file, &mut rng)
     }
-    pub fn init_with_rng(file: Option<Rc<RefCell<TreeNode>>>, rng: &mut StdRng) -> Game {
+    pub fn init_with_rng(file: Option<Rc<RefCell<TreeNode>>>, rng: &mut StdRng) -> Self {
+        Self::init_with_rng_and_auto(file, rng, false, false)
+    }
+    pub fn init_with_rng_and_auto(file: Option<Rc<RefCell<TreeNode>>>, rng: &mut StdRng, auto_pla: bool, auto_doc: bool) -> Self {
         let mut iter = "".trim().chars().peekable();
         // The default SGF history starts with a common game-info node
         let mut g = Game {
@@ -111,6 +118,9 @@ impl Game {
             turn: Camp::Plague,
             phase: Phase::Setup0,
             history: TreeNode::new(&mut iter, None),
+            rng: rng.clone(),
+            auto_pla: auto_pla,
+            auto_doc: auto_doc,
         };
         // OK, I admit, this is a over-engineering mistake...
         g.history.borrow_mut().divergent = true;
@@ -260,7 +270,7 @@ impl Game {
             //    2. the SGF file provides no setup0 info
             for k in 0..=1 {
                 for l in 0..=1 {
-                    let m = get_rand_matrix(rng);
+                    let m = get_rand_matrix(&mut g.rng);
                     for i in 0..SIZE / 2 {
                         for j in 0..SIZE / 2 {
                             let mut w = World::Humanity;
