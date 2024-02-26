@@ -1,5 +1,5 @@
-use rand::rngs::StdRng;
 use rand::prelude::SliceRandom;
+use rand::rngs::StdRng;
 use rand::Rng;
 
 pub fn get_rand_matrix(rng: &mut StdRng) -> Vec<Vec<bool>> {

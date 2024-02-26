@@ -3,6 +3,8 @@ use ndarray::{Array, Array1};
 use std::fs::File;
 use std::io::{Read, Write};
 use std::net::{TcpListener, TcpStream};
+use rand::rngs::StdRng;
+use rand::SeedableRng;
 
 use pathogen_engine::core::action::Action;
 use pathogen_engine::core::action::ActionPhase;
@@ -31,6 +33,14 @@ struct Args {
     /// SGF file to be saved to
     #[arg(short, long)]
     save: Option<String>,
+
+    /// Random seed
+    #[arg(long)]
+    seed: Option<String>,
+
+    /// How many games to be played
+    #[arg(short)]
+    n: Option<usize>,
 }
 
 fn encode(g: &Game, a: &Action) -> Array1<u8> {
@@ -508,48 +518,59 @@ impl ReaderExtra for TcpStream {
 fn main() -> Result<(), std::io::Error> {
     let args = Args::parse();
 
-    let e = "(;FF[4]GM[41]SZ[6]GN[https://boardgamegeek.com/boardgame/369862/pathogen];C[Setup0]AW[df][da][db][ab][ba][ea][cc][fd][fc][af][ce][ee][cb][ef][bd][bc][fe];C[Setup0]AB[aa][ec][cd][bb][ae][be][ed][ad][ff][eb][fb][bf][ac][fa][dd][dc][cf][de][ca];C[Setup1]AB[fc];C[Setup1]AB[ed];C[Setup1]AB[ab];C[Setup1]AB[cf];C[Setup2]AW[cc];C[Setup2]AB[ec];C[Setup2]AW[ca];C[Setup2]AB[ce];C[Setup3]AW[jj])".to_string();
-    let mut iter = e.trim().chars().peekable();
-    let mut contents = String::new();
-    match args.load {
-        Some(filename) => {
-            // Ideally, this should be the pure "view mode", where we read the games(s).
-            // In reality, I need this to bridge the gap before all phases are treated equal.
-            let mut file = File::open(filename.as_str())?;
-            file.read_to_string(&mut contents)
-                .expect("Failed to read file");
-            iter = contents.trim().chars().peekable();
-        }
-        None => {}
-    }
+    let mut plague_wins = 0;
+    if let Some(n) = args.n {
+        for _i in 0..n {
+            let e = "(;FF[4]GM[41]SZ[6]GN[https://boardgamegeek.com/boardgame/369862/pathogen];C[Setup0]AW[df][da][db][ab][ba][ea][cc][fd][fc][af][ce][ee][cb][ef][bd][bc][fe];C[Setup0]AB[aa][ec][cd][bb][ae][be][ed][ad][ff][eb][fb][bf][ac][fa][dd][dc][cf][de][ca];C[Setup1]AB[fc];C[Setup1]AB[ed];C[Setup1]AB[ab];C[Setup1]AB[cf];C[Setup2]AW[cc];C[Setup2]AB[ec];C[Setup2]AW[ca];C[Setup2]AB[ce];C[Setup3]AW[jj])".to_string();
+            let mut iter = e.trim().chars().peekable();
+            let mut contents = String::new();
+            match args.load {
+                Some(ref filename) => {
+                    // Ideally, this should be the pure "view mode", where we read the games(s).
+                    // In reality, I need this to bridge the gap before all phases are treated equal.
+                    let mut file = File::open(filename.as_str())?;
+                    file.read_to_string(&mut contents)
+                        .expect("Failed to read file");
+                    iter = contents.trim().chars().peekable();
+                    drop(file)
+                }
+                None => {}
+            }
 
-    let t = TreeNode::new(&mut iter, None);
-    let mut g = Game::init(Some(t));
-    if !g.is_setup() {
-        panic!("The game is either not ready or finished");
-    }
+            let t = TreeNode::new(&mut iter, None);
+            let mut rng = from_seed(&args.seed);
+            let mut g = Game::init_with_rng(Some(t), &mut rng);
+            if !g.is_setup() {
+                panic!("The game is either not ready or finished");
+            }
 
-    let (w, b) = network_setup()?;
-    let mut s: [TcpStream; 2] = [w, b];
+            let (w, b) = network_setup()?;
+            let mut s: [TcpStream; 2] = [w, b];
 
-    let ea = Action::new();
-    let ec: [u8; FC_LEN] = [0; FC_LEN];
-    while let Phase::Main(x) = g.phase {
-        let turn: usize = x.try_into().unwrap();
-        if !handle_client(&mut s[turn % 2], &mut g) {
-            s[turn % 2].update_agent(&g, &ea, &ec, &"Ix06");
-            s[1 - turn % 2].update_agent(&g, &ea, &ec, &"Ix06");
+            let ea = Action::new();
+            let ec: [u8; FC_LEN] = [0; FC_LEN];
+            while let Phase::Main(x) = g.phase {
+                let turn: usize = x.try_into().unwrap();
+                if !handle_client(&mut s[turn % 2], &mut g) {
+                    s[turn % 2].update_agent(&g, &ea, &ec, &"Ix06");
+                    s[1 - turn % 2].update_agent(&g, &ea, &ec, &"Ix06");
+                    break;
+                }
+                if g.is_ended() {
+                    if turn % 2 == 1 {
+                        plague_wins = plague_wins + 1
+                    }
+                    s[turn % 2].update_agent(&g, &ea, &ec, &"Ix04");
+                    s[1 - turn % 2].update_agent(&g, &ea, &ec, &"Ix05");
+                    break;
+                }
+            }
             drop(s);
-            break;
+            to_file(&g)?;
         }
-        if g.is_ended() {
-            s[turn % 2].update_agent(&g, &ea, &ec, &"Ix04");
-            s[1 - turn % 2].update_agent(&g, &ea, &ec, &"Ix05");
-            break;
-        }
+        println!("Plague win rate: {}/{}", plague_wins, n);
     }
-
-    to_file(&g)
+    Ok(())
 }
 
 fn to_file(g: &Game) -> std::io::Result<()> {
@@ -574,6 +595,16 @@ fn network_setup() -> Result<(TcpStream, TcpStream), std::io::Error> {
     let b = black_listener.accept().unwrap().0;
 
     Ok((w, b))
+}
+
+fn from_seed(es: &Option<String>) -> StdRng {
+    let mut seed: [u8; 32] = [0; 32]; // Initialize with zeros
+
+    if let Some(s) = es {
+        let bytes = s.as_bytes();
+        seed[..bytes.len()].copy_from_slice(bytes);
+    }
+    StdRng::from_seed(seed)
 }
 
 // For the test only

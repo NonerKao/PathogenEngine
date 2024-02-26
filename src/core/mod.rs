@@ -8,12 +8,12 @@ pub mod tree;
 use action::Action;
 use gen_map::get_rand_matrix;
 use grid_coord::*;
+use rand::rngs::StdRng;
+use rand::SeedableRng;
 use std::cell::RefCell;
 use std::collections::HashMap;
 use std::rc::Rc;
 use tree::TreeNode;
-use rand::rngs::StdRng;
-use rand::SeedableRng;
 
 #[derive(Hash, PartialEq, Eq, Debug, Clone, Copy)]
 pub enum World {
