@@ -86,8 +86,6 @@ pub struct Game {
     pub history: Rc<RefCell<TreeNode>>,
 
     rng: StdRng,
-    auto_pla: bool,
-    auto_doc: bool,
 }
 
 pub const SIZE: i32 = 6;
@@ -105,9 +103,6 @@ impl Game {
         Self::init_with_rng(file, &mut rng)
     }
     pub fn init_with_rng(file: Option<Rc<RefCell<TreeNode>>>, rng: &mut StdRng) -> Self {
-        Self::init_with_rng_and_auto(file, rng, false, false)
-    }
-    pub fn init_with_rng_and_auto(file: Option<Rc<RefCell<TreeNode>>>, rng: &mut StdRng, auto_pla: bool, auto_doc: bool) -> Self {
         let mut iter = "".trim().chars().peekable();
         // The default SGF history starts with a common game-info node
         let mut g = Game {
@@ -119,8 +114,6 @@ impl Game {
             phase: Phase::Setup0,
             history: TreeNode::new(&mut iter, None),
             rng: rng.clone(),
-            auto_pla: auto_pla,
-            auto_doc: auto_doc,
         };
         // OK, I admit, this is a over-engineering mistake...
         g.history.borrow_mut().divergent = true;

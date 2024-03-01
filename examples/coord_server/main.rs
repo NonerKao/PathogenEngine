@@ -1,10 +1,10 @@
 use clap::Parser;
 use ndarray::{Array, Array1};
+use rand::rngs::StdRng;
+use rand::SeedableRng;
 use std::fs::File;
 use std::io::{Read, Write};
 use std::net::{TcpListener, TcpStream};
-use rand::rngs::StdRng;
-use rand::SeedableRng;
 
 use pathogen_engine::core::action::Action;
 use pathogen_engine::core::action::ActionPhase;
