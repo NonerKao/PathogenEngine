@@ -146,6 +146,7 @@ impl Action {
 
     // There are various combos for the following add* functions.
     pub fn add_map_step(&mut self, g: &Game, c: Coord) -> Result<&'static str, &'static str> {
+        assert_eq!(self.action_phase, ActionPhase::SetMap);
         if *g.map.get(&g.opposite(g.turn)).unwrap() == c {
             return Err("Ex00");
         }
@@ -244,6 +245,7 @@ impl Action {
         g: &Game,
         c: Coord,
     ) -> Result<&'static str, &'static str> {
+        assert_eq!(self.action_phase, ActionPhase::Lockdown);
         let o = Coord::new(0, 0);
         if g.turn != Camp::Doctor || self.map.unwrap() != o {
             return Err("Ex0E");
@@ -273,6 +275,7 @@ impl Action {
     }
 
     pub fn add_character(&mut self, g: &Game, c: Coord) -> Result<&'static str, &'static str> {
+        assert_eq!(self.action_phase, ActionPhase::SetCharacter);
         let mut temp_candidate = self.candidate.clone();
         temp_candidate.retain(|candidate| candidate.character == c);
         if temp_candidate.len() == 0 {
@@ -305,6 +308,7 @@ impl Action {
         g: &Game,
         to: Coord,
     ) -> Result<&'static str, &'static str> {
+        assert_eq!(self.action_phase, ActionPhase::BoardMove);
         let target_index = self.trajectory.len();
         let mut temp_candidate = self.candidate.clone();
         temp_candidate.retain(|candidate| candidate.trajectory[target_index] == to);
@@ -579,6 +583,7 @@ impl Action {
     }
 
     pub fn add_single_marker(&mut self, g: &Game, c: Coord) -> Result<&'static str, &'static str> {
+        assert_eq!(self.action_phase, ActionPhase::SetMarkers);
         let mut is_qualified = false;
         let mut res = Err("Ex22");
         for m in self.marker_slot.iter() {
@@ -1122,12 +1127,14 @@ mod tests {
         assert_eq!(Err("Ex22"), r3);
         let r4 = a.add_single_marker(&g, "dd".to_env());
         assert_eq!(Ok("Ix01"), r4);
+        // imbalance check: (1, 0) -> (2, 0)
         let r5 = a.add_single_marker(&g, "dd".to_env());
         assert_eq!(Err("Ex0C"), r5);
         let r6 = a.add_single_marker(&g, "cd".to_env());
         assert_eq!(Ok("Ix01"), r6);
         let r7 = a.add_single_marker(&g, "dd".to_env());
         assert_eq!(Ok("Ix01"), r7);
+        // imbalance check: (2, 1) -> (3, 1)
         let r8 = a.add_single_marker(&g, "dd".to_env());
         assert_eq!(Err("Ex0C"), r8);
         let r9 = a.add_single_marker(&g, "cd".to_env());
@@ -1145,14 +1152,18 @@ mod tests {
         let mut a = Action::new();
         let _ = a.add_map_step(&g, "hh".to_map());
         let _ = a.add_character(&g, "dd".to_env());
-        let _ = a.add_board_single_step(&g, "cd".to_env());
-        let _ = a.add_board_single_step(&g, "cb".to_env());
+        // Note: previously this was after the trajectory is decided,
+        // which prevents the `prepare_marker_slot` from successfully
+        // set the slot of "dd" to 1.  So move it here.
         g.stuff
             .insert("dd".to_env(), (Camp::Plague, Stuff::Marker(5)));
+        let _ = a.add_board_single_step(&g, "cd".to_env());
+        let _ = a.add_board_single_step(&g, "cb".to_env());
         let r3 = a.add_single_marker(&g, "ad".to_env());
         assert_eq!(Err("Ex22"), r3);
         let r4 = a.add_single_marker(&g, "dd".to_env());
         assert_eq!(Ok("Ix01"), r4);
+        // marker_slot check: "dd" no longer has a marker_slot
         let r5 = a.add_single_marker(&g, "dd".to_env());
         assert_eq!(Err("Ex22"), r5);
         let r6 = a.add_single_marker(&g, "cd".to_env());
@@ -1186,6 +1197,7 @@ mod tests {
         assert_eq!(Ok("Ix01"), r5);
         let r6 = a.add_single_marker(&g, "df".to_env());
         assert_eq!(Ok("Ix02"), r6);
+        // happy path for a four-slot situation
     }
 
     #[test]
@@ -1195,22 +1207,23 @@ mod tests {
         let mut iter = s0.trim().chars().peekable();
         let t = TreeNode::new(&mut iter, None);
         let mut g = Game::init(Some(t));
-        let _s1 = "(;B[hj][eb][ed][ef][df][cf][ed][eb][eb][db])";
+        let _s1 = "(;B[hj][eb][ed][ef][df][cf][ed][eb][eb][eb])";
         let mut a = Action::new();
         let _ = a.add_map_step(&g, "hj".to_map());
         let _ = a.add_character(&g, "eb".to_env());
-        let _ = a.add_board_single_step(&g, "ed".to_env());
-        let _ = a.add_board_single_step(&g, "ef".to_env());
-        let _ = a.add_board_single_step(&g, "df".to_env());
-        let _ = a.add_board_single_step(&g, "cf".to_env());
         g.stuff
             .insert("ed".to_env(), (Camp::Plague, Stuff::Marker(5)));
         g.stuff
             .insert("ef".to_env(), (Camp::Plague, Stuff::Marker(5)));
         g.stuff
             .insert("df".to_env(), (Camp::Plague, Stuff::Marker(5)));
+        let _ = a.add_board_single_step(&g, "ed".to_env());
+        let _ = a.add_board_single_step(&g, "ef".to_env());
+        let _ = a.add_board_single_step(&g, "df".to_env());
+        let _ = a.add_board_single_step(&g, "cf".to_env());
         let r3 = a.add_single_marker(&g, "ed".to_env());
         assert_eq!(Ok("Ix01"), r3);
+        // marker_slot check: "ed", "ef" and "df" no longer have a marker_slot
         let r4 = a.add_single_marker(&g, "eb".to_env());
         assert_eq!(Ok("Ix01"), r4);
         let r5 = a.add_single_marker(&g, "eb".to_env());
@@ -1230,10 +1243,6 @@ mod tests {
         let mut a = Action::new();
         let _ = a.add_map_step(&g, "hj".to_map());
         let _ = a.add_character(&g, "eb".to_env());
-        let _ = a.add_board_single_step(&g, "ed".to_env());
-        let _ = a.add_board_single_step(&g, "ef".to_env());
-        let _ = a.add_board_single_step(&g, "df".to_env());
-        let _ = a.add_board_single_step(&g, "cf".to_env());
         g.stuff
             .insert("ed".to_env(), (Camp::Plague, Stuff::Marker(5)));
         g.stuff
@@ -1242,12 +1251,80 @@ mod tests {
             .insert("df".to_env(), (Camp::Plague, Stuff::Marker(5)));
         g.stuff
             .insert("eb".to_env(), (Camp::Plague, Stuff::Marker(5)));
+        let _ = a.add_board_single_step(&g, "ed".to_env());
+        let _ = a.add_board_single_step(&g, "ef".to_env());
+        let _ = a.add_board_single_step(&g, "df".to_env());
+        let _ = a.add_board_single_step(&g, "cf".to_env());
+        // marker_slot check: "ed", "eb" and "df" no longer have a marker_slot
         let r3 = a.add_single_marker(&g, "ed".to_env());
         assert_eq!(Ok("Ix01"), r3);
         let r4 = a.add_single_marker(&g, "eb".to_env());
         assert_eq!(Ok("Ix01"), r4);
         let r5 = a.add_single_marker(&g, "ef".to_env());
         assert_eq!(Ok("Ix02"), r5);
+    }
+
+    #[test]
+    fn test_plague_marker6() {
+        let s0 = "(;FF[4]GM[41]SZ[6]GN[https://boardgamegeek.com/boardgame/369862/pathogen];C[Setup0]AW[fa][ef][ed][eb][cf][cc][dc][ca][ad][fe][ab][db][bb][be][fb][ae][ac][df];C[Setup0]AB[af][ba][dd][da][ff][bf][ee][bc][de][ec][cb][aa][ea][bd][ce][fc][cd][fd];C[Setup1]AB[ee];C[Setup1]AB[cf];C[Setup1]AB[fa];C[Setup1]AB[bc];C[Setup2]AW[bf];C[Setup2]AB[ce];C[Setup2]AW[db];C[Setup2]AB[eb];C[Setup3]AW[ih];B[jg][ce][de][dd][de][ce][de][ce];W[jh][db][dc][db][db][db][db][db])"
+        .to_string();
+        let mut iter = s0.trim().chars().peekable();
+        let t = TreeNode::new(&mut iter, None);
+        let g = Game::init(Some(t));
+        let _s1 = "(;B[hj][eb][ed][ef][df][cf][ed][eb][ef][df])";
+        let mut a = Action::new();
+        let _ = a.add_map_step(&g, "hj".to_map());
+        let _ = a.add_character(&g, "eb".to_env());
+        let _ = a.add_board_single_step(&g, "ed".to_env());
+        let _ = a.add_board_single_step(&g, "ef".to_env());
+        let _ = a.add_board_single_step(&g, "df".to_env());
+        let _ = a.add_board_single_step(&g, "cf".to_env());
+        let r1 = a.add_single_marker(&g, "ed".to_env());
+        assert_eq!(Ok("Ix01"), r1);
+        let r2 = a.add_single_marker(&g, "ed".to_env());
+        assert_eq!(Err("Ex0C"), r2);
+        // imbalance check: (1, 0, 0, 0) -> (2, 0, 0, 0)
+        let r3 = a.add_single_marker(&g, "ed".to_env());
+        assert_eq!(Err("Ex0C"), r3);
+        let r4 = a.add_single_marker(&g, "eb".to_env());
+        assert_eq!(Ok("Ix01"), r4);
+        let r5 = a.add_single_marker(&g, "ef".to_env());
+        assert_eq!(Ok("Ix01"), r5);
+        let r6 = a.add_single_marker(&g, "eb".to_env());
+        // imbalance check: (1, 1, 1, 0) -> (1, 2, 1, 0)
+        assert_eq!(Err("Ex0C"), r6);
+        let r7 = a.add_single_marker(&g, "df".to_env());
+        assert_eq!(Ok("Ix02"), r7);
+    }
+
+    #[test]
+    fn test_plague_marker7() {
+        let s0 = "(;FF[4]GM[41]SZ[6]GN[https://boardgamegeek.com/boardgame/369862/pathogen];C[Setup0]AW[fa][ef][ed][eb][cf][cc][dc][ca][ad][fe][ab][db][bb][be][fb][ae][ac][df];C[Setup0]AB[af][ba][dd][da][ff][bf][ee][bc][de][ec][cb][aa][ea][bd][ce][fc][cd][fd];C[Setup1]AB[ee];C[Setup1]AB[cf];C[Setup1]AB[fa];C[Setup1]AB[bc];C[Setup2]AW[bf];C[Setup2]AB[ce];C[Setup2]AW[db];C[Setup2]AB[eb];C[Setup3]AW[ih];B[jg][ce][de][dd][de][ce][de][ce];W[jh][db][dc][db][db][db][db][db])"
+        .to_string();
+        let mut iter = s0.trim().chars().peekable();
+        let t = TreeNode::new(&mut iter, None);
+        let g = Game::init(Some(t));
+        let _s1 = "(;B[ij][eb][ed][ef][df][ed][eb][ef][eb])";
+        let mut a = Action::new();
+        let _ = a.add_map_step(&g, "ij".to_map());
+        let _ = a.add_character(&g, "eb".to_env());
+        let _ = a.add_board_single_step(&g, "ed".to_env());
+        let _ = a.add_board_single_step(&g, "ef".to_env());
+        let r0 = a.add_board_single_step(&g, "df".to_env());
+        assert_eq!(Ok("Ix01"), r0);
+        let r1 = a.add_single_marker(&g, "ed".to_env());
+        assert_eq!(Ok("Ix01"), r1);
+        let r2 = a.add_single_marker(&g, "ed".to_env());
+        assert_eq!(Err("Ex0C"), r2);
+        // imbalance check: (1, 0, 0) -> (2, 0, 0)
+        let r3 = a.add_single_marker(&g, "ed".to_env());
+        assert_eq!(Err("Ex0C"), r3);
+        let r4 = a.add_single_marker(&g, "ef".to_env());
+        assert_eq!(Ok("Ix01"), r4);
+        let r5 = a.add_single_marker(&g, "ef".to_env());
+        assert_eq!(Err("Ex0C"), r5);
+        let r6 = a.add_single_marker(&g, "eb".to_env());
+        assert_eq!(Ok("Ix01"), r6);
     }
 
     #[test]
