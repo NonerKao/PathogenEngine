@@ -6,7 +6,7 @@ pub const BOARD_MAX: i32 = crate::core::SIZE;
 pub const ORIGIN: Coord = Coord { x: 0, y: 0 };
 pub const MAP_OFFSET: Coord = Coord { x: 2, y: 2 };
 
-#[derive(Hash, PartialEq, Eq, Debug, Copy, Clone)]
+#[derive(Hash, PartialEq, Eq, PartialOrd, Ord, Debug, Copy, Clone)]
 pub struct Coord {
     pub x: i32,
     pub y: i32,
@@ -106,7 +106,7 @@ impl Coord {
     }
 }
 
-#[derive(PartialEq, Copy, Clone, Debug)]
+#[derive(PartialEq, Eq, PartialOrd, Ord, Copy, Clone, Debug)]
 pub enum Lockdown {
     Normal,
     CC90,
@@ -172,7 +172,7 @@ impl Sub<&Coord> for Coord {
     }
 }
 
-#[derive(Hash, PartialEq, Eq, Debug, Copy, Clone)]
+#[derive(Hash, PartialEq, Eq, PartialOrd, Ord, Debug, Copy, Clone)]
 pub enum Direction {
     Up,
     Down,

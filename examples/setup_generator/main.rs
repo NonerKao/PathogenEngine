@@ -1,11 +1,13 @@
 use clap::Parser;
 
 use rand::rngs::StdRng;
-use rand::seq::SliceRandom;
+use rand::Rng;
 use rand::SeedableRng;
+use std::cell::RefCell;
 use std::fs::File;
 use std::io::Read;
 use std::io::Write;
+use std::rc::Rc;
 
 use pathogen_engine::core::status_code::str_to_full_msg;
 use pathogen_engine::core::tree::TreeNode;
@@ -46,8 +48,9 @@ fn main() -> std::io::Result<()> {
 
     // main
     let tn = TreeNode::new(&mut iter, None);
-    let mut rng = from_seed(args.seed);
-    let mut g = Game::init_with_rng(Some(tn.clone()), &mut rng);
+    let mut rng = from_seed(args.seed.clone());
+    let shared_rng = Rc::new(RefCell::new(rng.clone()));
+    let mut g = Game::init_with_rng(Some(tn.clone()), shared_rng.clone());
     if g.is_setup() {
         to_file(&g)?;
         return Ok(());
@@ -78,12 +81,14 @@ fn main() -> std::io::Result<()> {
     // Generate
     let env_full = env_coord_pool.clone();
     loop {
-        let c = env_coord_pool.choose(&mut rng).unwrap().clone();
-        let r = if g.phase != Phase::Setup3 {
-            g.setup_with_alpha(&c)
+        let e_index = rng.gen_range(0..env_coord_pool.len());
+        let m_index = rng.gen_range(0..map_coord_pool.len());
+        let c = if g.phase != Phase::Setup3 {
+            env_coord_pool[e_index].clone() //env_coord_pool.choose(&mut rng).unwrap().clone();
         } else {
-            g.setup_with_alpha(map_coord_pool.choose(&mut rng).unwrap())
+            map_coord_pool[m_index].clone() //env_coord_pool.choose(&mut rng).unwrap().clone();
         };
+        let r = g.setup_with_alpha(&c); //map_coord_pool.choose(&mut rng).unwrap())
         match r {
             Ok(Phase::Main(1)) => {
                 break;

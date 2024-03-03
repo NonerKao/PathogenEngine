@@ -85,7 +85,7 @@ pub struct Game {
     // Given history, given empty tree for recording, or None
     pub history: Rc<RefCell<TreeNode>>,
 
-    rng: StdRng,
+    rng: Rc<RefCell<StdRng>>,
 }
 
 pub const SIZE: i32 = 6;
@@ -99,10 +99,11 @@ const SETUP1_MARKER: usize = 4;
 impl Game {
     pub fn init(file: Option<Rc<RefCell<TreeNode>>>) -> Self {
         let seed: [u8; 32] = [0; 32];
-        let mut rng = StdRng::from_seed(seed);
-        Self::init_with_rng(file, &mut rng)
+        let rng = StdRng::from_seed(seed);
+        let shared_rng = Rc::new(RefCell::new(rng));
+        Self::init_with_rng(file, shared_rng)
     }
-    pub fn init_with_rng(file: Option<Rc<RefCell<TreeNode>>>, rng: &mut StdRng) -> Self {
+    pub fn init_with_rng(file: Option<Rc<RefCell<TreeNode>>>, rng: Rc<RefCell<StdRng>>) -> Self {
         let mut iter = "".trim().chars().peekable();
         // The default SGF history starts with a common game-info node
         let mut g = Game {
@@ -263,7 +264,7 @@ impl Game {
             //    2. the SGF file provides no setup0 info
             for k in 0..=1 {
                 for l in 0..=1 {
-                    let m = get_rand_matrix(&mut g.rng);
+                    let m = get_rand_matrix(g.rng.clone());
                     for i in 0..SIZE / 2 {
                         for j in 0..SIZE / 2 {
                             let mut w = World::Humanity;

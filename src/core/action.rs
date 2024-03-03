@@ -70,6 +70,7 @@ impl Action {
     // Return false when no move is choosed but to skip
     pub fn random_move(&mut self, g: &mut Game) -> bool {
         // Loop until we get a valid random coordinate
+        let mut rng = g.rng.borrow_mut();
         let mut coord_candidate: Vec<Coord> = Vec::new();
         for i in -MAP_OFFSET.x + 1..MAP_OFFSET.x {
             for j in -MAP_OFFSET.y..=MAP_OFFSET.y {
@@ -83,7 +84,8 @@ impl Action {
 
         // ActionPhase::SetMap
         loop {
-            let c = coord_candidate[g.rng.gen_range(0..coord_candidate.len())];
+            let r = rng.gen_range(0..coord_candidate.len());
+            let c = coord_candidate[r];
             let s = self.add_map_step(g, c);
             match s {
                 Ok(x) => {
@@ -100,10 +102,36 @@ impl Action {
                 }
             }
         }
+        // The order of candidates is not deterministic (!!!),
+        // so let's sort them here. Rushing to decide one of them with a
+        // random index does not guarentee anything.
+        self.candidate.sort_by(|a, b| {
+            if a.lockdown == b.lockdown {
+                if a.character == b.character {
+                    if a.trajectory.len() == b.trajectory.len() {
+                        for i in 0..a.trajectory.len() {
+                            if a.trajectory[i] == b.trajectory[i] {
+                                continue;
+                            } else {
+                                return a.trajectory[i].cmp(&b.trajectory[i]);
+                            }
+                        }
+                    } else {
+                        return a.trajectory.len().cmp(&b.trajectory.len());
+                    }
+                } else {
+                    return a.character.cmp(&b.character);
+                }
+            } else {
+                return a.lockdown.cmp(&b.lockdown);
+            }
+            panic!("Not possible: identical candidates");
+        });
 
         // The reason we go reuse `add_map_step` is to have the candidates.
         // Randomly pick one here.
-        let route_candidate = self.candidate[g.rng.gen_range(0..self.candidate.len())].clone();
+        let r = rng.gen_range(0..self.candidate.len());
+        let route_candidate = self.candidate[r].clone();
 
         // ActionPhase::Lockdown
         if self.action_phase == ActionPhase::Lockdown {
@@ -112,9 +140,17 @@ impl Action {
         }
 
         // ActionPhase::SetCharacter
-        // As a random move, finally the character position will be updated as
-        // the last coord in the trajectory. This is normally done in the last
-        // `add_board_single_step`, so we follow the same convention here.
+        // Update the world and character.
+        let cc = route_candidate.character.clone();
+        let hh = *g.character.get(&(World::Humanity, g.turn)).unwrap();
+        let hu = *g.character.get(&(World::Underworld, g.turn)).unwrap();
+        assert!(cc == hh || cc == hu);
+        if cc == hh {
+            self.world = Some(World::Humanity);
+        } else {
+            self.world = Some(World::Underworld);
+        }
+        self.character = Some(cc);
         self.transit(g);
 
         // ActionPhase::BoardMove
@@ -130,7 +166,8 @@ impl Action {
 
         // ActionPhase::SetMarkers
         loop {
-            let m = self.marker_slot[g.rng.gen_range(0..self.marker_slot.len())];
+            let r = rng.gen_range(0..self.marker_slot.len());
+            let m = self.marker_slot[r];
             let s = self.add_single_marker(g, m.0);
             match s {
                 Ok("Ix02") => {

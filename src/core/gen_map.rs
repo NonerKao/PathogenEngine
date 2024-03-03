@@ -1,8 +1,9 @@
-use rand::prelude::SliceRandom;
 use rand::rngs::StdRng;
 use rand::Rng;
+use std::cell::RefCell;
+use std::rc::Rc;
 
-pub fn get_rand_matrix(rng: &mut StdRng) -> Vec<Vec<bool>> {
+pub fn get_rand_matrix(shared_rng: Rc<RefCell<StdRng>>) -> Vec<Vec<bool>> {
     let vec_of_bools = vec![
         vec![true, true, false],
         vec![true, false, true],
@@ -12,8 +13,17 @@ pub fn get_rand_matrix(rng: &mut StdRng) -> Vec<Vec<bool>> {
         vec![false, false, true],
     ];
 
+    let mut rng_ref = shared_rng.borrow_mut();
+    let mut index: usize = rng_ref.gen_range(0..6);
+    let mut random_vecs: Vec<Vec<bool>> = Vec::new();
     // Randomly select two distinct elements from the vector
-    let random_vecs: Vec<_> = vec_of_bools.choose_multiple(rng, 3).collect();
+    random_vecs.push(vec_of_bools[index].clone());
+
+    index = rng_ref.gen_range(0..6);
+    random_vecs.push(vec_of_bools[index].clone());
+
+    index = rng_ref.gen_range(0..6);
+    random_vecs.push(vec_of_bools[index].clone());
 
     // Assign the two random elements to variables
     let random_vec1 = random_vecs[0].clone();
@@ -39,7 +49,8 @@ pub fn get_rand_matrix(rng: &mut StdRng) -> Vec<Vec<bool>> {
     let matrix = vec![random_vec1, random_vec2, random_vec3];
 
     // Randomly transform the matrix
-    random_transform(matrix, rng)
+    drop(rng_ref);
+    random_transform(matrix, shared_rng.clone())
 }
 
 // Rotate the matrix clockwise by 90 degrees
@@ -57,7 +68,8 @@ fn rotate_matrix(matrix: &Vec<Vec<bool>>) -> Vec<Vec<bool>> {
 }
 
 // Randomly transform the matrix by rotating it or mirroring it horizontally/vertically
-fn random_transform(matrix1: Vec<Vec<bool>>, rng: &mut StdRng) -> Vec<Vec<bool>> {
+fn random_transform(matrix1: Vec<Vec<bool>>, shared_rng: Rc<RefCell<StdRng>>) -> Vec<Vec<bool>> {
+    let mut rng = shared_rng.borrow_mut();
     let operation1 = rng.gen_range(0..3);
     let matrix2 = match operation1 {
         0 => matrix1,
