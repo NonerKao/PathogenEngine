@@ -106,7 +106,8 @@ fn main() -> Result<(), std::io::Error> {
                     plague_wins = plague_wins + 1;
                 }
                 let is = i.to_string();
-                to_sgf(&(output_path.clone() + "/" + &is + ".sgf"), &g)?
+                to_sgf(&(output_path.clone() + "/" + &is + ".sgf"), &g)?;
+                break;
             }
         }
     }

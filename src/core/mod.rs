@@ -308,6 +308,9 @@ impl Game {
         if self.phase == Phase::End {
             return true;
         }
+        if let Phase::Main(100) = self.phase {
+            return true;
+        }
         false
     }
     fn check_and_set_end(&mut self) {
