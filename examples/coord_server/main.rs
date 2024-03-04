@@ -1,7 +1,5 @@
 use clap::Parser;
 use ndarray::{Array, Array1};
-use rand::rngs::StdRng;
-use rand::SeedableRng;
 use std::fs::File;
 use std::io::{Read, Write};
 use std::net::{TcpListener, TcpStream};
@@ -530,8 +528,7 @@ fn main() -> Result<(), std::io::Error> {
     }
 
     let t = TreeNode::new(&mut iter, None);
-    let mut rng = from_seed(&args.seed);
-    let mut g = Game::init_with_rng(Some(t), &mut rng);
+    let mut g = Game::init(Some(t));
     if !g.is_setup() {
         panic!("The game is either not ready or finished");
     }
@@ -557,16 +554,6 @@ fn main() -> Result<(), std::io::Error> {
     }
 
     to_file(&g)
-}
-
-fn from_seed(es: &Option<String>) -> StdRng {
-    let mut seed: [u8; 32] = [0; 32]; // Initialize with zeros
-
-    if let Some(s) = es {
-        let bytes = s.as_bytes();
-        seed[..bytes.len()].copy_from_slice(bytes);
-    }
-    StdRng::from_seed(seed)
 }
 
 fn to_file(g: &Game) -> std::io::Result<()> {

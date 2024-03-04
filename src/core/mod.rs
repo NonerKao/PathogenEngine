@@ -163,6 +163,7 @@ impl Game {
                         }
                         if g.is_setup1_done() {
                             g.phase = Phase::Setup2;
+                            g.switch();
                         }
                     } else {
                         panic!("Ex10");
@@ -175,7 +176,6 @@ impl Game {
                         panic!("Ex14");
                     } else if g.phase == Phase::Setup2 {
                         let mut s = String::new();
-                        g.switch();
                         match g.turn {
                             Camp::Plague => {
                                 t.get_value("AB".to_string(), &mut s);
@@ -185,7 +185,15 @@ impl Game {
                             }
                         }
                         let c1 = s.as_str().to_env();
-                        g.character.insert((*g.env.get(&c1).unwrap(), g.turn), c1);
+                        let w = g.env.get(&c1).unwrap();
+                        match g.character.get(&(*w, g.turn)) {
+                            Some(_) => {
+                                panic!("Ex1e");
+                            }
+                            None => {
+                                g.character.insert((*w, g.turn), c1);
+                            }
+                        }
                         match g.is_illegal_order_setup2() {
                             Err(x) => {
                                 panic!("{}", x);
@@ -201,6 +209,7 @@ impl Game {
                         if g.is_setup2_done() {
                             g.phase = Phase::Setup3;
                         }
+                        g.switch();
                     } else {
                         panic!("Ex17");
                     }
@@ -216,7 +225,6 @@ impl Game {
                         let mut s = String::new();
                         // In theory this doesn't matter, but the existence of
                         // this turn-aware setting may benefit future clients
-                        g.switch();
                         t.get_value("AW".to_string(), &mut s);
                         let c = s.as_str().to_map();
                         g.map.insert(Camp::Doctor, c);
@@ -695,7 +703,14 @@ impl Game {
             }
             Phase::Setup2 => {
                 let w = *self.env.get(&c).unwrap();
-                self.character.insert((w, self.turn), c);
+                match self.character.get(&(w, self.turn)) {
+                    Some(_) => {
+                        return Err("Ex1e");
+                    }
+                    None => {
+                        self.character.insert((w, self.turn), c);
+                    }
+                }
                 match self.is_illegal_order_setup2() {
                     Err("Ex18") => {
                         self.character
@@ -1319,6 +1334,74 @@ mod tests {
         let t = TreeNode::new(&mut iter, None);
         let mut g = Game::init(Some(t));
         assert_eq!(g.setup_with_alpha(&String::from("af")), Ok(Phase::Setup2));
+    }
+
+    #[test]
+    fn test_setup_state_machine1() {
+        let s0 = "(
+            ;C[Setup0]
+            AW[aa][ab][ad][ae][bb][bc][bf][ca][cd][ce][dc][dd][df][ea][ec][ee][fa][fb][fe][ff]
+            AB[ac][af][ba][bd][be][cb][cc][cf][da][db][de][eb][ed][ef][fc][fd]
+            )"
+        .to_string();
+        let mut iter = s0.trim().chars().peekable();
+        let t = TreeNode::new(&mut iter, None);
+        let g = Game::init(Some(t));
+        assert_eq!(g.turn, Camp::Plague);
+    }
+
+    #[test]
+    fn test_setup_state_machine2() {
+        let s0 = "(
+            ;C[Setup0]
+            AW[aa][ab][ad][ae][bb][bc][bf][ca][cd][ce][dc][dd][df][ea][ec][ee][fa][fb][fe][ff]
+            AB[ac][af][ba][bd][be][cb][cc][cf][da][db][de][eb][ed][ef][fc][fd]
+            ;C[Setup1]AB[ab][cd][ef][da]
+            )"
+        .to_string();
+        let mut iter = s0.trim().chars().peekable();
+        let t = TreeNode::new(&mut iter, None);
+        let g = Game::init(Some(t));
+        assert_eq!(g.turn, Camp::Doctor);
+    }
+
+    #[test]
+    fn test_setup_state_machine3() {
+        let s0 = "(
+            ;C[Setup0]
+            AW[aa][ab][ad][ae][bb][bc][bf][ca][cd][ce][dc][dd][df][ea][ec][ee][fa][fb][fe][ff]
+            AB[ac][af][ba][bd][be][cb][cc][cf][da][db][de][eb][ed][ef][fc][fd]
+            ;C[Setup1]AB[ab][cd][ef][da]
+            ;C[Setup2]AW[aa]
+            ;C[Setup2]AB[ac]
+            ;C[Setup2]AW[af]
+            ;C[Setup2]AB[ad]
+            )"
+        .to_string();
+        let mut iter = s0.trim().chars().peekable();
+        let t = TreeNode::new(&mut iter, None);
+        let g = Game::init(Some(t));
+        assert_eq!(g.turn, Camp::Doctor);
+    }
+
+    #[test]
+    fn test_setup_state_machine4() {
+        let s0 = "(
+            ;C[Setup0]
+            AW[aa][ab][ad][ae][bb][bc][bf][ca][cd][ce][dc][dd][df][ea][ec][ee][fa][fb][fe][ff]
+            AB[ac][af][ba][bd][be][cb][cc][cf][da][db][de][eb][ed][ef][fc][fd]
+            ;C[Setup1]AB[ab][cd][ef][da]
+            ;C[Setup2]AW[aa]
+            ;C[Setup2]AB[ac]
+            ;C[Setup2]AW[af]
+            ;C[Setup2]AB[ad]
+            ;C[Setup3]AW[ii]
+            )"
+        .to_string();
+        let mut iter = s0.trim().chars().peekable();
+        let t = TreeNode::new(&mut iter, None);
+        let g = Game::init(Some(t));
+        assert_eq!(g.turn, Camp::Plague);
     }
 
     #[test]

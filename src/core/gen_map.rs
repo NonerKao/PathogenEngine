@@ -101,8 +101,9 @@ mod tests {
     #[test]
     fn test_env() {
         let seed: [u8; 32] = [0; 32];
-        let mut rng = StdRng::from_seed(seed);
-        let rm = get_rand_matrix(&mut rng);
+        let rng = StdRng::from_seed(seed);
+        let shared_rng = Rc::new(RefCell::new(rng));
+        let rm = get_rand_matrix(shared_rng.clone());
         assert_eq!(
             rm[2]
                 .get(0)
