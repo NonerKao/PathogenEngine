@@ -1,17 +1,18 @@
-use clap::Parser;
+use clap::{Parser, ValueEnum};
 
 use rand::rngs::StdRng;
 use rand::Rng;
 use rand::SeedableRng;
 use std::cell::RefCell;
-use std::fs::File;
+use std::fs::{File, OpenOptions};
 use std::io::Read;
 use std::io::Write;
 use std::rc::Rc;
 
+use pathogen_engine::core::grid_coord::{Coord, MAP_OFFSET};
 use pathogen_engine::core::status_code::str_to_full_msg;
 use pathogen_engine::core::tree::TreeNode;
-use pathogen_engine::core::{Game, Phase};
+use pathogen_engine::core::*;
 
 #[derive(Parser, Debug)]
 #[command(author, version, about, long_about = None)]
@@ -27,6 +28,16 @@ struct Args {
     /// random seed in ASCII string, at most the starting 32 bytes are used
     #[arg(long)]
     seed: Option<String>,
+
+    /// Execution mode
+    #[arg(long)]
+    mode: Mode,
+}
+
+#[derive(Clone, Debug, PartialEq, ValueEnum)]
+enum Mode {
+    SGF,
+    DATASET,
 }
 
 fn main() -> std::io::Result<()> {
@@ -107,14 +118,97 @@ fn main() -> std::io::Result<()> {
     to_file(&g)
 }
 
+fn encode(g: &Game, buffer: &mut String) {
+    for i in 0..SIZE as usize {
+        for j in 0..SIZE as usize {
+            let c = Coord::new(i.try_into().unwrap(), j.try_into().unwrap());
+            if g.env.get(&c).unwrap() == &World::Humanity {
+                buffer.push('H');
+            } else {
+                buffer.push(' ');
+            }
+        }
+    }
+    for i in 0..SIZE as usize {
+        for j in 0..SIZE as usize {
+            let c = Coord::new(i.try_into().unwrap(), j.try_into().unwrap());
+            if g.env.get(&c).unwrap() == &World::Underworld {
+                buffer.push('U');
+            } else {
+                buffer.push(' ');
+            }
+        }
+    }
+    for i in 0..SIZE as usize {
+        for j in 0..SIZE as usize {
+            let c = Coord::new(i.try_into().unwrap(), j.try_into().unwrap());
+            match g.stuff.get(&c) {
+                Some(_) => {
+                    buffer.push('S');
+                }
+                _ => {
+                    buffer.push(' ');
+                }
+            }
+        }
+    }
+    let d0 = g.character.get(&(World::Humanity, Camp::Doctor)).unwrap();
+    let d1 = g.character.get(&(World::Underworld, Camp::Doctor)).unwrap();
+    for i in 0..SIZE as usize {
+        for j in 0..SIZE as usize {
+            let c = Coord::new(i.try_into().unwrap(), j.try_into().unwrap());
+            if c == *d0 || c == *d1 {
+                buffer.push('D');
+            } else {
+                buffer.push(' ');
+            }
+        }
+    }
+    let p0 = g.character.get(&(World::Humanity, Camp::Plague)).unwrap();
+    let p1 = g.character.get(&(World::Underworld, Camp::Plague)).unwrap();
+    for i in 0..SIZE as usize {
+        for j in 0..SIZE as usize {
+            let c = Coord::new(i.try_into().unwrap(), j.try_into().unwrap());
+            if c == *p0 || c == *p1 {
+                buffer.push('P');
+            } else {
+                buffer.push(' ');
+            }
+        }
+    }
+    let m = g.map.get(&Camp::Doctor).unwrap();
+    for i in -MAP_OFFSET.x..=MAP_OFFSET.x {
+        for j in -MAP_OFFSET.y..=MAP_OFFSET.y {
+            let c = Coord::new(i.try_into().unwrap(), j.try_into().unwrap());
+            if *m == c {
+                buffer.push('M');
+            } else {
+                buffer.push(' ');
+            }
+        }
+    }
+}
+
 fn to_file(g: &Game) -> std::io::Result<()> {
     let args = Args::parse();
     let mut buffer = String::new();
-    g.history.borrow().to_root().borrow().to_string(&mut buffer);
+    if args.mode == Mode::DATASET {
+        encode(&g, &mut buffer);
+    } else {
+        g.history.borrow().to_root().borrow().to_string(&mut buffer);
+    }
     match args.save {
         Some(filename) => {
-            let mut file = File::create(filename.as_str())?;
-            write!(file, "{}", buffer)?;
+            if args.mode == Mode::SGF {
+                let mut file = File::create(filename.as_str())?;
+                write!(file, "{}", buffer)?;
+            } else {
+                let mut file = OpenOptions::new()
+                    .append(true) // Open the file in append mode.
+                    .create(true) // Create the file if it does not exist.
+                    .open(filename)?;
+                write!(file, "{}", buffer)?;
+            }
         }
         None => {}
     }
@@ -129,4 +223,37 @@ fn from_seed(es: Option<String>) -> StdRng {
         seed[..bytes.len()].copy_from_slice(bytes);
     }
     StdRng::from_seed(seed)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    #[test]
+    fn test_encode1() {
+        let s0 = "(
+            ;C[Setup0]
+            AW[fa][eb][be][fd][ee][ef][ab][ad][cf][ca][bb][dc][ec][de][ac]
+            AB[aa][ae][bf][ba][db][af][dd][fe][bc][ea][fb][cd][df][ed][cc][bd][ff][da][cb][ce][fc]
+            ;C[Setup1]AB[ba][ee][af][fb]
+            ;C[Setup2]AW[ec]
+            ;C[Setup2]AB[bc]
+            ;C[Setup2]AW[db]
+            ;C[Setup2]AB[de]
+            ;C[Setup3]AW[jj]
+            )"
+        .to_string();
+        let mut iter = s0.trim().chars().peekable();
+        let t = TreeNode::new(&mut iter, None);
+        let g = Game::init(Some(t));
+
+        let mut buffer = String::new();
+        let mut ans = String::from(" HHH   H  H H    H  H H  HH HHH  H  ");
+        ans = ans + "U   UUU UU U UUUU UU U UU  U   UU UU";
+        ans = ans + "     SS                     S  S    ";
+        ans = ans + "                   D      D         ";
+        ans = ans + "        P             P             ";
+        ans = ans + "                  M      ";
+        encode(&g, &mut buffer);
+        assert_eq!(buffer, ans);
+    }
 }
