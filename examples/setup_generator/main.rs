@@ -105,11 +105,17 @@ fn main() -> std::io::Result<()> {
                 break;
             }
             Ok(x) => {
-                println!("{:?} done one step", x);
+                #[cfg(debug_assertions)]
+                {
+                    println!("{:?} done one step", x);
+                }
                 env_coord_pool = env_full.clone();
             }
             Err(e) => {
-                println!("{} from attempting {}", str_to_full_msg(e), c);
+                #[cfg(debug_assertions)]
+                {
+                    println!("{} from attempting {}", str_to_full_msg(e), c);
+                }
                 env_coord_pool.retain(|x| *x != *c);
             }
         }

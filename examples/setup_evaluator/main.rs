@@ -18,6 +18,10 @@ struct Args {
     #[arg(short, long)]
     load: String,
 
+    /// SGF file to be loaded from
+    #[arg(short, long)]
+    save: Option<String>,
+
     /// Random seed
     #[arg(long)]
     seed: Option<String>,
@@ -55,12 +59,20 @@ fn next(g: &mut Game, a: &Action) {
 fn main() -> Result<(), std::io::Error> {
     let args = Args::parse();
 
-    let output_path = get_setup_name(args.load.as_str());
-    if let Err(e) = create_dir(output_path.as_str()) {
-        match e.kind() {
-            std::io::ErrorKind::AlreadyExists => {}
-            _ => {
-                panic!("Error creating directory: {:?}", e);
+    let mut output_path = if let Some(ref op) = args.save {
+        String::from(op)
+    } else {
+        String::from("dummy")
+    };
+
+    if args.save != None {
+        output_path = output_path + "/" + &get_setup_name(args.load.as_str());
+        if let Err(e) = create_dir(output_path.as_str()) {
+            match e.kind() {
+                std::io::ErrorKind::AlreadyExists => {}
+                _ => {
+                    panic!("Error creating directory: {:?}", e);
+                }
             }
         }
     }
@@ -71,7 +83,9 @@ fn main() -> Result<(), std::io::Error> {
         .expect("Failed to read file");
     let origin_iter = contents.trim().chars().peekable();
     drop(file);
-    to_misc(&(output_path.clone() + "/setup.sgf"), &contents)?;
+    if args.save != None {
+        to_misc(&(output_path.clone() + "/setup.sgf"), &contents)?;
+    }
 
     let mut plague_wins = 0;
     let mut plague_total_moves = 0;
@@ -106,7 +120,9 @@ fn main() -> Result<(), std::io::Error> {
                     plague_wins = plague_wins + 1;
                 }
                 let is = i.to_string();
-                to_sgf(&(output_path.clone() + "/" + &is + ".sgf"), &g)?;
+                if args.save != None {
+                    to_sgf(&(output_path.clone() + "/" + &is + ".sgf"), &g)?;
+                }
                 break;
             }
         }
@@ -115,8 +131,12 @@ fn main() -> Result<(), std::io::Error> {
         "{}/{}; steps: {}/{}",
         plague_wins, n, plague_total_moves, total_moves
     );
-    println!("{}", result);
-    to_misc(&(output_path.clone() + "/result.txt"), result.as_str())
+    println!("{}", plague_wins);
+    if args.save != None {
+        to_misc(&(output_path.clone() + "/result.txt"), result.as_str())
+    } else {
+        Ok(())
+    }
 }
 
 fn get_setup_name(filename: &str) -> String {
