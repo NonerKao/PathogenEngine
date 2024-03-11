@@ -4,25 +4,41 @@ import math
 import os
 import argparse
 from torch.utils.data import Dataset, DataLoader
+from torch.utils.tensorboard import SummaryWriter
     
-TRAINING_BATCH_UNIT = 10
-TRAINING_EPOCH = 50
-TRAINING_CHECKPOINT = 30
+TRAINING_BATCH_UNIT = 50
+TRAINING_EPOCH = 1000
 
 ENV_SIZE = 5*6*6
 MAP_SIZE = 25*1
 INPUT_SIZE = ENV_SIZE + MAP_SIZE
-OUTPUT_SIZE = 3891
+OUTPUT_SIZE = 1
 PAIR_SIZE = INPUT_SIZE + OUTPUT_SIZE
 
 RES_SIZE = 12
 RES_INPUT_SIZE = 64
 NATURE_CHANNEL_SIZE = 6
 
-def init_optimizer():
-    learning_rate = 0.009
-    optimizer = torch.optim.Adam(model.parameters(), lr=learning_rate)
-    loss_func = ScaledL1Loss()
+ACCURACY_THRESHOLD = 0.03
+
+class ScaledLoss(torch.nn.Module):
+    def __init__(self, scale_factor=10000.0):
+        super(ScaledLoss, self).__init__()
+        self.scale_factor = scale_factor
+        self.loss = torch.nn.MSELoss()
+
+    def forward(self, input, target):
+        loss = self.loss(input, target)
+        scaled_loss = loss * self.scale_factor
+        return scaled_loss
+
+def init_optimizer(model):
+    learning_rate = 0.0001
+    # optimizer = torch.optim.Adam(model.parameters(), lr=learning_rate)
+    optimizer = torch.optim.Adam([
+        {'params': [model.fc.bias, model.fc.weight], 'lr': 1e-4}  
+    ], lr=learning_rate) 
+    loss_func = ScaledLoss()
     return optimizer, loss_func
 
 def init_dev():
@@ -34,17 +50,6 @@ def init_dev():
     else:
         print("...")
         return None
-
-class ScaledL1Loss(torch.nn.Module):
-    def __init__(self, scale_factor=10000.0):
-        super(ScaledL1Loss, self).__init__()
-        self.scale_factor = scale_factor
-        self.l1_loss = torch.nn.L1Loss()
-
-    def forward(self, input, target):
-        loss = self.l1_loss(input, target)
-        scaled_loss = loss * self.scale_factor
-        return scaled_loss
 
 class SetupResidualBlock(torch.nn.Module):
     def __init__(self, in_channels):
@@ -112,7 +117,6 @@ class SetupPredictorNet(torch.nn.Module):
         x = self.avgpool(x)
         x = torch.flatten(x, 1)
         x = self.fc(x)
-        x = torch.nn.functional.softmax(x, dim=1)
 
         return x
 
@@ -152,58 +156,59 @@ class SetupDataset(Dataset):
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description='Driver for train/validate setup predictor for a Pathogen game')
-    parser.add_argument('-t', '--train', action='store_true', help='train the model')
-    parser.add_argument('-v', '--validate', action='store_true', help='validate the model')
+    parser.add_argument('-t', '--train', type=str, help='train with the dataset', default='/dev/null')
+    parser.add_argument('-v', '--validate', type=str, help='validate with the dataset', default='/dev/null')
     parser.add_argument('-m', '--model', type=str, help='an existing model', default='model.pth')
-    parser.add_argument('-d', '--dataset', type=str, help='a directory that contains setup dataset', default='../setup_generator/1000s_100b/1000s_100b.bin')
+    parser.add_argument('-n', '--exp_name', type=str, help='the name of the recorded expiriment', default='runs/temp')
 
     args = parser.parse_args()
     device = init_dev()
     model = init_model(args.model)
-    optimizer, loss_func = init_optimizer()
+    optimizer, loss_func = init_optimizer(model)
 
-    dataset = SetupDataset(args.dataset, device)
-    dataloader = DataLoader(dataset, batch_size=TRAINING_BATCH_UNIT, shuffle=True, generator=torch.Generator(device=device))
+    writer = SummaryWriter(args.exp_name)
+    if args.train != "/dev/null":
+        t_dataset = SetupDataset(args.train, device)
+        t_dataloader = DataLoader(t_dataset, batch_size=TRAINING_BATCH_UNIT, shuffle=True, generator=torch.Generator(device=device))
+    v_dataset = SetupDataset(args.validate, device)
+    v_dataloader = DataLoader(v_dataset, batch_size=TRAINING_BATCH_UNIT, shuffle=True, generator=torch.Generator(device=device))
 
-    if args.train:
-        for i in range(0, TRAINING_EPOCH):
-            j = 0
-            for inputs, labels in dataloader:
-                print('epoch: ', i, '   batch: ', j)
+    if args.train == "/dev/null":
+        TRAINING_EPOCH = 1;
+    for i in range(0, TRAINING_EPOCH):
+        if args.train != "/dev/null":
+            print('epoch: ', i)
+            train_loss = 0.0
+            for inputs, labels in t_dataloader:
                 optimizer.zero_grad()
                 outputs = model(inputs)
                 loss = loss_func(outputs, labels)
-                print(loss)
                 loss.backward()
                 optimizer.step()
-                j = j + 1
-                if j % TRAINING_CHECKPOINT == 0:
-                    torch.save(model, args.model)
-                    if args.validate:
-                        model.eval()
-                        outputs = model(inputs)
-                        loss = loss_func(outputs, labels)
-                        print(loss)
-                        model.train()
-        os.sys.exit(0)
-    if args.validate:
-        model.eval()
-        torch.no_grad()
-        error_count = 0
-        valid_count = 0
-        error_total = 0
-        valid_total = 0
-        for inputs, labels in dataloader:
+                train_loss += loss.item() * inputs.size(0)
+
+            train_loss /= len(t_dataloader.dataset)
+            writer.add_scalar('Loss/train', train_loss, i)
+            torch.save(model, args.model)
+
+        validate_loss = 0.0
+        ok = 0
+        for inputs, labels in v_dataloader:
+            model.eval()
             outputs = model(inputs)
-            for i in range(0, len(outputs)):
-                if labels[i] < 0.5:
-                    error_total = error_total + 1
-                    if outputs[i] < 0.5:
-                        error_count = error_count + 1
-                if labels[i] >= 0.5:
-                    valid_total = valid_total + 1
-                    if outputs[i] >= 0.5:
-                        valid_count = valid_count + 1
-        print('accuracy: ', str((error_count+valid_count)/(error_total+valid_total)))
-        print('error case accuracy: ', str(error_count/(error_total)))
-        print('valid case accuracy: ', str(valid_count/(valid_total)))
+            loss = loss_func(outputs, labels)
+            if args.train != "/dev/null":
+                model.train()
+            diff = torch.abs(outputs-labels)
+            for e in diff:
+                if e <= ACCURACY_THRESHOLD:
+                    ok = ok + 1
+            validate_loss += loss.item() * inputs.size(0)
+        ok /= len(v_dataloader.dataset)
+        print("the real pass rate: ", ok)
+        writer.add_scalar('Passrate/validate', ok, i)
+        validate_loss /= len(v_dataloader.dataset)
+        writer.add_scalar('Loss/validate', validate_loss, i)
+
+    writer.close()
+    os.sys.exit(0)

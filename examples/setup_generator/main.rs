@@ -209,11 +209,21 @@ fn to_file(g: &Game) -> std::io::Result<()> {
                 let mut file = File::create(filename.as_str())?;
                 write!(file, "{}", buffer)?;
             } else {
+                let float_zero = 0.0f32;
+                let bytes_zero = float_zero.to_le_bytes();
+                let float_one = 1.0f32;
+                let bytes_one = float_one.to_le_bytes();
                 let mut file = OpenOptions::new()
                     .append(true) // Open the file in append mode.
                     .create(true) // Create the file if it does not exist.
                     .open(filename)?;
-                write!(file, "{}", buffer)?;
+                for c in buffer.bytes() {
+                    if c == b' ' {
+                        file.write_all(&bytes_zero)?;
+                    } else {
+                        file.write_all(&bytes_one)?;
+                    }
+                }
             }
         }
         None => {}

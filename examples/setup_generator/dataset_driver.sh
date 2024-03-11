@@ -1,34 +1,11 @@
 #!/bin/bash
-pad_spectrum() {
-    local min="$1"
-    local max="$2"
-
-    # Read input and update the counts array
-    i=$min
-    while read -d ' ' count; do
-        read index
-        while [ $index != $i ]; do
-            echo 0
-            i=$(($i+1))
-        done
-        echo $count
-        i=$(($i+1))
-        if [ $i -ge $max ]; then
-            break
-        fi
-    done
-    while [ $i -le $max ]; do
-        echo 0
-        i=$(($i+1))
-    done
-}
-
 print_help() {
     echo "Usage: $0 [OPTIONS]"
     echo "Options:"
-    echo "  -i, --iterations INT   Number of iterations for internal logic (default: 1)"
-    echo "  -o, --output DIR       Directory to store artifacts (default: current directory)"
-    echo "  -b, --batch INT        Random trial size of the evaluator (default: 1)"
+    echo "  -n, --num-setup INT    Number of setups (default: 1)"
+    echo "  -o, --output DIR       Directory to store artifacts (default: ./test)"
+    echo "  -j, --jobs INT         Parallelism (default: 8)"
+    echo "  -t, --trial INT        Number of games that the evaluator plays through (default: 10000)"
     echo "  -h, --help             Display this help and exit"
 }
 
@@ -38,17 +15,18 @@ if [[ "$#" -eq 0 ]]; then
 fi
 
 # Default values
-ITERATIONS=1
+SETUPS=1
 OUTPUT="test"
-BATCH=1
-MASS=3890
+TRIAL=10000
+RAYON_NUM_THREADS=8
 
 # Parse command-line arguments
 while [[ "$#" -gt 0 ]]; do
     case $1 in
-        -i|--iterations) ITERATIONS="$2"; shift 2 ;;
+        -n|--num-setup) SETUPS="$2"; shift 2 ;;
         -o|--output) OUTPUT="$2"; shift 2 ;;
-        -b|--batch) BATCH="$2"; shift 2 ;;
+        -j|--jobs) RAYON_NUM_THREADS="$2"; shift 2 ;;
+        -t|--trial) TRIAL="$2"; shift 2 ;;
 	-h|--help) print_help; exit 0 ;;
         *) echo "Unknown parameter passed: $1"; exit 1 ;;
     esac
@@ -58,20 +36,18 @@ mkdir -p $OUTPUT
 
 # Example usage of the output file and directory
 
-for ((i=1; i<=$ITERATIONS; i++)); do
-    echo "Iteration $i of $ITERATIONS"
+for ((i=1; i<=$SETUPS; i++)); do
+    echo "Iteration $i of $SETUPS"
     seed0=$(uuidgen)
     echo $seed0 >> "$OUTPUT/list"
     cargo run --release --example setup_generator -- --mode sgf --seed "$(echo $seed0 | sed -e 's/-//g')" --save "$OUTPUT/$seed0.sgf" 2>/dev/null
-    cargo run --release --example setup_generator -- --mode dataset --seed "$(echo $seed0 | sed -e 's/-//g')" --save "$OUTPUT/data.bin" 2>/dev/null
+    cargo run --release --example setup_generator -- --mode dataset --seed "$(echo $seed0 | sed -e 's/-//g')" --save "$OUTPUT/"$SETUPS"s_"$TRIAL"t.bin" 2>/dev/null
     
-    for ((j=1; j<=$BATCH; j++)); do
-        echo $(uuidgen | tr -d -)
-    done | parallel -j8 \
-        "cargo run --release --example setup_evaluator -- \
-        --load $OUTPUT/$seed0.sgf --iter $MASS --seed {}" 2>/dev/null | sort -n | uniq -c | sort -n -k2 | sed -e 's/^[[:space:]]*//' | \
-        pad_spectrum 0 $MASS | xargs printf "\\\\\\\\x""%x" | xargs echo -n -e >> "$OUTPUT/data.bin"
-
+    # This is tricky. The byte output is verified by piping to
+    #
+    #     python -c "import sys; import struct; print(struct.unpack('f', sys.stdin.buffer.read(4))[0])"
+    #
+    # so there will be 4 bytes more appended as the label.
+    cargo run --release --example setup_evaluator -- \
+        --load $OUTPUT/$seed0.sgf --iter $TRIAL 2>/dev/null --seed "$(echo $seed0 | sed -e 's/-//g')" >> "$OUTPUT/"$SETUPS"s_"$TRIAL"t.bin"
 done
-
-python dataset_translate.py --input $OUTPUT/data.bin --output $OUTPUT/"$ITERATIONS"s_"$BATCH"b.bin --divisor $BATCH
