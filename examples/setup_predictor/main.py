@@ -6,7 +6,7 @@ import argparse
 from torch.utils.data import Dataset, DataLoader
 from torch.utils.tensorboard import SummaryWriter
     
-TRAINING_BATCH_UNIT = 20
+TRAINING_BATCH_UNIT = 60
 TRAINING_EPOCH = 1000
 
 ENV_SIZE = 5*6*6
