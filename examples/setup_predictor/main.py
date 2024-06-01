@@ -15,8 +15,9 @@ INPUT_SIZE = ENV_SIZE + MAP_SIZE
 OUTPUT_SIZE = 1
 PAIR_SIZE = INPUT_SIZE + OUTPUT_SIZE
 
-RES_SIZE = 12
-RES_INPUT_SIZE = 64
+RES_SIZE = 7
+RES_INPUT_SIZE_0 = 64
+RES_INPUT_SIZE_1 = 96
 NATURE_CHANNEL_SIZE = 6
 
 ACCURACY_THRESHOLD = 0.03
@@ -34,27 +35,32 @@ class ScaledLoss(torch.nn.Module):
         return scaled_loss
 
 def init_optimizer(model):
+    # To apply the LR globally
     # optimizer = torch.optim.Adam(model.parameters(), lr=LEARNING_RATE)
     
+    # To stop update some part in the model
     # for i, block in enumerate(model.resblocks):
     #    if i in range(0, 8):
     #        for param in block.parameters():
     #            param.requires_grad = False
     
-    black_residuals = []
-    white_residuals = []
-    for i, block in enumerate(model.resblocks):
-       if i%2 == 0:
-           for param in block.parameters():
-               black_residuals.append(param)
-       else:
-           for param in block.parameters():
-               white_residuals.append(param)
-    optimizer = torch.optim.Adam([
-        {'params': black_residuals, 'lr': LEARNING_RATE/2},
-        {'params': white_residuals, 'lr': LEARNING_RATE/3*2},
-        {'params': [model.fc.bias, model.fc.weight], 'lr': LEARNING_RATE}  
-    ], lr=LEARNING_RATE) 
+    # Zebra pattern
+    # black_residuals = []
+    # white_residuals = []
+    # for i, block in enumerate(model.resblocks):
+    #   if i%2 == 0:
+    #       for param in block.parameters():
+    #           black_residuals.append(param)
+    #   else:
+    #       for param in block.parameters():
+    #           white_residuals.append(param)
+    # optimizer = torch.optim.Adam([
+    #     {'params': black_residuals, 'lr': LEARNING_RATE/2},
+    #     {'params': white_residuals, 'lr': LEARNING_RATE/3*2},
+    #     {'params': [model.fc.bias, model.fc.weight], 'lr': LEARNING_RATE}  
+    # ], lr=LEARNING_RATE) 
+
+    optimizer = torch.optim.Adam(model.parameters(), lr=LEARNING_RATE)
     loss_func = ScaledLoss()
     return optimizer, loss_func
 
@@ -102,17 +108,23 @@ class SetupResidualBlock(torch.nn.Module):
 class SetupPredictorNet(torch.nn.Module):
     def __init__(self):
         super(SetupPredictorNet, self).__init__()
-        self.conv0 = torch.nn.Conv2d(NATURE_CHANNEL_SIZE, RES_INPUT_SIZE, kernel_size=3, stride=1, padding=1)
-        self.bn0 = torch.nn.BatchNorm2d(RES_INPUT_SIZE)
+        self.conv0 = torch.nn.Conv2d(NATURE_CHANNEL_SIZE, RES_INPUT_SIZE_0, kernel_size=3, stride=1, padding=1)
+        self.bn0 = torch.nn.BatchNorm2d(RES_INPUT_SIZE_0)
         self.relu0 = torch.nn.ReLU(inplace=True)
+        self.conv1 = torch.nn.Conv2d(RES_INPUT_SIZE_0, RES_INPUT_SIZE_1, kernel_size=3, stride=1, padding=1)
+        self.bn1 = torch.nn.BatchNorm2d(RES_INPUT_SIZE_1)
+        self.leakyrelu0 = torch.nn.LeakyReLU(inplace=True)
 
         # Using nn.ModuleList to add residual blocks
-        self.resblocks = torch.nn.ModuleList([
-            SetupResidualBlock(RES_INPUT_SIZE) for _ in range(RES_SIZE)
+        self.resblocks0 = torch.nn.ModuleList([
+            SetupResidualBlock(RES_INPUT_SIZE_0) for _ in range(RES_SIZE)
+        ])
+        self.resblocks1 = torch.nn.ModuleList([
+            SetupResidualBlock(RES_INPUT_SIZE_1) for _ in range(RES_SIZE)
         ])
         
         self.avgpool = torch.nn.AdaptiveAvgPool2d((1, 1))
-        self.fc = torch.nn.Linear(RES_INPUT_SIZE, OUTPUT_SIZE)
+        self.fc = torch.nn.Linear(RES_INPUT_SIZE_1, OUTPUT_SIZE)
         
     def forward(self, x):
         # Padding the game board and the map to get ready for a Nx6x7x7 tensor
@@ -126,8 +138,17 @@ class SetupPredictorNet(torch.nn.Module):
         x = self.bn0(x)
         x = self.relu0(x)
 
-        # The residual part
-        for block in self.resblocks:
+        # The residual part 0
+        for block in self.resblocks0:
+            x = block(x)
+
+        # The init convolution part
+        x = self.conv1(x)
+        x = self.bn1(x)
+        x = self.leakyrelu0(x)
+
+        # The residual part 1
+        for block in self.resblocks1:
             x = block(x)
 
         # The output part
