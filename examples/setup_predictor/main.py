@@ -8,6 +8,7 @@ from torch.utils.tensorboard import SummaryWriter
     
 TRAINING_BATCH_UNIT = 100
 TRAINING_EPOCH = 5000
+TRAINING_EPOCH_UNIT = 1000
 
 ENV_SIZE = 5*6*6
 MAP_SIZE = 25*1
@@ -192,29 +193,17 @@ class SetupDataset(Dataset):
     def __del__(self):
         self.file.close()
 
-if __name__ == "__main__":
-    parser = argparse.ArgumentParser(description='Driver for train/validate setup predictor for a Pathogen game')
-    parser.add_argument('-t', '--train', type=str, help='train with the dataset', default='/dev/null')
-    parser.add_argument('-v', '--validate', type=str, help='validate with the dataset', default='/dev/null')
-    parser.add_argument('-m', '--model', type=str, help='an existing model', default='model.pth')
-    parser.add_argument('-n', '--exp_name', type=str, help='the name of the recorded expiriment', default='runs/temp')
-
-    args = parser.parse_args()
-    device = init_dev()
-    model = init_model(args.model)
-    optimizer, loss_func = init_optimizer(model)
-
-    writer = SummaryWriter(args.exp_name)
-    if args.train != "/dev/null":
+def inner_train(args, device, writer, model, optimizer, times):
+    if args.train == "/dev/null":
+        TRAINING_EPOCH = 1;
+    else:
         t_dataset = SetupDataset(args.train, device)
         t_dataloader = DataLoader(t_dataset, batch_size=TRAINING_BATCH_UNIT, shuffle=True, generator=torch.Generator(device=device))
     v_dataset = SetupDataset(args.validate, device)
     v_dataloader = DataLoader(v_dataset, batch_size=TRAINING_BATCH_UNIT, shuffle=True, generator=torch.Generator(device=device))
 
-    if args.train == "/dev/null":
-        TRAINING_EPOCH = 1;
     max_pass_rate = 0.0
-    for i in range(0, TRAINING_EPOCH):
+    for i in range(TRAINING_EPOCH_UNIT*times, TRAINING_EPOCH_UNIT*(times+1)):
         if args.train != "/dev/null":
             print('epoch: ', i)
             train_loss = 0.0
@@ -250,6 +239,24 @@ if __name__ == "__main__":
         writer.add_scalar('Passrate/validate', ok, i)
         validate_loss /= len(v_dataloader.dataset)
         writer.add_scalar('Loss/validate', validate_loss, i)
+
+if __name__ == "__main__":
+    parser = argparse.ArgumentParser(description='Driver for train/validate setup predictor for a Pathogen game')
+    parser.add_argument('-t', '--train', type=str, help='train with the dataset', default='/dev/null')
+    parser.add_argument('-v', '--validate', type=str, help='validate with the dataset', default='/dev/null')
+    parser.add_argument('-m', '--model', type=str, help='an existing model', default='model.pth')
+    parser.add_argument('-n', '--exp_name', type=str, help='the name of the recorded expiriment', default='runs/temp')
+
+    args = parser.parse_args()
+    device = init_dev()
+
+    writer = SummaryWriter(args.exp_name)
+
+    for i in range(0, TRAINING_EPOCH//TRAINING_EPOCH_UNIT):
+        model = init_model(args.model)
+        optimizer, loss_func = init_optimizer(model)
+        inner_train(args, device, writer, model, optimizer, i)
+        torch.save(model, args.model+'.'+str(i))
 
     writer.close()
     os.sys.exit(0)
