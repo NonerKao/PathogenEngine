@@ -7,7 +7,7 @@ from torch.utils.data import Dataset, DataLoader
 from torch.utils.tensorboard import SummaryWriter
     
 TRAINING_BATCH_UNIT = 50
-TRAINING_EPOCH = 1000
+TRAINING_EPOCH = 5000
 
 ENV_SIZE = 5*6*6
 MAP_SIZE = 25*1
@@ -20,6 +20,7 @@ RES_INPUT_SIZE = 64
 NATURE_CHANNEL_SIZE = 6
 
 ACCURACY_THRESHOLD = 0.03
+LEARNING_RATE = 0.0001
 
 class ScaledLoss(torch.nn.Module):
     def __init__(self, scale_factor=10000.0):
@@ -33,11 +34,27 @@ class ScaledLoss(torch.nn.Module):
         return scaled_loss
 
 def init_optimizer(model):
-    learning_rate = 0.0001
-    # optimizer = torch.optim.Adam(model.parameters(), lr=learning_rate)
+    # optimizer = torch.optim.Adam(model.parameters(), lr=LEARNING_RATE)
+    
+    # for i, block in enumerate(model.resblocks):
+    #    if i in range(0, 8):
+    #        for param in block.parameters():
+    #            param.requires_grad = False
+    
+    black_residuals = []
+    white_residuals = []
+    for i, block in enumerate(model.resblocks):
+       if i%2 == 0:
+           for param in block.parameters():
+               black_residuals.append(param)
+       else:
+           for param in block.parameters():
+               white_residuals.append(param)
     optimizer = torch.optim.Adam([
-        {'params': [model.fc.bias, model.fc.weight], 'lr': 1e-4}  
-    ], lr=learning_rate) 
+        {'params': black_residuals, 'lr': LEARNING_RATE/2},
+        {'params': white_residuals, 'lr': LEARNING_RATE/3*2},
+        {'params': [model.fc.bias, model.fc.weight], 'lr': LEARNING_RATE}  
+    ], lr=LEARNING_RATE) 
     loss_func = ScaledLoss()
     return optimizer, loss_func
 
@@ -175,6 +192,7 @@ if __name__ == "__main__":
 
     if args.train == "/dev/null":
         TRAINING_EPOCH = 1;
+    max_pass_rate = 0.0
     for i in range(0, TRAINING_EPOCH):
         if args.train != "/dev/null":
             print('epoch: ', i)
@@ -189,7 +207,6 @@ if __name__ == "__main__":
 
             train_loss /= len(t_dataloader.dataset)
             writer.add_scalar('Loss/train', train_loss, i)
-            torch.save(model, args.model)
 
         validate_loss = 0.0
         ok = 0
@@ -205,7 +222,10 @@ if __name__ == "__main__":
                     ok = ok + 1
             validate_loss += loss.item() * inputs.size(0)
         ok /= len(v_dataloader.dataset)
-        print("the real pass rate: ", ok)
+        if max_pass_rate < ok:
+            print("the real pass rate: ", ok, "; previous: ", max_pass_rate)
+            max_pass_rate = ok
+            torch.save(model, args.model)
         writer.add_scalar('Passrate/validate', ok, i)
         validate_loss /= len(v_dataloader.dataset)
         writer.add_scalar('Loss/validate', validate_loss, i)
