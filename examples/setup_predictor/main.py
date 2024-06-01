@@ -15,7 +15,7 @@ INPUT_SIZE = ENV_SIZE + MAP_SIZE
 OUTPUT_SIZE = 1
 PAIR_SIZE = INPUT_SIZE + OUTPUT_SIZE
 
-RES_SIZE = 5
+RES_SIZE = 12
 RES_INPUT_SIZE_0 = 64
 RES_INPUT_SIZE_1 = 96
 NATURE_CHANNEL_SIZE = 6
@@ -124,7 +124,7 @@ class SetupPredictorNet(torch.nn.Module):
         ])
         
         self.avgpool = torch.nn.AdaptiveAvgPool2d((1, 1))
-        self.fc = torch.nn.Linear(RES_INPUT_SIZE_1, OUTPUT_SIZE)
+        self.fc = torch.nn.Linear(RES_INPUT_SIZE_0, OUTPUT_SIZE)
         
     def forward(self, x):
         # Padding the game board and the map to get ready for a Nx6x7x7 tensor
@@ -142,14 +142,14 @@ class SetupPredictorNet(torch.nn.Module):
         for block in self.resblocks0:
             x = block(x)
 
-        # The init convolution part
-        x = self.conv1(x)
-        x = self.bn1(x)
-        x = self.leakyrelu0(x)
+        # The bridge convolution part
+        # x = self.conv1(x)
+        # x = self.bn1(x)
+        # x = self.leakyrelu0(x)
 
         # The residual part 1
-        for block in self.resblocks1:
-            x = block(x)
+        # for block in self.resblocks1:
+        #    x = block(x)
 
         # The output part
         x = self.avgpool(x)
