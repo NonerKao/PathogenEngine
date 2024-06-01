@@ -6,7 +6,7 @@ import argparse
 from torch.utils.data import Dataset, DataLoader
 from torch.utils.tensorboard import SummaryWriter
     
-TRAINING_BATCH_UNIT = 60
+TRAINING_BATCH_UNIT = 100
 TRAINING_EPOCH = 1000
 
 ENV_SIZE = 5*6*6
@@ -15,7 +15,7 @@ INPUT_SIZE = ENV_SIZE + MAP_SIZE
 OUTPUT_SIZE = 1
 PAIR_SIZE = INPUT_SIZE + OUTPUT_SIZE
 
-RES_SIZE = 12
+RES_SIZE = 5
 RES_INPUT_SIZE_0 = 64
 RES_INPUT_SIZE_1 = 96
 NATURE_CHANNEL_SIZE = 6
