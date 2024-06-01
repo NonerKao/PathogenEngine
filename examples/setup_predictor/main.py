@@ -7,7 +7,7 @@ from torch.utils.data import Dataset, DataLoader
 from torch.utils.tensorboard import SummaryWriter
     
 TRAINING_BATCH_UNIT = 100
-TRAINING_EPOCH = 1000
+TRAINING_EPOCH = 5000
 
 ENV_SIZE = 5*6*6
 MAP_SIZE = 25*1
