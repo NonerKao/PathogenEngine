@@ -112,17 +112,17 @@ class SetupPredictorNet(torch.nn.Module):
         self.conv0 = torch.nn.Conv2d(NATURE_CHANNEL_SIZE, RES_INPUT_SIZE_0, kernel_size=3, stride=1, padding=1)
         self.bn0 = torch.nn.BatchNorm2d(RES_INPUT_SIZE_0)
         self.relu0 = torch.nn.ReLU(inplace=True)
-        self.conv1 = torch.nn.Conv2d(RES_INPUT_SIZE_0, RES_INPUT_SIZE_1, kernel_size=3, stride=1, padding=1)
-        self.bn1 = torch.nn.BatchNorm2d(RES_INPUT_SIZE_1)
-        self.leakyrelu0 = torch.nn.LeakyReLU(inplace=True)
+        # self.conv1 = torch.nn.Conv2d(RES_INPUT_SIZE_0, RES_INPUT_SIZE_1, kernel_size=3, stride=1, padding=1)
+        # self.bn1 = torch.nn.BatchNorm2d(RES_INPUT_SIZE_1)
+        # self.leakyrelu0 = torch.nn.LeakyReLU(inplace=True)
 
         # Using nn.ModuleList to add residual blocks
         self.resblocks0 = torch.nn.ModuleList([
             SetupResidualBlock(RES_INPUT_SIZE_0) for _ in range(RES_SIZE)
         ])
-        self.resblocks1 = torch.nn.ModuleList([
-            SetupResidualBlock(RES_INPUT_SIZE_1) for _ in range(RES_SIZE)
-        ])
+        # self.resblocks1 = torch.nn.ModuleList([
+        #    SetupResidualBlock(RES_INPUT_SIZE_1) for _ in range(RES_SIZE)
+        # ])
         
         self.avgpool = torch.nn.AdaptiveAvgPool2d((1, 1))
         self.fc = torch.nn.Linear(RES_INPUT_SIZE_0, OUTPUT_SIZE)
