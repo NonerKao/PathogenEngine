@@ -8,7 +8,7 @@ from torch.utils.tensorboard import SummaryWriter
     
 TRAINING_BATCH_UNIT = 100
 TRAINING_EPOCH = 5000
-TRAINING_EPOCH_UNIT = 1000
+TRAINING_EPOCH_UNIT = 250
 
 ENV_SIZE = 5*6*6
 MAP_SIZE = 25*1
@@ -253,7 +253,10 @@ if __name__ == "__main__":
     writer = SummaryWriter(args.exp_name)
 
     for i in range(0, TRAINING_EPOCH//TRAINING_EPOCH_UNIT):
-        model = init_model(args.model)
+        if i == 0:
+            model = init_model(args.model)
+        else:
+            model = init_model(args.model+'.'+str(i-1))
         optimizer, loss_func = init_optimizer(model)
         inner_train(args, device, writer, model, optimizer, i)
         torch.save(model, args.model+'.'+str(i))
