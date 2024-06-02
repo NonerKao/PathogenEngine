@@ -24,6 +24,12 @@ NATURE_CHANNEL_SIZE = 6
 ACCURACY_THRESHOLD = 0.03
 LEARNING_RATE = 0.0001
 
+class MaxErrorLoss(torch.nn.Module):
+    def __init__(self):
+        super(MaxErrorLoss, self).__init__()
+    def forward(self, input, target):
+        return torch.max(torch.abs(input - target))*10000.0
+
 class ScaledLoss(torch.nn.Module):
     def __init__(self, scale_factor=10000.0):
         super(ScaledLoss, self).__init__()
@@ -62,7 +68,7 @@ def init_optimizer(model):
     # ], lr=LEARNING_RATE) 
 
     optimizer = torch.optim.Adam(model.parameters(), lr=LEARNING_RATE)
-    loss_func = ScaledLoss()
+    loss_func = MaxErrorLoss()
     return optimizer, loss_func
 
 def init_dev():
