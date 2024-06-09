@@ -151,6 +151,7 @@ fn encode(g: &Game, a: &Action) -> Array1<u8> {
 
 const MIN_MAP_CODE: u8 = 100;
 const MAX_ENV_CODE: u8 = 36;
+const SPECIAL_CODE: u8 = 255;
 
 trait ActionCoord {
     fn to_coord(&self) -> Coord;
@@ -245,6 +246,7 @@ fn handle_client<T: Read + ReaderExtra + Write + WriterExtra>(
     let mut ec: [u8; FC_LEN] = [0; FC_LEN];
     ec[0 /* set map */] = 1;
     let mut s = "Ix03";
+    let ss = "Wx00";
     if stream.update_agent(g, &ea, &ec, &s) == false {
         return false;
     }
@@ -270,6 +272,7 @@ fn handle_client<T: Read + ReaderExtra + Write + WriterExtra>(
                     }
                     if buffer[0] < MIN_MAP_CODE {
                         s = "Ex26";
+                    } else if buffer[0] == SPECIAL_CODE {
                     } else {
                         let c = (buffer[0] as u8).to_coord();
                         match am.action.add_map_step(g, c) {
@@ -469,6 +472,7 @@ fn next(g: &mut Game, a: &Action) {
 
 trait WriterExtra {
     fn update_agent(&mut self, g: &Game, a: &Action, fc: &[u8; FC_LEN], s: &'static str) -> bool;
+    fn return_query(&mut self, g: &Game, a: &Action, s: &'static str) -> bool;
 }
 
 impl WriterExtra for TcpStream {
@@ -496,6 +500,9 @@ impl WriterExtra for TcpStream {
                 return true;
             }
         }
+    }
+    fn return_query(&mut self, g: &Game, a: &Action, s: &'static str) -> bool {
+        return false;
     }
 }
 
@@ -609,6 +616,9 @@ impl WriterExtra for std::io::Cursor<&mut [u8]> {
                 return true;
             }
         }
+    }
+    fn return_query(&mut self, g: &Game, a: &Action, s: &'static str) -> bool {
+        return false;
     }
 }
 #[cfg(test)]
@@ -978,5 +988,33 @@ mod tests {
         let mut buffer = String::new();
         g.history.borrow().to_string(&mut buffer);
         assert_eq!(buffer, s1.replace("[aa][aa][aa][aa][aa]", ""));
+    }
+
+    #[test]
+    fn test_query1() {
+        let s0 = "(
+            ;C[Setup0]
+            AW[aa][ab][ad][ae][bb][bc][bf][ca][cd][ce][dc][dd][df][ea][ec][ee][fa][fb][fe][ff]
+            AB[ac][af][ba][bd][be][cb][cc][cf][da][db][de][eb][ed][ef][fc][fd]
+            ;C[Setup1]AB[ab][cd][ef][da]
+            ;C[Setup2]AW[aa]
+            ;C[Setup2]AB[ac]
+            ;C[Setup2]AW[af]
+            ;C[Setup2]AB[ad]
+            ;C[Setup3]AW[ij]
+            ;B[jj][ad][cd][ad][ad][ad][ad]
+            )"
+        .to_string();
+        let mut iter = s0.trim().chars().peekable();
+        let t = TreeNode::new(&mut iter, None);
+        let mut g = Game::init(Some(t));
+        let ea = Action::new();
+        let ss = "Wx00";
+
+        const LEN: usize = DATA_UNIT + (1 + DATA_UNIT) * 15;
+        let mut buf_origin: [u8; LEN] = [0; LEN];
+        let buf = &mut buf_origin[..];
+        let mut fake_stream = Cursor::new(buf);
+        assert_eq!(false, fake_stream.return_query(&g, &ea, &ss));
     }
 }
