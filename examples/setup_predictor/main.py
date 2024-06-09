@@ -68,8 +68,7 @@ def init_optimizer(model):
     # ], lr=LEARNING_RATE) 
 
     optimizer = torch.optim.Adam(model.parameters(), lr=LEARNING_RATE)
-    loss_func = MaxErrorLoss()
-    return optimizer, loss_func
+    return optimizer
 
 def init_dev():
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
@@ -209,6 +208,10 @@ def inner_train(args, device, writer, model, optimizer, times):
     v_dataloader = DataLoader(v_dataset, batch_size=TRAINING_BATCH_UNIT, shuffle=True, generator=torch.Generator(device=device))
 
     max_pass_rate = 0.0
+    if times%2 == 0:
+        loss_func = MaxErrorLoss()
+    else:
+        loss_func = ScaledLoss()
     for i in range(TRAINING_EPOCH_UNIT*times, TRAINING_EPOCH_UNIT*(times+1)):
         if args.train != "/dev/null":
             print('epoch: ', i)
@@ -263,7 +266,7 @@ if __name__ == "__main__":
             model = init_model(args.model)
         else:
             model = init_model(args.model+'.'+str(i-1))
-        optimizer, loss_func = init_optimizer(model)
+        optimizer = init_optimizer(model)
         inner_train(args, device, writer, model, optimizer, i)
         torch.save(model, args.model+'.'+str(i))
 
