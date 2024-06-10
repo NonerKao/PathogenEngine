@@ -1,11 +1,13 @@
 use clap::Parser;
 use ndarray::{Array, Array1};
+use std::collections::HashSet;
 use std::fs::File;
 use std::io::{Read, Write};
 use std::net::{TcpListener, TcpStream};
 
 use pathogen_engine::core::action::Action;
 use pathogen_engine::core::action::ActionPhase;
+use pathogen_engine::core::action::Candidate;
 use pathogen_engine::core::grid_coord::{Coord, MAP_OFFSET};
 use pathogen_engine::core::tree::TreeNode;
 use pathogen_engine::core::*;
@@ -475,7 +477,7 @@ trait WriterExtra {
     fn return_query(&mut self, g: &Game, a: &Action) -> bool;
 }
 
-impl WriterExtra for TcpStream {
+/*impl WriterExtra for TcpStream {
     fn update_agent(&mut self, g: &Game, a: &Action, fc: &[u8; FC_LEN], s: &'static str) -> bool {
         let encoded = encode(g, &a);
         #[cfg(debug_assertions)]
@@ -504,7 +506,7 @@ impl WriterExtra for TcpStream {
     fn return_query(&mut self, g: &Game, a: &Action) -> bool {
         return false;
     }
-}
+}*/
 
 trait ReaderExtra {
     fn peek(&mut self, buffer: &mut [u8]) -> std::io::Result<usize>;
@@ -595,7 +597,7 @@ impl ReaderExtra for std::io::Cursor<&mut [u8]> {
 }
 
 // For the test only
-impl WriterExtra for std::io::Cursor<&mut [u8]> {
+impl<T: Write> WriterExtra for T {
     fn update_agent(&mut self, g: &Game, a: &Action, fc: &[u8; FC_LEN], s: &'static str) -> bool {
         let encoded = encode(g, &a);
         let sb = s.as_bytes();
@@ -618,6 +620,7 @@ impl WriterExtra for std::io::Cursor<&mut [u8]> {
         }
     }
     fn return_query(&mut self, g: &Game, a: &Action) -> bool {
+        let mut response: Vec<u8> = Vec::new();
         match a.action_phase {
             ActionPhase::SetMap => {
                 let mut coord_candidate: Vec<Coord> = Vec::new();
@@ -645,30 +648,47 @@ impl WriterExtra for std::io::Cursor<&mut [u8]> {
                 }
 
                 let len = coord_candidate.len() + 5;
-                let mut response: Vec<u8> = vec![0; len];
+                response = vec![0; len];
                 response[0] = coord_candidate.len() as u8;
-                for j in 1..coord_candidate.len()+1 {
-                    response[j] = coord_candidate[j-1].to_map_encode();
+                for j in 1..coord_candidate.len() + 1 {
+                    response[j] = coord_candidate[j - 1].to_map_encode();
                 }
-                response[len-4] = 'W' as u8;
-                response[len-3] = 'x' as u8;
-                response[len-2] = '0' as u8;
-                response[len-1] = '0' as u8;
+            }
+            ActionPhase::Lockdown => {
+                let h = <Vec<Candidate> as Clone>::clone(&a.candidate)
+                    .into_iter()
+                    .map(|c| c.lockdown)
+                    .collect::<HashSet<_>>();
 
-                let res: &[u8] = &response;
+                let len = h.len() + 5;
+                response = vec![0; len];
+                response[0] = h.len() as u8;
 
-                match self.write(&res) {
-                    Err(_) => {
-                        println!("Client disconnected.");
-                        return false;
-                    }
-                    _ => {
-                        return true;
-                    }
+                let cp = *g.map.get(&Camp::Plague).unwrap();
+                let mut j = 1;
+                for ld in h.iter() {
+                    response[j] = cp.lockdown(*ld).to_map_encode();
+                    j = j + 1;
                 }
             }
             _ => {
                 return false;
+            }
+        }
+        let len = response.len();
+        response[len - 4] = 'W' as u8;
+        response[len - 3] = 'x' as u8;
+        response[len - 2] = '0' as u8;
+        response[len - 1] = '0' as u8;
+        println!("{:?}", response);
+        let res: &[u8] = &response;
+        match self.write(&res) {
+            Err(_) => {
+                println!("Client disconnected.");
+                return false;
+            }
+            _ => {
+                return true;
             }
         }
     }
@@ -1087,16 +1107,26 @@ mod tests {
         .to_string();
         let mut iter = s0.trim().chars().peekable();
         let t = TreeNode::new(&mut iter, None);
-        let g = Game::init(Some(t));
-        let ea = Action::new();
+        let mut g = Game::init(Some(t));
+        let mut a = Action::new();
 
-        const LEN: usize = 1 + 4 + 4;
+        // SetMap
+        const LEN: usize = 1 + 2 + 4;
         let mut buf_origin: [u8; LEN] = [0; LEN];
         let buf = &mut buf_origin[..];
         let mut fake_stream = Cursor::new(buf);
-        assert_eq!(true, fake_stream.return_query(&g, &ea));
-        
+        assert_eq!(true, fake_stream.return_query(&g, &a));
         let buf_after = fake_stream.get_ref();
         assert_eq!(2 as u8, buf_after[0]);
+        let _ = a.add_map_step(&g, "ii".to_map());
+
+        // Lockdown
+        const LEN2: usize = 1 + 2 + 4;
+        let mut buf_origin2: [u8; LEN2] = [0; LEN2];
+        let buf2 = &mut buf_origin2[..];
+        fake_stream = Cursor::new(buf2);
+        assert_eq!(true, fake_stream.return_query(&g, &a));
+        let buf_after2 = fake_stream.get_ref();
+        assert_eq!(2 as u8, buf_after2[0]);
     }
 }

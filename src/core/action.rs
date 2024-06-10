@@ -16,7 +16,7 @@ pub enum ActionPhase {
 
 #[derive(Debug, Clone)]
 pub struct Candidate {
-    lockdown: Lockdown,
+    pub lockdown: Lockdown,
     character: Coord,
     trajectory: Vec<Coord>,
 }

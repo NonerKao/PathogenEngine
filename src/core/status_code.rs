@@ -62,6 +62,8 @@ pub fn str_to_full_msg(s: &'static str) -> &'static str {
         514 => return "Invalid character position",
         513 => return "Invalid map position: Lockdown now",
         512 => return "Invalid map position: Collide with opponent",
+        // Wx00: always success side channel commands instead of move status
+        256 => return "Query for valid moves",
         // Ix01 and beyond: Currently used only in coord_server
         6 => return "DROP",
         5 => return "LOSE",

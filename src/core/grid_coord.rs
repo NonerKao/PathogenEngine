@@ -106,7 +106,7 @@ impl Coord {
     }
 }
 
-#[derive(PartialEq, Eq, PartialOrd, Ord, Copy, Clone, Debug)]
+#[derive(Hash, PartialEq, Eq, PartialOrd, Ord, Copy, Clone, Debug)]
 pub enum Lockdown {
     Normal,
     CC90,
