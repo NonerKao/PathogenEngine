@@ -671,6 +671,42 @@ impl<T: Write> WriterExtra for T {
                     j = j + 1;
                 }
             }
+            ActionPhase::SetCharacter => {
+                let h = <Vec<Candidate> as Clone>::clone(&a.candidate)
+                    .into_iter()
+                    .map(|c| c.character)
+                    .collect::<HashSet<_>>();
+
+                let len = h.len() + 5;
+                response = vec![0; len];
+                response[0] = h.len() as u8;
+
+                let mut j = 1;
+                for c in h.iter() {
+                    response[j] = c.to_env_encode();
+                    j = j + 1;
+                }
+            }
+            ActionPhase::BoardMove => {
+                let trajectory_index = a.trajectory.len();
+                let h = <Vec<Candidate> as Clone>::clone(&a.candidate)
+                    .into_iter()
+                    .map(|c| c.trajectory[trajectory_index])
+                    .collect::<HashSet<_>>();
+
+                let len = h.len() + 5;
+                response = vec![0; len];
+                response[0] = h.len() as u8;
+
+                let mut j = 1;
+                for c in h.iter() {
+                    response[j] = c.to_env_encode();
+                    j = j + 1;
+                }
+            }
+            ActionPhase::SetMarkers => {
+                return false;
+            }
             _ => {
                 return false;
             }
@@ -1094,15 +1130,15 @@ mod tests {
     fn test_query2() {
         let s0 = "(
             ;C[Setup0]
-            AW[aa][ab][ad][ae][bb][bc][bf][ca][cd][ce][dc][dd][df][ea][ec][ee][fa][fb][fe][ff]
-            AB[ac][af][ba][bd][be][cb][cc][cf][da][db][de][eb][ed][ef][fc][fd]
-            ;C[Setup1]AB[ab][cd][ef][da]
+            AW[aa][ab][ad][ae][bb][bc][bf][ca][ce][dc][dd][df][ea][ec][ee][fa][fb][fe][ff]
+            AB[ac][af][ba][bd][be][cb][cc][cd][cf][da][db][de][eb][ed][ef][fc][fd]
+            ;C[Setup1]AB[ab][ce][ef][da]
             ;C[Setup2]AW[aa]
             ;C[Setup2]AB[ac]
             ;C[Setup2]AW[af]
             ;C[Setup2]AB[ad]
             ;C[Setup3]AW[ij]
-            ;B[jj][ad][cd][ad][ad][ad][ad]
+            ;B[jj][ac][cc][ac][ac][ac][ac]
             )"
         .to_string();
         let mut iter = s0.trim().chars().peekable();
@@ -1117,7 +1153,8 @@ mod tests {
         let mut fake_stream = Cursor::new(buf);
         assert_eq!(true, fake_stream.return_query(&g, &a));
         let buf_after = fake_stream.get_ref();
-        assert_eq!(2 as u8, buf_after[0]);
+        assert_eq!(3 as u8, buf_after[0]);
+        // In this case, it will be either 112(ii), 117(ji) or 113(ij, skip).
         let _ = a.add_map_step(&g, "ii".to_map());
 
         // Lockdown
@@ -1128,5 +1165,39 @@ mod tests {
         assert_eq!(true, fake_stream.return_query(&g, &a));
         let buf_after2 = fake_stream.get_ref();
         assert_eq!(2 as u8, buf_after2[0]);
+        // it will be either 106(hh) or 108(hj). we choose 106 here.
+        assert_eq!(Ok("Ix01"), a.add_lockdown_by_coord(&g, "hh".to_map()));
+
+        // SetCharacter
+        const LEN3: usize = 1 + 1 + 4;
+        let mut buf_origin3: [u8; LEN3] = [0; LEN3];
+        let buf3 = &mut buf_origin3[..];
+        fake_stream = Cursor::new(buf3);
+        assert_eq!(true, fake_stream.return_query(&g, &a));
+        let buf_after3 = fake_stream.get_ref();
+        assert_eq!(1 as u8, buf_after3[0]);
+        // it will be 0(aa)
+        assert_eq!(Ok("Ix01"), a.add_character(&g, "aa".to_env()));
+
+        // BoardMove1
+        const LEN4: usize = 1 + 2 + 4;
+        let mut buf_origin4: [u8; LEN4] = [0; LEN4];
+        let buf4 = &mut buf_origin4[..];
+        fake_stream = Cursor::new(buf4);
+        assert_eq!(true, fake_stream.return_query(&g, &a));
+        let buf_after4 = fake_stream.get_ref();
+        assert_eq!(2 as u8, buf_after4[0]);
+        // it will be 12(ca) and 1(ab)
+        assert_eq!(Ok("Ix01"), a.add_board_single_step(&g, "ca".to_env()));
+        // BoardMove2
+        const LEN5: usize = 1 + 1 + 4;
+        let mut buf_origin5: [u8; LEN5] = [0; LEN5];
+        let buf5 = &mut buf_origin5[..];
+        fake_stream = Cursor::new(buf5);
+        assert_eq!(true, fake_stream.return_query(&g, &a));
+        let buf_after5 = fake_stream.get_ref();
+        assert_eq!(1 as u8, buf_after5[0]);
+        // it will be 16(ce)
+        assert_eq!(Ok("Ix01"), a.add_board_single_step(&g, "ce".to_env()));
     }
 }

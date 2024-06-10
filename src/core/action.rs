@@ -17,8 +17,8 @@ pub enum ActionPhase {
 #[derive(Debug, Clone)]
 pub struct Candidate {
     pub lockdown: Lockdown,
-    character: Coord,
-    trajectory: Vec<Coord>,
+    pub character: Coord,
+    pub trajectory: Vec<Coord>,
 }
 
 impl Candidate {
@@ -470,6 +470,7 @@ impl Action {
             if let Some((Camp::Plague, Stuff::Marker(_))) = g.stuff.get(&b.0) {
                 b_sick = true;
             }
+            // decending (sick: true -> false)
             b_sick.cmp(&a_sick)
         });
 
@@ -544,6 +545,10 @@ impl Action {
     }
 
     fn doctor_is_free(&self, g: &Game, c: Coord) -> bool {
+        return self.doctor_is_free_dynamic(g, c, false);
+    }
+
+    fn doctor_is_free_dynamic(&self, g: &Game, c: Coord, curr: bool) -> bool {
         let mut is_free = false;
         let cure_count = self
             .markers
@@ -551,7 +556,7 @@ impl Action {
             .map(|mc| if *mc == c { 1 } else { 0 })
             .sum::<i32>();
         if let Some((Camp::Plague, Stuff::Marker(x))) = g.stuff.get(&c) {
-            if *x as i32 - cure_count <= 0 {
+            if *x as i32 - cure_count + (if curr { 1 } else { 0 }) <= 0 {
                 is_free = true;
             }
         } else {
@@ -569,13 +574,10 @@ impl Action {
         // With the assumption that the sickness is sorted.
         // We should be safe to do so because marker_slot.len() == 0
         // implies DONE in previous SetMarker.
-        match g.stuff.get(&self.marker_slot[0].0) {
-            Some((Camp::Plague, Stuff::Marker(_))) => {
-                if c != self.marker_slot[0].0 && !self.doctor_is_free(g, self.marker_slot[0].0) {
-                    return Err("Ex24");
-                }
+        if !self.doctor_is_free(g, self.marker_slot[0].0) {
+            if self.doctor_is_free_dynamic(g, c, true) {
+                return Err("Ex24");
             }
-            _ => {}
         }
 
         self.update_marker_slot(g, c);
@@ -611,9 +613,10 @@ impl Action {
         }
         temp_marker_slot.retain(|&(_, n)| n != 0);
         temp_marker_slot.sort_by(|a, b| {
-            let a_sick = self.doctor_is_free(g, a.0);
-            let b_sick = self.doctor_is_free(g, b.0);
-            b_sick.cmp(&a_sick)
+            let a_free = self.doctor_is_free(g, a.0);
+            let b_free = self.doctor_is_free(g, b.0);
+            // ascending (sick: false -> true)
+            a_free.cmp(&b_free)
         });
 
         self.marker_slot = temp_marker_slot;
@@ -1137,6 +1140,70 @@ mod tests {
         assert_eq!(Ok("Ix01"), r6);
         assert_eq!(3, a.marker_slot.len());
         let r7 = a.add_single_marker(&g, "bc".to_env());
+        assert_eq!(Ok("Ix01"), r7);
+        let r8 = a.add_single_marker(&g, "bf".to_env());
+        assert_eq!(Ok("Ix01"), r8);
+        let _ = a.add_single_marker(&g, "bf".to_env());
+        let _ = a.add_single_marker(&g, "bf".to_env());
+        let r9 = a.add_single_marker(&g, "bc".to_env());
+        assert_eq!(Err("Ex24"), r9);
+        let r10 = a.add_single_marker(&g, "bd".to_env());
+        assert_eq!(Err("Ex24"), r10);
+        let r11 = a.add_single_marker(&g, "bf".to_env());
+        assert_eq!(Ok("Ix02"), r11);
+    }
+
+    #[test]
+    fn test_doctor_marker4() {
+        let s0 = "(;FF[4]GM[41]SZ[6]GN[https://boardgamegeek.com/boardgame/369862/pathogen];C[Setup0]AW[fa][ef][ed][eb][cf][cc][dc][ca][ad][fe][ab][db][bb][be][fb][ae][ac][df];C[Setup0]AB[af][ba][dd][da][ff][bf][ee][bc][de][ec][cb][aa][ea][bd][ce][fc][cd][fd];C[Setup1]AB[ee];C[Setup1]AB[cf];C[Setup1]AB[fa];C[Setup1]AB[bc];C[Setup2]AW[bf];C[Setup2]AB[ce];C[Setup2]AW[db];C[Setup2]AB[eb];C[Setup3]AW[ih];B[jg][ce][de][dd][ce][de][ce][de])"
+        .to_string();
+        let mut iter = s0.trim().chars().peekable();
+        let t = TreeNode::new(&mut iter, None);
+        let mut g = Game::init(Some(t));
+        let _s1 = "(;W[ii][hk][bf][bd][bc][ec][bc][bf][bf][bf][bd])";
+        let mut a = Action::new();
+        let _ = a.add_map_step(&g, "ii".to_map());
+        let _ = a.add_lockdown_by_coord(&g, "hk".to_map());
+        let _ = a.add_character(&g, "bf".to_env());
+        let _ = a.add_board_single_step(&g, "bd".to_env());
+        let _ = a.add_board_single_step(&g, "bc".to_env());
+        g.stuff
+            .insert("bf".to_env(), (Camp::Plague, Stuff::Marker(3)));
+        let r6 = a.add_board_single_step(&g, "ec".to_env());
+        assert_eq!(Ok("Ix01"), r6);
+        assert_eq!(3, a.marker_slot.len());
+        let r7 = a.add_single_marker(&g, "bc".to_env());
+        assert_eq!(Ok("Ix01"), r7);
+        let r8 = a.add_single_marker(&g, "bf".to_env());
+        assert_eq!(Ok("Ix01"), r8);
+        let _ = a.add_single_marker(&g, "bf".to_env());
+        let r9 = a.add_single_marker(&g, "bc".to_env());
+        assert_eq!(Err("Ex24"), r9);
+        let _ = a.add_single_marker(&g, "bf".to_env());
+        let r10 = a.add_single_marker(&g, "bf".to_env());
+        assert_eq!(Ok("Ix02"), r10);
+    }
+
+    #[test]
+    fn test_doctor_marker5() {
+        let s0 = "(;FF[4]GM[41]SZ[6]GN[https://boardgamegeek.com/boardgame/369862/pathogen];C[Setup0]AW[fa][ef][ed][eb][cf][cc][dc][ca][ad][fe][ab][db][bb][be][fb][ae][ac][df];C[Setup0]AB[af][ba][dd][da][ff][bf][ee][bc][de][ec][cb][aa][ea][bd][ce][fc][cd][fd];C[Setup1]AB[ee];C[Setup1]AB[cf];C[Setup1]AB[fa];C[Setup1]AB[bc];C[Setup2]AW[bf];C[Setup2]AB[ce];C[Setup2]AW[db];C[Setup2]AB[eb];C[Setup3]AW[ih];B[jg][ce][de][dd][ce][de][ce][de])"
+        .to_string();
+        let mut iter = s0.trim().chars().peekable();
+        let t = TreeNode::new(&mut iter, None);
+        let mut g = Game::init(Some(t));
+        let _s1 = "(;W[ii][hk][bf][bd][bc][ec][bc][bf][bf][bf][bd])";
+        let mut a = Action::new();
+        let _ = a.add_map_step(&g, "ii".to_map());
+        let _ = a.add_lockdown_by_coord(&g, "hk".to_map());
+        let _ = a.add_character(&g, "bf".to_env());
+        let _ = a.add_board_single_step(&g, "bd".to_env());
+        let _ = a.add_board_single_step(&g, "bc".to_env());
+        g.stuff
+            .insert("bf".to_env(), (Camp::Plague, Stuff::Marker(5)));
+        let r6 = a.add_board_single_step(&g, "ec".to_env());
+        assert_eq!(Ok("Ix01"), r6);
+        assert_eq!(3, a.marker_slot.len());
+        let r7 = a.add_single_marker(&g, "bd".to_env());
         assert_eq!(Err("Ex24"), r7);
         let r8 = a.add_single_marker(&g, "bf".to_env());
         assert_eq!(Ok("Ix01"), r8);
