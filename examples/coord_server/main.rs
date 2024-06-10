@@ -472,7 +472,7 @@ fn next(g: &mut Game, a: &Action) {
 
 trait WriterExtra {
     fn update_agent(&mut self, g: &Game, a: &Action, fc: &[u8; FC_LEN], s: &'static str) -> bool;
-    fn return_query(&mut self, g: &Game, a: &Action, s: &'static str) -> bool;
+    fn return_query(&mut self, g: &Game, a: &Action) -> bool;
 }
 
 impl WriterExtra for TcpStream {
@@ -501,7 +501,7 @@ impl WriterExtra for TcpStream {
             }
         }
     }
-    fn return_query(&mut self, g: &Game, a: &Action, s: &'static str) -> bool {
+    fn return_query(&mut self, g: &Game, a: &Action) -> bool {
         return false;
     }
 }
@@ -617,8 +617,60 @@ impl WriterExtra for std::io::Cursor<&mut [u8]> {
             }
         }
     }
-    fn return_query(&mut self, g: &Game, a: &Action, s: &'static str) -> bool {
-        return false;
+    fn return_query(&mut self, g: &Game, a: &Action) -> bool {
+        match a.action_phase {
+            ActionPhase::SetMap => {
+                let mut coord_candidate: Vec<Coord> = Vec::new();
+                for i in -MAP_OFFSET.x + 1..MAP_OFFSET.x {
+                    for j in -MAP_OFFSET.y..=MAP_OFFSET.y {
+                        coord_candidate.push(Coord::new(i, j));
+                    }
+                }
+                for j in -MAP_OFFSET.y + 1..MAP_OFFSET.y {
+                    coord_candidate.push(Coord::new(-MAP_OFFSET.x, j));
+                    coord_candidate.push(Coord::new(MAP_OFFSET.x, j));
+                }
+                let candidate = coord_candidate.clone();
+
+                for &cc in candidate.iter() {
+                    let mut ea = Action::new();
+                    let s = ea.add_map_step(g, cc);
+                    match s {
+                        Ok(_) => {}
+                        Err(_) => {
+                            coord_candidate.retain(|&e| e != cc);
+                            continue;
+                        }
+                    }
+                }
+
+                let len = coord_candidate.len() + 5;
+                let mut response: Vec<u8> = vec![0; len];
+                response[0] = coord_candidate.len() as u8;
+                for j in 1..coord_candidate.len()+1 {
+                    response[j] = coord_candidate[j-1].to_map_encode();
+                }
+                response[len-4] = 'W' as u8;
+                response[len-3] = 'x' as u8;
+                response[len-2] = '0' as u8;
+                response[len-1] = '0' as u8;
+
+                let res: &[u8] = &response;
+
+                match self.write(&res) {
+                    Err(_) => {
+                        println!("Client disconnected.");
+                        return false;
+                    }
+                    _ => {
+                        return true;
+                    }
+                }
+            }
+            _ => {
+                return false;
+            }
+        }
     }
 }
 #[cfg(test)]
@@ -1007,14 +1059,44 @@ mod tests {
         .to_string();
         let mut iter = s0.trim().chars().peekable();
         let t = TreeNode::new(&mut iter, None);
-        let mut g = Game::init(Some(t));
-        let ea = Action::new();
-        let ss = "Wx00";
+        let g = Game::init(Some(t));
+        let mut ea = Action::new();
+        ea.action_phase = ActionPhase::Done;
 
         const LEN: usize = DATA_UNIT + (1 + DATA_UNIT) * 15;
         let mut buf_origin: [u8; LEN] = [0; LEN];
         let buf = &mut buf_origin[..];
         let mut fake_stream = Cursor::new(buf);
-        assert_eq!(false, fake_stream.return_query(&g, &ea, &ss));
+        assert_eq!(false, fake_stream.return_query(&g, &ea));
+    }
+
+    #[test]
+    fn test_query2() {
+        let s0 = "(
+            ;C[Setup0]
+            AW[aa][ab][ad][ae][bb][bc][bf][ca][cd][ce][dc][dd][df][ea][ec][ee][fa][fb][fe][ff]
+            AB[ac][af][ba][bd][be][cb][cc][cf][da][db][de][eb][ed][ef][fc][fd]
+            ;C[Setup1]AB[ab][cd][ef][da]
+            ;C[Setup2]AW[aa]
+            ;C[Setup2]AB[ac]
+            ;C[Setup2]AW[af]
+            ;C[Setup2]AB[ad]
+            ;C[Setup3]AW[ij]
+            ;B[jj][ad][cd][ad][ad][ad][ad]
+            )"
+        .to_string();
+        let mut iter = s0.trim().chars().peekable();
+        let t = TreeNode::new(&mut iter, None);
+        let g = Game::init(Some(t));
+        let ea = Action::new();
+
+        const LEN: usize = 1 + 4 + 4;
+        let mut buf_origin: [u8; LEN] = [0; LEN];
+        let buf = &mut buf_origin[..];
+        let mut fake_stream = Cursor::new(buf);
+        assert_eq!(true, fake_stream.return_query(&g, &ea));
+        
+        let buf_after = fake_stream.get_ref();
+        assert_eq!(2 as u8, buf_after[0]);
     }
 }
