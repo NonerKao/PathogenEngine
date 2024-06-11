@@ -4,7 +4,7 @@ use std::collections::HashMap;
 
 use rand::Rng;
 
-#[derive(Debug, PartialEq, PartialOrd)]
+#[derive(Clone, Debug, PartialEq, PartialOrd)]
 pub enum ActionPhase {
     SetMap,
     Lockdown,
@@ -31,7 +31,7 @@ impl Candidate {
     }
 }
 
-#[derive(Debug)]
+#[derive(Clone, Debug)]
 pub struct Action {
     pub map: Option<Coord>,
     pub lockdown: Lockdown,
@@ -623,9 +623,19 @@ impl Action {
     }
 
     pub fn add_single_marker(&mut self, g: &Game, c: Coord) -> Result<&'static str, &'static str> {
+        self.add_single_marker_trial(g, c, false)
+    }
+
+    pub fn add_single_marker_trial(
+        &mut self,
+        g: &Game,
+        c: Coord,
+        trial: bool,
+    ) -> Result<&'static str, &'static str> {
         assert_eq!(self.action_phase, ActionPhase::SetMarkers);
         let mut is_qualified = false;
         let mut res = Err("Ex22");
+        let save_for_trial_marker_slot = self.marker_slot.clone();
         for m in self.marker_slot.iter() {
             if m.0 == c {
                 is_qualified = true;
@@ -643,7 +653,10 @@ impl Action {
             res = self.add_single_marker_plague(g, c);
         };
 
-        if res == Ok("Ix02") {
+        if trial {
+            self.marker_slot = save_for_trial_marker_slot.clone();
+            let _ = self.markers.pop();
+        } else if res == Ok("Ix02") {
             self.transit(g);
             self.action_phase = ActionPhase::Done;
             return res;

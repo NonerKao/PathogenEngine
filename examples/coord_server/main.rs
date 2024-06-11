@@ -477,37 +477,6 @@ trait WriterExtra {
     fn return_query(&mut self, g: &Game, a: &Action) -> bool;
 }
 
-/*impl WriterExtra for TcpStream {
-    fn update_agent(&mut self, g: &Game, a: &Action, fc: &[u8; FC_LEN], s: &'static str) -> bool {
-        let encoded = encode(g, &a);
-        #[cfg(debug_assertions)]
-        {
-            println!("{:?}", s);
-        }
-        let sb = s.as_bytes();
-        let enc = encoded.as_slice().unwrap();
-        let turn: [u8; TURN_DATA] = [
-            if g.turn == Camp::Doctor { 1 } else { 0 },
-            if g.turn == Camp::Plague { 1 } else { 0 },
-        ];
-
-        let response = [&sb, &enc[..], &fc[..], &turn].concat();
-        assert!(response.len() == DATA_UNIT);
-        match self.write(&response) {
-            Err(_) => {
-                println!("Client disconnected.");
-                return false;
-            }
-            Ok(_) => {
-                return true;
-            }
-        }
-    }
-    fn return_query(&mut self, g: &Game, a: &Action) -> bool {
-        return false;
-    }
-}*/
-
 trait ReaderExtra {
     fn peek(&mut self, buffer: &mut [u8]) -> std::io::Result<usize>;
 }
@@ -705,7 +674,24 @@ impl<T: Write> WriterExtra for T {
                 }
             }
             ActionPhase::SetMarkers => {
-                return false;
+                let mut marker_candidate: Vec<Coord> = Vec::new();
+                for ms in a.marker_slot.iter() {
+                    let mut dummy_action = a.clone();
+                    match dummy_action.add_single_marker_trial(g, ms.0, true) {
+                        Ok(_) => {
+                            marker_candidate.push(ms.0);
+                        }
+                        _ => {}
+                    }
+                }
+                let len = marker_candidate.len() + 5;
+                response = vec![0; len];
+                response[0] = marker_candidate.len() as u8;
+                let mut j = 1;
+                for c in marker_candidate.iter() {
+                    response[j] = c.to_env_encode();
+                    j = j + 1;
+                }
             }
             _ => {
                 return false;
@@ -716,7 +702,6 @@ impl<T: Write> WriterExtra for T {
         response[len - 3] = 'x' as u8;
         response[len - 2] = '0' as u8;
         response[len - 1] = '0' as u8;
-        println!("{:?}", response);
         let res: &[u8] = &response;
         match self.write(&res) {
             Err(_) => {
@@ -1199,5 +1184,23 @@ mod tests {
         assert_eq!(1 as u8, buf_after5[0]);
         // it will be 16(ce)
         assert_eq!(Ok("Ix01"), a.add_board_single_step(&g, "ce".to_env()));
+
+        // SetMarker
+        const LEN6: usize = 1 + 2 + 4;
+        let mut buf_origin6: [u8; LEN6] = [0; LEN6];
+        let buf6 = &mut buf_origin6[..];
+        fake_stream = Cursor::new(buf6);
+        assert_eq!(true, fake_stream.return_query(&g, &a));
+        let buf_after6 = fake_stream.get_ref();
+        assert_eq!(2 as u8, buf_after6[0]);
+        // it will be 12(ca) and 0(aa)
+        g.stuff
+            .insert("aa".to_env(), (Camp::Plague, Stuff::Marker(1)));
+        assert_eq!(Err("Ex24"), a.add_single_marker(&g, "ca".to_env()));
+        assert_eq!(Ok("Ix01"), a.add_single_marker(&g, "aa".to_env()));
+        assert_eq!(Ok("Ix01"), a.add_single_marker(&g, "aa".to_env()));
+        assert_eq!(Ok("Ix01"), a.add_single_marker(&g, "ca".to_env()));
+        assert_eq!(Ok("Ix01"), a.add_single_marker(&g, "ca".to_env()));
+        assert_eq!(Ok("Ix02"), a.add_single_marker(&g, "aa".to_env()));
     }
 }
