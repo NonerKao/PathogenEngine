@@ -2,6 +2,7 @@ import random
 import argparse
 from random_agent import RandomAgent
 from reinforcement_agent import RLAgent
+from query_agent import QAgent
 import time
 
 if __name__ == "__main__":
@@ -9,7 +10,7 @@ if __name__ == "__main__":
     parser.add_argument('--seed', type=str, help='Seed for the random number generator')
     parser.add_argument('-s', '--side', choices=['Doctor', 'Plague'], required=True,
                         help='Choose either "Docter" or "Plague"')
-    parser.add_argument('-t', '--type', choices=['Random', 'Reinforcement'], required=True,
+    parser.add_argument('-t', '--type', choices=['Random', 'Reinforcement', 'Query'], required=True,
                         help='Different types of Agent')
     parser.add_argument('-r', '--record', type=str, help='Record the game transaction in this file')
     parser.add_argument('-v', '--verbose', action='store_true', help='Detailed information')
@@ -28,4 +29,6 @@ if __name__ == "__main__":
             RandomAgent(args)
         elif args.type == 'Reinforcement':
             RLAgent(args)
+        elif args.type == 'Query':
+            QAgent(args)
         time.sleep(1)

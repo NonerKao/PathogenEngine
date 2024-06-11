@@ -153,7 +153,7 @@ fn encode(g: &Game, a: &Action) -> Array1<u8> {
 
 const MIN_MAP_CODE: u8 = 100;
 const MAX_ENV_CODE: u8 = 36;
-const SPECIAL_CODE: u8 = 255;
+const QUERY_CODE: u8 = 255;
 
 trait ActionCoord {
     fn to_coord(&self) -> Coord;
@@ -274,7 +274,11 @@ fn handle_client<T: Read + ReaderExtra + Write + WriterExtra>(
                     }
                     if buffer[0] < MIN_MAP_CODE {
                         s = "Ex26";
-                    } else if buffer[0] == SPECIAL_CODE {
+                    } else if buffer[0] == QUERY_CODE {
+                        if false == stream.return_query(g, &am.action) {
+                            return false;
+                        }
+                        continue 'set_map;
                     } else {
                         let c = (buffer[0] as u8).to_coord();
                         match am.action.add_map_step(g, c) {
@@ -310,6 +314,11 @@ fn handle_client<T: Read + ReaderExtra + Write + WriterExtra>(
                         }
                         if buffer[0] < MIN_MAP_CODE {
                             s = "Ex26";
+                        } else if buffer[0] == QUERY_CODE {
+                            if false == stream.return_query(g, &am.action) {
+                                return false;
+                            }
+                            continue 'lockdown;
                         } else {
                             let c = (buffer[0] as u8).to_coord();
                             match am.action.add_lockdown_by_coord(g, c) {
@@ -343,7 +352,12 @@ fn handle_client<T: Read + ReaderExtra + Write + WriterExtra>(
                     if !get_action(stream, &mut buffer) {
                         return false;
                     }
-                    if buffer[0] > MAX_ENV_CODE {
+                    if buffer[0] == QUERY_CODE {
+                        if false == stream.return_query(g, &am.action) {
+                            return false;
+                        }
+                        continue 'set_character;
+                    } else if buffer[0] > MAX_ENV_CODE {
                         s = "Ex27";
                     } else {
                         let c = (buffer[0] as u8).to_coord();
@@ -374,7 +388,12 @@ fn handle_client<T: Read + ReaderExtra + Write + WriterExtra>(
                         if !get_action(stream, &mut buffer) {
                             return false;
                         }
-                        if buffer[0] > MAX_ENV_CODE {
+                        if buffer[0] == QUERY_CODE {
+                            if false == stream.return_query(g, &am.action) {
+                                return false;
+                            }
+                            continue 'board_move;
+                        } else if buffer[0] > MAX_ENV_CODE {
                             s = "Ex27";
                         } else {
                             let c = (buffer[0] as u8).to_coord();
@@ -420,7 +439,12 @@ fn handle_client<T: Read + ReaderExtra + Write + WriterExtra>(
                         if !get_action(stream, &mut buffer) {
                             return false;
                         }
-                        if buffer[0] > MAX_ENV_CODE {
+                        if buffer[0] == QUERY_CODE {
+                            if false == stream.return_query(g, &am.action) {
+                                return false;
+                            }
+                            continue 'set_marker;
+                        } else if buffer[0] > MAX_ENV_CODE {
                             s = "Ex27";
                         } else {
                             let c = (buffer[0] as u8).to_coord();
@@ -704,8 +728,8 @@ impl<T: Write> WriterExtra for T {
         response[len - 1] = '0' as u8;
         let res: &[u8] = &response;
         match self.write(&res) {
-            Err(_) => {
-                println!("Client disconnected.");
+            Err(x) => {
+                println!("Write failed: {}", x);
                 return false;
             }
             _ => {
