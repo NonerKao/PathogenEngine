@@ -13,16 +13,12 @@ from constant import *
 TRAINING_BATCH_UNIT = 100
 TRAINING_EPOCH = 5000
 TRAINING_EPOCH_UNIT = 250
-
-ENV_SIZE = 5*6*6
-MAP_SIZE = 25*1
-INPUT_SIZE = ENV_SIZE + MAP_SIZE
-OUTPUT_SIZE = 1
-PAIR_SIZE = INPUT_SIZE + OUTPUT_SIZE
+LEARNING_RATE = 0.001
 
 RES_SIZE = 12
-RES_INPUT_SIZE = 64
-NATURE_CHANNEL_SIZE = (9 + 2)
+RES_INPUT_SIZE = 84 
+FC_OUTPUT_SIZE = (1 + BOARD_POS + MAP_POS)
+NATURE_CHANNEL_SIZE = (8 + 2 + 1 + 2 + 11)
 
 ACCURACY_THRESHOLD = 0.03
 LEARNING_RATE = 0.0001
@@ -70,15 +66,38 @@ class PathogenNet(torch.nn.Module):
             PathogenResidualBlock(RES_INPUT_SIZE) for _ in range(RES_SIZE)
         ])
         
-        self.avgpool = torch.nn.AdaptiveAvgPool2d((1, 1))
-        self.fc = torch.nn.Linear(RES_INPUT_SIZE, OUTPUT_SIZE)
+        # Policy Head
+        self.policy_conv = nn.Conv2d(RES_INPUT_SIZE, 2, kernel_size=1)
+        self.policy_bn = nn.BatchNorm2d(2)
+        self.policy_fc = nn.Linear(2 * 7 * 7, TOTAL_POS)
+
+        # Value Head
+        self.value_conv = nn.Conv2d(RES_INPUT_SIZE, 1, kernel_size=1)
+        self.value_bn = nn.BatchNorm2d(1)
+        self.value_fc = nn.Linear(1 * 7 * 7, 1)
+        
+        # Understanding Head
+        # the prediction of error sub-move for all the positions
+        # XXX: 4 is experimental magic
+        self.understanding_conv = nn.Conv2d(RES_INPUT_SIZE, 4, kernel_size=1)
+        self.understanding_bn = nn.BatchNorm2d(4)
+        self.understanding_fc = nn.Linear(4 * 7 * 7, TOTAL_POS)
         
     def forward(self, x):
         # Padding the game board and the map to get ready for a Nx6x7x7 tensor
-        genv, gmap = x[:, 0: ENV_SIZE], x[:, ENV_SIZE: INPUT_SIZE]
-        genv = torch.nn.functional.pad(genv.reshape(-1, 9, 6, 6), (1, 0, 1, 0), mode='constant', value=-1.0)
+        genv, gmap, gturn, gfm, gfe = x[:, 0: BOARD_DATA], x[:, BOARD_DATA: E_MAP], x[:, E_MAP: E_TURN], x[:, E_TURN: E_FM], x[:, E_FM: S]
+        # XXX: sort the server-side encoding later to eliminate all these permutations
+        genv = genv.permute(0,3,1,2)
+        gmap = gmap.permute(0,3,1,2)
+        gturn = gturn.permute(0,3,1,2)
+        gfm = gfm.permute(0,3,1,2)
+        gfe = gfe.permute(0,3,1,2)
+        genv = torch.nn.functional.pad(genv.reshape(-1, 8, 6, 6), (1, 0, 1, 0), mode='constant', value=-1.0)
         gmap = torch.nn.functional.pad(gmap.reshape(-1, 2, 5, 5), (1, 1, 1, 1), mode='constant', value=-1.0)
-        x = torch.cat((genv, gmap), dim=1)
+        gturn = torch.nn.functional.pad(gmap.reshape(-1, 1, 5, 5), (1, 1, 1, 1), mode='constant', value=-1.0)
+        gfm = torch.nn.functional.pad(gmap.reshape(-1, 2, 5, 5), (1, 1, 1, 1), mode='constant', value=-1.0)
+        gfe = torch.nn.functional.pad(gmap.reshape(-1, 11, 6, 6), (1, 0, 1, 0), mode='constant', value=-1.0)
+        x = torch.cat((genv, gmap, gturn, gfm, gfe), dim=1)
 
         # The init convolution part
         x = self.conv0(x)
@@ -89,12 +108,31 @@ class PathogenNet(torch.nn.Module):
         for block in self.resblocks0:
             x = block(x)
 
-        # The output part
-        x = self.avgpool(x)
-        x = torch.flatten(x, 1)
-        x = self.fc(x)
+        # The output: policy head
+        policy = self.policy_conv(x)
+        policy = self.policy_bn(policy)
+        policy = torch.nn.functional.relu(policy)
+        policy = torch.flatten(policy, 1)
+        policy = self.policy_fc(policy)
+        policy = torch.nn.functional.softmax(policy, dim=1)
 
-        return torch.softmax(xs, dim=1)
+        # The output: value head
+        value = self.value_conv(x)
+        value = self.value_bn(value)
+        value = torch.nn.functional.relu(value)
+        value = torch.flatten(value, 1)
+        value = self.value_fc(value)
+        value = torch.nn.functional.tanh(value)
+
+        # The output: understanding head
+        understanding = self.understanding_conv(x)
+        understanding = self.understanding_bn(understanding)
+        understanding = torch.nn.functional.relu(understanding)
+        understanding = torch.flatten(understanding, 1)
+        understanding = self.understanding_fc(understanding)
+        understanding = torch.nn.functional.tanh(understanding)
+
+        return policy, value, understanding
 
 def init_model(model_name):
     torch.set_default_dtype(torch.float32)
@@ -108,38 +146,9 @@ def init_model(model_name):
     return model
 
 def init_optimizer(model):
-    learning_rate = 0.002
+    learning_rate = LEARNING_RATE
     optimizer = torch.optim.Adam(model.parameters(), lr=learning_rate)
     return optimizer
-
-def range_remap(input_tensor, min=0.001, max=0.999):
-    min_value = input_tensor.min(dim = 0, keepdim=True).values
-    max_value = input_tensor.max(dim = 0, keepdim=True).values
-    range_vals = max_value - min_value + 1e-5
-    input = (input_tensor - min_value)/range_vals * (max - min) + min
-    if input.ndim == 0:
-        input = input.unsqueeze(0)
-    return input
-
-def loss_func_bisect(input, rewards):
-    input = range_remap(input)
-    try:
-        ret = torch.dot(rewards, (input - 0.5)/((input - 1.0)*input*input))
-        assert not torch.isnan(ret).any()
-    except RuntimeError as e:
-        print('???: ', e)
-    return ret
-
-def loss_func_bisect2(input, rewards):
-    if input.ndim == 0:
-        input = input.unsqueeze(0)
-    try:
-        ret = torch.dot(rewards, 12.0 * 1.0/(input - 1.01)*(input + 0.99)+13)
-        assert not torch.isnan(ret).any()
-    except RuntimeError as e:
-        print('???: ', e)
-        ret = 0.0
-    return ret
 
 class RLAgent(Agent):
     torch.set_default_device(torch.device("cuda"))
@@ -173,80 +182,7 @@ class RLAgent(Agent):
             # the first is the all history, including two negatice behaviors:
             # illegal (sub-)moves and passes. In this phase, I want each action
             # takes the feedback it deserves, independent from consecutive ones.
-            states, actions, rewards = self.all_transitions[:, :S].clone().to(dtype=torch.float32), self.all_transitions[:, S], self.all_transitions[:, S+1]
-            for _ in range(0, TRAIN_BATCH0):
-                self.optimizer.zero_grad()
-                preds = self.model(states)
-                assert not torch.isnan(preds).any()
-                probs = preds.gather(dim=1, index=actions.long().unsqueeze(dim=1)).squeeze().to(self.device)
-                print(probs)
-                loss = loss_func_bisect2(probs, rewards)
-                loss.backward()
-                self.optimizer.step()
-            print('BATCH0')
-            print()
-
-            # the second one counts only the valid (sub-)moves. since the
-            # actions do contributes to the results, I want the discount credit
-            # assignment here.
-            def discount_and_normalize(rewards, gamma=0.95):
-                # This one is a bit confusing.
-                # based on "DRL in Action", derived from section 4.2.4 and 4.2.5,
-                # the closer to the end, the less discount it should be. However,
-                # in section 4.4.3 programm 4.6, the order is totally reveresed.
-                # Here we follow the former.
-                coef = torch.pow(gamma, torch.arange((len(rewards))*1.0)).flip(0)
-                ret = coef * rewards
-                if torch.abs(ret.max()) < 1e-8:
-                    return ret / (ret.max() + 1e-8)
-                return ret / ret.max()
-            def fit(input_tensor, head=0.0, tail=1.0):
-                front = input_tensor[0]
-                rear = input_tensor[-1]
-                range_vals = front - rear + 1e-5
-                return (input_tensor - front)/range_vals * (tail - head) + head
-
-            normalized_rewards = discount_and_normalize(rewards.flip(0).cumsum(dim=0).flip(0))
-            for _ in range(0, TRAIN_BATCH1):
-                self.optimizer.zero_grad()
-                preds = self.model(states)
-                assert not torch.isnan(preds).any()
-                probs = preds.gather(dim=1, index=actions.long().unsqueeze(dim=1)).squeeze().to(self.device)
-                print(probs.shape)
-                print(probs)
-                if probs.ndim == 0:
-                    probs = probs.unsqueeze(0)
-                # Let's learn it this way after it gets a better understanding of the rule
-                #if self.win:
-                #    normalized_rewards = fit(normalized_rewards, head=2.0, tail=3.0)
-                #    normalized_probs = normalize(probs, min=2.0, max=3.0)
-                #else:
-                #    normalized_rewards = fit(normalized_rewards, head=2.0, tail=1.0)
-                #    normalized_probs = normalize(probs, min=1.0, max=2.0)
-                def loss_func_negative_likelihood(input, rewards):
-                    try:
-                        ret = -1.0 * torch.dot(rewards, torch.log(input + 0.001))
-                        try:
-                            assert not torch.isnan(ret).any()
-                        except AssertionError:
-                            assert not torch.isnan(input).any()
-                            assert not torch.isnan(rewards).any()
-                            print(torch.log(input + 0.001))
-                            assert not torch.isnan(torch.log(input + 0.001)).any()
-                    except RuntimeError:
-                        print(rewards.shape)
-                        print(input.shape)
-                        ret = 0.0
-                    return ret
-                loss = loss_func_negative_likelihood(probs, normalized_rewards)
-                loss.backward(retain_graph=True)
-                self.optimizer.step()
-            torch.save(self.model, f.model)
-        if self.win:
-            print("W ", end='')
-        else:
-            print("L ", end='')
-        print(f"{self.score:10.2}", '/', f"{self.move: 3}", '/', f"{self.valid_submove: 4}", '/', f"{self.submove: 6}", '    ', f"{self.valid_submove/self.submove*100:7.2}", '%')
+            # states, actions, rewards = self.all_transitions[:, :S].clone().to(dtype=torch.float32), self.all_transitions[:, S], self.all_transitions[:, S+1]
 
     def analyze(self, data):
         temp = torch.tensor([])
