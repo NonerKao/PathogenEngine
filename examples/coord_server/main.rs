@@ -14,14 +14,16 @@ use pathogen_engine::core::*;
 
 const MAX_STEPS: usize = 5;
 
-const BOARD_DATA: usize = 324 /*6x6x9*/;
-const MAP_DATA: usize = 50 /*5x5x2*/;
-const FLOW_DATA: usize = 13;
-const TURN_DATA: usize = 2;
+const BOARD_DATA: usize = 288; /*8x6x6*/
+const MAP_DATA: usize = 50; /*2x5x5*/
+const TURN_DATA: usize = 25; /*1x5x5*/
+const FLOW_MAP_DATA: usize = 50; /*2x5x5*/
+const FLOW_ENV_DATA: usize = 396; /*11x6x6*/
+const FLOW_DATA: usize = FLOW_MAP_DATA + FLOW_ENV_DATA; /*2x5x5+11x6x6*/
 
 const CODE_DATA: usize = 4;
 
-const DATA_UNIT: usize = BOARD_DATA + MAP_DATA + FLOW_DATA + TURN_DATA + CODE_DATA;
+const DATA_UNIT: usize = BOARD_DATA + MAP_DATA + TURN_DATA + FLOW_DATA + CODE_DATA;
 
 #[derive(Parser, Debug)]
 #[command(author, version, about, long_about = None)]
@@ -39,9 +41,12 @@ struct Args {
     seed: Option<String>,
 }
 
+const FC_LEN: usize = 2 /* map move */ + 1 /* set character*/ + MAX_STEPS + DOCTOR_MARKER as usize;
+
 fn encode(g: &Game, a: &Action) -> Array1<u8> {
-    // Check the README/HACKING for why it is 9
-    let mut e = Array::from_shape_fn((SIZE as usize, SIZE as usize, 9 as usize), |(_, _, _)| {
+    // 1. BOARD_DATA
+    // Check the README/HACKING for why it is 8
+    let mut e = Array::from_shape_fn((SIZE as usize, SIZE as usize, 8 as usize), |(_, _, _)| {
         0 as u8
     });
     for i in 0..SIZE as usize {
@@ -69,27 +74,15 @@ fn encode(g: &Game, a: &Action) -> Array1<u8> {
             }
         }
     }
-    for i in 0..a.markers.len() {
-        e[[
-            a.markers[i].x as usize,
-            a.markers[i].y as usize,
-            8, /*Extra Marker*/
-        ]] += 1;
-    }
     for ((_, camp), c) in g.character.iter() {
         if *camp == Camp::Doctor {
             e[[c.x as usize, c.y as usize, 2 /*Doctor Hero*/]] = 1;
         } else {
             e[[c.x as usize, c.y as usize, 3 /*Plague Hero*/]] = 1;
         }
-        for i in 1..a.trajectory.len() {
-            e[[
-                a.trajectory[i].x as usize,
-                a.trajectory[i].y as usize,
-                if g.turn == Camp::Doctor { 2 } else { 3 }, /*Doctor Hero*/
-            ]] = 1;
-        }
     }
+
+    // 2. MAP_DATA
     // 2 for the two sides
     let mut m = Array::from_shape_fn(
         (MAP_SIZE as usize, MAP_SIZE as usize, 2 as usize),
@@ -97,11 +90,7 @@ fn encode(g: &Game, a: &Action) -> Array1<u8> {
     );
 
     for (camp, mc) in g.map.iter() {
-        let c = if a.action_phase > ActionPhase::SetMap && *camp == g.turn && a.map != None {
-            a.map.unwrap()
-        } else {
-            *mc
-        };
+        let c = *mc;
         if *camp == Camp::Doctor {
             m[[
                 (c.x + MAP_OFFSET.x) as usize,
@@ -109,11 +98,6 @@ fn encode(g: &Game, a: &Action) -> Array1<u8> {
                 0, /* Doctor Marker */
             ]] = 1;
         } else {
-            let c = if a.action_phase > ActionPhase::Lockdown {
-                mc.lockdown(a.lockdown)
-            } else {
-                *mc
-            };
             m[[
                 (c.x + MAP_OFFSET.x) as usize,
                 (c.y + MAP_OFFSET.y) as usize,
@@ -122,32 +106,130 @@ fn encode(g: &Game, a: &Action) -> Array1<u8> {
         }
     }
 
-    let mm = m.clone();
-    let mut count = 0;
-    for i in 0..5 {
-        for j in 0..5 {
-            for k in 0..2 {
-                if mm[[i, j, k]] > 0 {
-                    count += 1;
+    // 3. TURN_DATA
+    //
+    let mut t = Array::from_shape_fn(
+        (MAP_SIZE as usize, MAP_SIZE as usize, 1 as usize),
+        |(_, _, _)| 0 as u8,
+    );
+    for (camp, mc) in g.map.iter() {
+        let c = *mc;
+        if *camp == g.turn {
+            t[[
+                (c.x + MAP_OFFSET.x) as usize,
+                (c.y + MAP_OFFSET.y) as usize,
+                0,
+            ]] = 1;
+        }
+    }
+
+    // 4. FLOW_DATA
+    //
+    let mut fm = Array::from_shape_fn(
+        (MAP_SIZE as usize, MAP_SIZE as usize, 2 as usize),
+        |(_, _, _)| 0 as u8,
+    );
+    let mut fe = Array::from_shape_fn((SIZE as usize, SIZE as usize, 11 as usize), |(_, _, _)| {
+        0 as u8
+    });
+
+    if a.action_phase > ActionPhase::SetMap {
+        let c = match a.map {
+            None => {
+                // Ix00?
+                *g.map.get(&g.turn).unwrap()
+            }
+            Some(x) => {
+                x
+            }
+        };
+        fm[[
+            (c.x + MAP_OFFSET.x) as usize,
+            (c.y + MAP_OFFSET.y) as usize,
+            0,
+        ]] = 1;
+    }
+    if a.action_phase > ActionPhase::Lockdown {
+        // Thanks to the fact that Coord::lockdown() doesn't require the
+        // operation a doctor-limited one, we can always duplicate the
+        // opponent's map position here.
+        let mut c = *g.map.get(&g.opposite(g.turn)).unwrap();
+        c = c.lockdown(a.lockdown);
+        fm[[
+            (c.x + MAP_OFFSET.x) as usize,
+            (c.y + MAP_OFFSET.y) as usize,
+            1,
+        ]] = 1;
+    }
+    if a.action_phase > ActionPhase::SetCharacter {
+        // a.trajectory contains at most 6 coordinates.
+        // 1 for the character's position before the action,
+        // 5 for the possible maximum steps.
+        for i in 0..6 {
+            let index = if i < a.trajectory.len() {
+                i
+            } else if i >= a.trajectory.len() && i <= a.steps {
+                // During the whole ActionPhase::BoardMove phase,
+                // this break will leave the sub-step empty and thus (theoretically)
+                // deliver the message "do this sub-step".
+                // For example, if a.steps == 2, then a.trajectory will
+                // eventually grow to contain 3 elements, so when
+                // 0 <= i < a.trajectory.len() <= 3, the first block takes;
+                // as i goes to 3, it can no longer take this block.
+                break;
+            } else {
+                a.trajectory.len() - 1
+            };
+            fe[[
+                a.trajectory[index].x as usize,
+                a.trajectory[index].y as usize,
+                i, /* fe starts fresh */
+            ]] = 1;
+        }
+    }
+    if a.action_phase >= ActionPhase::SetMarkers {
+        // a.markers contains at most 5 coordinates.
+        for i in 0..5 {
+            if i >= a.markers.len() {
+                break;
+            };
+            fe[[
+                a.markers[i].x as usize,
+                a.markers[i].y as usize,
+                i + 6, /* offset by the trajectory: 1 + 5 */
+            ]] += 1;
+        }
+    }
+
+    // Some simple checks
+    #[cfg(debug_assertions)]
+    {
+        let mm = m.clone();
+        let mut count = 0;
+        for i in 0..5 {
+            for j in 0..5 {
+                for k in 0..2 {
+                    if mm[[i, j, k]] > 0 {
+                        count += 1;
+                    }
                 }
             }
         }
+        assert_eq!(2, count);
     }
-    assert_eq!(2, count);
 
     // wrap it up
     let ret = e
-        .into_shape(((SIZE as usize) * (SIZE as usize) * 9,))
+        .into_shape((BOARD_DATA,))
         .unwrap()
         .into_iter()
-        .chain(
-            m.into_shape((MAP_SIZE * MAP_SIZE * 2,))
-                .unwrap()
-                .into_iter(),
-        )
+        .chain(m.into_shape((MAP_DATA,)).unwrap().into_iter())
+        .chain(t.into_shape((TURN_DATA,)).unwrap().into_iter())
+        .chain(fm.into_shape((FLOW_MAP_DATA,)).unwrap().into_iter())
+        .chain(fe.into_shape((FLOW_ENV_DATA,)).unwrap().into_iter())
         .collect::<Array1<_>>();
 
-    assert_eq!(ret.len(), 374);
+    assert_eq!(ret.len(), DATA_UNIT - CODE_DATA);
     ret
 }
 
@@ -211,8 +293,6 @@ impl Drop for ActionMonitor {
         }
     }
 }
-
-const FC_LEN: usize = 2 /* map move */ + 1 /* set character*/ + MAX_STEPS + DOCTOR_MARKER as usize;
 
 fn handle_client<T: Read + ReaderExtra + Write + WriterExtra>(
     stream: &mut T,
@@ -589,18 +669,13 @@ impl ReaderExtra for std::io::Cursor<&mut [u8]> {
     }
 }
 
-// For the test only
 impl<T: Write> WriterExtra for T {
-    fn update_agent(&mut self, g: &Game, a: &Action, fc: &[u8; FC_LEN], s: &'static str) -> bool {
+    fn update_agent(&mut self, g: &Game, a: &Action, _fc: &[u8; FC_LEN], s: &'static str) -> bool {
         let encoded = encode(g, &a);
-        let sb = s.as_bytes();
         let enc = encoded.as_slice().unwrap();
-        let turn: [u8; TURN_DATA] = [
-            if g.turn == Camp::Doctor { 1 } else { 0 },
-            if g.turn == Camp::Plague { 1 } else { 0 },
-        ];
+        let sb = s.as_bytes();
 
-        let response = [&sb, &enc[..], &fc[..], &turn].concat();
+        let response = [&sb, &enc[..]].concat();
         assert!(response.len() == DATA_UNIT);
         match self.write(&response) {
             Err(_) => {
@@ -744,7 +819,7 @@ mod tests {
     use std::io::Cursor;
 
     #[test]
-    fn test_handle_client_with_cursor() {
+    fn test_handle_client_with_cursor1() {
         let s0 = "(
             ;C[Setup0]
             AW[aa][ab][ad][ae][bb][bc][bf][ca][cd][ce][dc][dd][df][ea][ec][ee][fa][fb][fe][ff]
@@ -783,107 +858,175 @@ mod tests {
         assert_eq!(buffer, s1);
         let buf_after = fake_stream.get_ref();
         let env_offset = CODE_DATA + BOARD_DATA;
-        // SetMap
+        let turn_offset = CODE_DATA + BOARD_DATA + MAP_DATA;
+        let flow_map_offset = CODE_DATA + BOARD_DATA + MAP_DATA + TURN_DATA;
+        let flow_env_offset = CODE_DATA + BOARD_DATA + MAP_DATA + TURN_DATA + FLOW_MAP_DATA;
+
+        // when it is SetMap...
+        // Human
+        assert_eq!(
+            buf_after[CODE_DATA + 5 * 6 * 8 + 5 * 8 + 1], /* "ff" */
+            1
+        );
+        // Underworld
+        assert_eq!(
+            buf_after[CODE_DATA + 5 * 6 * 8 + 3 * 8 + 0], /* "fd" */
+            1
+        );
+        // Doctor's token
         assert_eq!(buf_after[env_offset + 2 * 5 * 2 + 3 * 2] /* "ij" */, 1);
-        // Lockdown
+        // Plague's token
+        assert_eq!(
+            buf_after[env_offset + 3 * 5 * 2 + 3 * 2 + 1], /* "jj" */
+            1
+        );
+        // Doctor's turn: duplicate the map for the doctor only
+        assert_eq!(
+            buf_after[turn_offset + 3 * 5 * 1 + 3 * 1], /* "jj" */
+            0
+        );
+        assert_eq!(
+            buf_after[turn_offset + 2 * 5 * 1 + 3 * 1], /* "ij" */
+            1
+        );
+
+        // when it is Lockdown...
         let mut base_offset = DATA_UNIT + 1;
+        // Yes, after 0.6, the game status remain the same
+        // So this should be 1
         assert_eq!(
             buf_after[base_offset + env_offset + 2 * 5 * 2 + 3 * 2], /* "ij" */
+            1
+        );
+        // it moves to "ii" in SetMap
+        assert_eq!(
+            buf_after[base_offset + flow_map_offset + 2 * 5 * 2 + 2 * 2], /* "ii" */
+            1
+        );
+
+        // when it is SetCharacter...
+        base_offset = base_offset + (DATA_UNIT + 1);
+        assert_eq!(
+            buf_after[base_offset + flow_map_offset + 3 * 5 * 2 + 3 * 2 + 1], /* "jj" */
             0
         );
         assert_eq!(
-            buf_after[base_offset + env_offset + 2 * 5 * 2 + 2 * 2], /* "ii" */
+            buf_after[base_offset + flow_map_offset + 1 * 5 * 2 + 1 * 2 + 1], /* "hh" */
             1
         );
         assert_eq!(
-            buf_after[base_offset + env_offset + 3 * 5 * 2 + 3 * 2 + 1], /* "jj" */
-            1
-        );
-        // SetCharacter
-        base_offset = base_offset + (DATA_UNIT + 1);
-        assert_eq!(
-            buf_after[base_offset + env_offset + 3 * 5 * 2 + 3 * 2 + 1], /* "jj" */
+            buf_after[base_offset + CODE_DATA + 0 * 6 * 11 + 0 * 11 + 0], /* "aa" */
             0
         );
-        assert_eq!(
-            buf_after[base_offset + env_offset + 1 * 5 * 2 + 1 * 2 + 1], /* "hh" */
-            1
-        );
-        assert_eq!(
-            buf_after[base_offset + CODE_DATA + 0 * 6 * 9 + 0 * 9 + 2], /* "aa" */
-            1
-        );
-        // BoardMove
+
+        // when it is BoardMove...
         base_offset = base_offset + (DATA_UNIT + 1);
         assert_eq!(
-            buf_after[base_offset + env_offset + 1 * 5 * 2 + 1 * 2 + 1], /* "hh" */
+            buf_after[base_offset + flow_map_offset + 1 * 5 * 2 + 1 * 2 + 1], /* "hh" */
             1
         );
         assert_eq!(
-            buf_after[base_offset + CODE_DATA + 0 * 6 * 9 + 0 * 9 + 2], /* "aa" */
+            buf_after[base_offset + flow_env_offset + 0 * 6 * 11 + 0 * 11 + 0], /* "aa" */
             1
         );
-        // BoardMove: first step
+
+        // when it is BoardMove... after the first move
         base_offset = base_offset + (DATA_UNIT + 1);
         assert_eq!(
-            buf_after[base_offset + CODE_DATA + 0 * 6 * 9 + 0 * 9 + 2], /* "aa" */
+            buf_after[base_offset + flow_map_offset + 1 * 5 * 2 + 1 * 2 + 1], /* "hh" */
             1
         );
         assert_eq!(
-            buf_after[base_offset + CODE_DATA + 0 * 6 * 9 + 1 * 9 + 2], /* "ab" */
+            buf_after[base_offset + flow_env_offset + 0 * 6 * 11 + 0 * 11 + 0], /* "aa" */
             1
         );
         assert_eq!(
-            buf_after[base_offset + CODE_DATA + 1 * 6 * 9 + 1 * 9 + 2], /* "bb" */
+            buf_after[base_offset + flow_env_offset + 0 * 6 * 11 + 1 * 11 + 1], /* "ab" */
+            1
+        );
+        assert_eq!(
+            buf_after[base_offset + flow_env_offset + 1 * 6 * 11 + 1 * 11 + 2], /* "bb" */
             0
         );
-        // BoardMove: 2nd step
+
+        // when it is SetMarkers... after the second BoardMove
         base_offset = base_offset + (DATA_UNIT + 1);
         assert_eq!(
-            buf_after[base_offset + CODE_DATA + 0 * 6 * 9 + 0 * 9 + 2], /* "aa" */
+            buf_after[base_offset + flow_env_offset + 0 * 6 * 11 + 0 * 11 + 0], /* "aa" */
             1
         );
         assert_eq!(
-            buf_after[base_offset + CODE_DATA + 0 * 6 * 9 + 1 * 9 + 2], /* "ab" */
+            buf_after[base_offset + flow_env_offset + 0 * 6 * 11 + 1 * 11 + 1], /* "ab" */
             1
         );
         assert_eq!(
-            buf_after[base_offset + CODE_DATA + 1 * 6 * 9 + 1 * 9 + 2], /* "bb" */
+            buf_after[base_offset + flow_env_offset + 1 * 6 * 11 + 1 * 11 + 2], /* "bb" */
             1
         );
-        // SetMarker: 1
-        base_offset = base_offset + (DATA_UNIT + 1);
+        // the rest repeat the destination
         assert_eq!(
-            buf_after[base_offset + CODE_DATA + 0 * 6 * 9 + 1 * 9 + 8], /* "ab" */
+            buf_after[base_offset + flow_env_offset + 1 * 6 * 11 + 1 * 11 + 3], /* "bb" */
             1
         );
         assert_eq!(
-            buf_after[base_offset + CODE_DATA + 0 * 6 * 9 + 0 * 9 + 8], /* "aa" */
+            buf_after[base_offset + flow_env_offset + 1 * 6 * 11 + 1 * 11 + 5], /* "bb" */
+            1
+        );
+        // the first marker position is yet to be filled ("ab")
+        assert_eq!(
+            buf_after[base_offset + flow_env_offset + 0 * 6 * 11 + 1 * 11 + 6], /* "ab" */
             0
         );
-        // SetMarker: 2
+
+        // when it is SetMarkers... the 2nd
         base_offset = base_offset + (DATA_UNIT + 1);
         assert_eq!(
-            buf_after[base_offset + CODE_DATA + 0 * 6 * 9 + 0 * 9 + 8], /* "aa" */
+            buf_after[base_offset + flow_env_offset + 0 * 6 * 11 + 1 * 11 + 6], /* "ab" */
             1
         );
-        // SetMarker: 3
-        base_offset = base_offset + (DATA_UNIT + 1);
         assert_eq!(
-            buf_after[base_offset + CODE_DATA + 0 * 6 * 9 + 1 * 9 + 8], /* "ab" */
-            2
+            buf_after[base_offset + flow_env_offset + 0 * 6 * 11 + 0 * 11 + 7], /* "aa" */
+            0
         );
-        // SetMarker: 4
+
+        // when it is SetMarkers... the 3rd
         base_offset = base_offset + (DATA_UNIT + 1);
         assert_eq!(
-            buf_after[base_offset + CODE_DATA + 0 * 6 * 9 + 0 * 9 + 8], /* "aa" */
-            2
+            buf_after[base_offset + flow_env_offset + 0 * 6 * 11 + 0 * 11 + 7], /* "aa" */
+            1
         );
-        // Done: SetMarker: 4
+        assert_eq!(
+            buf_after[base_offset + flow_env_offset + 0 * 6 * 11 + 1 * 11 + 8], /* "ab" */
+            0
+        );
+
+        // when it is SetMarkers... the 4th
         base_offset = base_offset + (DATA_UNIT + 1);
         assert_eq!(
-            buf_after[base_offset + CODE_DATA + 0 * 6 * 9 + 1 * 9 + 8], /* "ab" */
-            3
+            buf_after[base_offset + flow_env_offset + 0 * 6 * 11 + 1 * 11 + 8], /* "ab" */
+            1
+        );
+        assert_eq!(
+            buf_after[base_offset + flow_env_offset + 0 * 6 * 11 + 0 * 11 + 9], /* "aa" */
+            0
+        );
+
+        // when it is SetMarkers... the 5th
+        base_offset = base_offset + (DATA_UNIT + 1);
+        assert_eq!(
+            buf_after[base_offset + flow_env_offset + 0 * 6 * 11 + 0 * 11 + 9], /* "aa" */
+            1
+        );
+        assert_eq!(
+            buf_after[base_offset + flow_env_offset + 0 * 6 * 11 + 1 * 11 + 10], /* "ab" */
+            0
+        );
+
+        // Done
+        base_offset = base_offset + (DATA_UNIT + 1);
+        assert_eq!(
+            buf_after[base_offset + flow_env_offset + 0 * 6 * 11 + 1 * 11 + 10], /* "ab" */
+            1
         );
     }
 

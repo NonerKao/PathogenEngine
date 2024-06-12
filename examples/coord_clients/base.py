@@ -23,7 +23,7 @@ class Agent(ABC):
         self.verbose = a.verbose
 
     def play(self):
-        data = self.s.recv(CODE_DATA+BOARD_DATA+MAP_DATA+FLOW_DATA+TURN_DATA)
+        data = self.s.recv(CODE_DATA+S)
         if self.record is not None:
             self.record.write(data)
         if self.verbose:

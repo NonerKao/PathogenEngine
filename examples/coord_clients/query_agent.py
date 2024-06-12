@@ -36,11 +36,11 @@ class QAgent(Agent):
             self.action = 255
             self.s.sendall(bytes([self.action]))
             self.num_candidate = int.from_bytes(self.s.recv(1), byteorder='big')
-            # print(self.num_candidate)
+            #print(self.num_candidate)
             self.candidate = self.s.recv(self.num_candidate)
-            # print(self.candidate)
+            #print(self.candidate)
             code = self.s.recv(CODE_DATA)
-            if code not in (b'Wx00'):
+            while code not in (b'Wx00'):
                 print("Unexpected query results!")
                 sys.exit(255)
         # Make next action

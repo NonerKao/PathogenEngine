@@ -35,36 +35,24 @@ Check `src/core/status_code.rs` for the details of status codes.
 
 ## Encoding of the game
 
-Totally speaking, **387** bytes.
+Totally speaking, **809** bytes.
 
 ### The board (or `env` in the codes)
 
-**324 = 6** (X-axis, from `[ax]` to `[fx]`) **x 6** (Y-axis) **x 9** (underworld, humanity, doctor character, plague character, doctor colony, plague colony, doctor marker, plague marker, extra marker). Other than the markers, this tensor is mostly one-shot. The last extra marker is for set-marker session.
-
-> Future experiments: integrating underworld/humanity, doctor as positive and plague as opposite negative, etc.
+**288 = 6** (X-axis, from `[ax]` to `[fx]`) **x 6** (Y-axis) **x 8** (underworld, humanity, doctor character, plague character, doctor colony, plague colony, doctor marker, plague marker). Other than the markers, this tensor is mostly one-shot. The last extra marker is for set-marker session.
 
 ### The map
 
 **50 = 5** (X-axis, from `[gx]` to `[kx]`) **x 5** (Y-axis) **x 2** (doctor marker, plague marker).
 
+### Turn information
+
+**25 = 5 x 5 x 1** (duplicate the marker of the camp).
+
 ### Control
 
-The agent should know which sub-step it is currently in, so here is a one more one-hot array for tracking the status. The tricky part is the move-character and set-marker sessions that are of various length. 
+The agent should know which sub-step it is currently in~~, so here is a one more one-hot array for tracking the status. The tricky part is the move-character and set-marker sessions that are of various length~~. Considering the perception ability of DNN, this will be re-formated as tensors.
 
-We need **13 = 2** (map position and potentially Plague's position after lockdown) **+ 6** (character position and up to 5 steps) **+ 5** (markers). A few examples below:
+**446 = 5 x 5 x 2** (set-map, lockdown) and **6 x 6 x 11** (set-character x 1, board-move x 5, and set-marker x 5). Note that in the board-move phase, the phase can end under 5 sub-moves. We fill the rest with the final sub-move (the destination). Hopefully, the DNN will be able to tell that the first pure zero layer represents the sub-move it should predict.
 
-* (1, 0, ...): this round, you (the agent) have to give me (the server) the map position for this move.
-* (0, 1, 0, ...): this round, you have to give me the Plague's position after lockdown.
-* (0, 0, 1, 1, 1, 1, 1, 1, 0, ...): total steps = 5, give me which character you want to move.
-* (0, 0, 1, 1, 1, 1, 0, 0, 0, ...): total steps = 3. Give me your next step.
-* (0, 0, 0, 0, 0, 1, 0, 0, 0, ...): total steps = 3, and only final step left.
-* (0, 0, 0, 0, 0, 0, 0, 0, 1, 1, 1, 1, 0): For Plague, set the markers.
-* (0, 0, 0, 0, 0, 0, 0, 0, 1, 1, 1, 1, 1): For Doctor, set the markers.
-
-### Update with partial action
-
-In the set-map session, just show as if they moved accordingly.
-
-In the move-character session, set the character bit for the trajectory it goes through, excluding the end point.
-
-In the set-marker session, use the last extra marker in the board to indicate the temporal setting.
+> Note: 0.6 introduces a huge change. We remove the whole content in Update with partial action previously.
