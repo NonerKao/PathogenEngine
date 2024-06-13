@@ -5,6 +5,7 @@ from constant import *
 class Agent(ABC):
     def __init__(self, a):
         self.fraction = a.side
+        self.result = None
         if self.fraction == "Doctor":
             self.port = 6241
         elif self.fraction == "Plague":
@@ -50,6 +51,7 @@ class Agent(ABC):
             elif data[0:4] == b'Ix04':
                 if self.verbose:
                     print("win!")
+                self.result = b'Ix04'
                 return False;
             elif data[0:4] == b'Ix05':
                 if self.verbose:

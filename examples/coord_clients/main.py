@@ -24,11 +24,20 @@ if __name__ == "__main__":
     if args.seed is not None:
         random.seed(args.seed)
 
+    doctor_wins = 0
     for i in range(0, args.batch):
         if args.type == 'Random':
-            RandomAgent(args)
+            a = RandomAgent(args)
         elif args.type == 'Reinforcement':
-            RLAgent(args)
+            a = RLAgent(args)
         elif args.type == 'Query':
-            QAgent(args)
+            a = QAgent(args)
+
+        # collect the result
+        if args.side == 'Doctor' and a.result == b'Ix04':
+            doctor_wins = doctor_wins + 1
         time.sleep(1)
+
+    if args.side == 'Doctor':
+        print(f"{doctor_wins/args.batch*100:6.2f} %")
+
