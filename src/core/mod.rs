@@ -48,7 +48,7 @@ pub enum Phase {
     Setup2, // Put characteres on the board
     Setup3, // Doctor to put the marker on the map
     Main(u32),
-    End,
+    End(u32),
 }
 
 pub trait SGFCoord {
@@ -249,7 +249,7 @@ impl Game {
                         }
                         g.next();
                     }
-                    Phase::End => {
+                    Phase::End(_) => {
                         // do nothing more
                     }
                     Phase::Setup0 => { //game-info?
@@ -305,9 +305,10 @@ impl Game {
     }
 
     pub fn is_ended(&self) -> bool {
-        if self.phase == Phase::End {
+        if let Phase::End(_x) = self.phase {
             return true;
         }
+        // XXX: Did I handle this? draw or both lose?
         if let Phase::Main(100) = self.phase {
             return true;
         }
@@ -345,7 +346,9 @@ impl Game {
             }
         }
         if self.end1() || self.end2() {
-            self.phase = Phase::End;
+            if let Phase::Main(x) = self.phase {
+                self.phase = Phase::End(x + 1);
+            }
         }
     }
 
@@ -440,7 +443,10 @@ impl Game {
 
     // XXX: Need to add some restriction that each qudrant can
     //      have one colony at most
+    // XXX: Do we still need that? the capacity mechanism should
+    //      have solved this?
     pub fn add_marker(&mut self, c: &Coord, camp: &Camp) {
+        println!("{:?}", c);
         match self.stuff.get(c) {
             None => {
                 self.stuff.insert(*c, (*camp, Stuff::Marker(1)));
@@ -539,7 +545,7 @@ impl Game {
     }
 
     pub fn commit_action(&mut self, a: &Action) {
-        if self.phase == Phase::End {
+        if let Phase::End(_x) = self.phase {
             panic!("The game is finished. Not expected here.");
         }
         if a.lockdown != Lockdown::Normal {
@@ -868,6 +874,143 @@ impl Game {
         }
         return max;
     }
+
+    pub fn save(&mut self) {}
+
+    pub fn undo(&mut self) {
+        if let Phase::End(x) = self.phase {
+            self.phase = Phase::Main(x);
+            // A common usage is like coord_server::next, in which taking turns
+            // is a must, so here we shouldn't do this extra switch.
+            // self.switch();
+        }
+        match self.phase {
+            Phase::Main(1) => {
+                // Effectively, the game state is right after setup is done.
+                // You cannot undo more, because setup is not undo-able now.
+                return;
+            }
+            Phase::Main(x) => {
+                // Do the switch first.
+                // For instance (check test_undo1), Turn 7 is Plague's turn.
+                // When undoing, change the perspective to the Doctor, and reverse
+                // the effect the Doctor has done in Turn 6, which is recorded in
+                // self.history.
+                self.switch();
+
+                let op_map = if let Some(p) = &self.history.borrow().parent {
+                    if x != 2 {
+                        p.as_ref().borrow().properties[0].value[0].as_str().to_map()
+                    } else {
+                        for pi in p.as_ref().borrow().properties.iter() {
+                            for vi in &pi.value {
+                                println!("{:?}: {:?}", pi.ident, vi)
+                            }
+                        }
+                        p.as_ref()
+                            .borrow()
+                            .properties
+                            .iter()
+                            .find(|prop| prop.ident == "AW")
+                            .unwrap()
+                            .value[0]
+                            .as_str()
+                            .to_map()
+                    }
+                } else {
+                    panic!("No parent");
+                };
+
+                let my_map = self.history.borrow().properties[0].value[0]
+                    .as_str()
+                    .to_map();
+                let restriction = my_map - &op_map;
+                let steps = restriction.iter().map(|(_, i)| *i as usize).sum::<usize>();
+
+                // undo the map, this will need the reference from
+                // 2 moves ago
+                let my_map_prev = if let Some(p) = &self.history.borrow().parent {
+                    if let Some(pp) = &p.as_ref().borrow().parent {
+                        if x > 3 {
+                            pp.as_ref().borrow().properties[0].value[0]
+                                .as_str()
+                                .to_map()
+                                .clone()
+                        } else if x == 3 {
+                            pp.as_ref()
+                                .borrow()
+                                .properties
+                                .iter()
+                                .find(|prop| prop.ident == "AW")
+                                .unwrap()
+                                .value[0]
+                                .as_str()
+                                .to_map()
+                                .clone()
+                        } else {
+                            // x == 2
+                            // Plauge undo-es its first move, which goes back to some
+                            // value that will be overwirtten soon anyway.
+                            Coord::new(-999, -999)
+                        }
+                    } else {
+                        panic!("No grandparent");
+                    }
+                } else {
+                    panic!("No parent");
+                };
+                self.set_map(self.turn, my_map_prev);
+
+                // if this is lockdown, set this for the Plague as well
+                let op_camp = self.opposite(self.turn);
+                if self.turn == Camp::Doctor && my_map == "ii".to_map() {
+                    let op_map_prev = if let Some(p) = &self.history.borrow().parent {
+                        p.borrow().properties[0].value[0].as_str().to_map()
+                    } else {
+                        panic!("No parent");
+                    };
+                    self.set_map(op_camp, op_map_prev);
+                }
+
+                // undo the character
+                let index = if self.turn == Camp::Doctor && my_map == "ii".to_map() {
+                    2
+                } else {
+                    1
+                };
+                let my_character_prev = self.history.borrow().properties[0].value[index]
+                    .as_str()
+                    .to_env();
+                let my_character_now = self.history.borrow().properties[0].value[index + steps]
+                    .as_str()
+                    .to_env();
+                for ((_w, _t), c) in self.character.iter_mut() {
+                    if *c == my_character_now {
+                        *c = my_character_prev;
+                    }
+                }
+
+                // undo markers, this can be done by adding opponent's markers
+                let len = self.history.borrow().properties[0].value.len();
+                for i in (index + steps + 1)..len {
+                    let c_str = self.history.borrow().properties[0].value[i].clone();
+                    let c = c_str.to_env().clone();
+                    self.add_marker(&c, &op_camp);
+                }
+
+                self.phase = Phase::Main(x - 1);
+                let temp = if let Some(p) = &self.history.borrow().parent {
+                    p.clone()
+                } else {
+                    panic!("No parent");
+                };
+                self.history = temp.clone();
+            }
+            _ => {}
+        }
+    }
+
+    pub fn reset(&mut self) {}
 }
 
 #[cfg(test)]
@@ -1534,5 +1677,120 @@ mod tests {
         assert_eq!(g.get_marker_capacity("af".to_env(), Some(&a)), 0);
         a.markers.push("bf".to_env());
         assert_eq!(g.get_marker_capacity("bf".to_env(), Some(&a)), 1);
+    }
+
+    #[test]
+    fn test_undo1() {
+        let s0 = "(
+            ;C[Setup0]
+            AW[df][da][db][ab][ba][ea][cc][fd][fc][af][ce][ee][cb][ef][bd][bc][fe]
+            AB[aa][ec][cd][bb][ae][be][ed][ad][ff][eb][fb][bf][ac][fa][dd][dc][cf][de][ca]
+            ;C[Setup1]AB[fc][ed][ab][cf]
+            ;C[Setup2]AW[cc]
+            ;C[Setup2]AB[ec]
+            ;C[Setup2]AW[ca]
+            ;C[Setup2]AB[ce]
+            ;C[Setup3]AW[jj]
+            ;B[ki][ce][cc][fc][ce][ce][ce][ce]             C[1]
+            ;W[ji][cc][bc][cc][cc][cc][cc][cc]             C[2]
+            ;B[hh][ec][dc][ac][aa][ac][ec][dc][ac]         C[3]
+            ;W[jj][bc][cc][ce][ee][ef][ce][ce][ce][ce][bc] C[4]
+            ;B[ik][fc][cc][ce][cc][fc][fc][cc]             C[5]
+            ;W[ii][ig][ca][cd][cf][ca][cd][ca][ca][ca]     C[6][XXX Accidentlly find that C cannot go before B or W]
+        )"
+        .to_string();
+        let mut iter = s0.trim().chars().peekable();
+        let t = TreeNode::new(&mut iter, None);
+        let mut g = Game::init(Some(t));
+
+        // Turn 7 has yet to play any sub-moves;
+        // The state should be identical to what it was when Turn 6 ends except
+        // for the fact that it became the Plague's turn for Turn 7.
+        assert_eq!(g.phase, Phase::Main(7));
+        assert_eq!(g.turn, Camp::Plague);
+        assert_eq!(
+            *g.stuff.get(&Coord::new(2, 0)).unwrap(),
+            (Camp::Doctor, Stuff::Marker(4))
+        );
+
+        g.undo();
+        assert_eq!(g.stuff.get(&Coord::new(2, 0)), None);
+        assert_eq!(g.turn, Camp::Doctor);
+        assert_eq!(*g.map.get(&Camp::Plague).unwrap(), Coord::new(0, 2));
+        assert_eq!(g.phase, Phase::Main(6));
+        g.undo();
+        assert_eq!(g.phase, Phase::Main(5));
+        g.undo();
+        assert_eq!(g.phase, Phase::Main(4));
+
+        g.undo();
+        assert_eq!(g.phase, Phase::Main(3));
+
+        g.undo();
+        assert_eq!(g.phase, Phase::Main(2));
+        g.undo();
+        assert_eq!(g.phase, Phase::Main(1));
+        assert_eq!(
+            *g.character.get(&(World::Underworld, Camp::Plague)).unwrap(),
+            Coord::new(4, 2)
+        );
+        assert_eq!(g.turn, Camp::Plague);
+        g.undo();
+        assert_eq!(g.phase, Phase::Main(1));
+        assert_eq!(g.turn, Camp::Plague);
+        assert_eq!(
+            *g.character.get(&(World::Underworld, Camp::Doctor)).unwrap(),
+            Coord::new(2, 0)
+        );
+        assert_eq!(
+            *g.character.get(&(World::Underworld, Camp::Plague)).unwrap(),
+            Coord::new(4, 2)
+        );
+        assert_eq!(g.turn, Camp::Plague);
+    }
+
+    #[test]
+    fn test_undo2() {
+        // Test if undo() works for Phase::End(x)
+        let s0 = "(
+            ;C[Setup0]
+            AW[df][da][db][ab][ba][ea][cc][fd][fc][af][ce][ee][cb][ef][bd][bc][fe]
+            AB[aa][ec][cd][bb][ae][be][ed][ad][ff][eb][fb][bf][ac][fa][dd][dc][cf][de][ca]
+            ;C[Setup1]AB[fc][ed][ab][cf]
+            ;C[Setup2]AW[cc]
+            ;C[Setup2]AB[ec]
+            ;C[Setup2]AW[ca]
+            ;C[Setup2]AB[ce]
+            ;C[Setup3]AW[jj]
+        )"
+        .to_string();
+        let mut iter = s0.trim().chars().peekable();
+        let t = TreeNode::new(&mut iter, None);
+        let mut g = Game::init(Some(t));
+
+        // Some extra setup first
+        g.stuff
+            .insert("ca".to_env(), (Camp::Plague, Stuff::Marker(4)));
+        g.stuff
+            .insert("cb".to_env(), (Camp::Plague, Stuff::Marker(4)));
+        g.stuff
+            .insert("cc".to_env(), (Camp::Plague, Stuff::Marker(4)));
+        g.stuff
+            .insert("cd".to_env(), (Camp::Plague, Stuff::Marker(4)));
+
+        let s1 = "(;B[ki][ce][cc][fc][ce][ce][ce][ce]             C[1])";
+        iter = s1.trim().chars().peekable();
+        let t2 = TreeNode::new(&mut iter, None);
+        if let Ok(a) = t2.borrow().children[0].borrow().to_action(&g) {
+            g.append_history_with_new_tree(&a.to_sgf_string(&g));
+            g.commit_action(&a);
+            g.next();
+        };
+
+        assert_eq!(g.phase, Phase::End(2));
+        assert_eq!(g.turn, Camp::Doctor);
+        g.undo();
+        assert_eq!(g.phase, Phase::Main(1));
+        assert_eq!(g.turn, Camp::Plague);
     }
 }
