@@ -139,9 +139,7 @@ fn encode(g: &Game, a: &Action) -> Array1<u8> {
                 // Ix00?
                 *g.map.get(&g.turn).unwrap()
             }
-            Some(x) => {
-                x
-            }
+            Some(x) => x,
         };
         fm[[
             (c.x + MAP_OFFSET.x) as usize,
@@ -235,7 +233,10 @@ fn encode(g: &Game, a: &Action) -> Array1<u8> {
 
 const MIN_MAP_CODE: u8 = 100;
 const MAX_ENV_CODE: u8 = 36;
+const MIN_SPECIAL_CODE: u8 = 253;
 const QUERY_CODE: u8 = 255;
+const SAVE_CODE: u8 = 254;
+const RESET_CODE: u8 = 253;
 
 trait ActionCoord {
     fn to_coord(&self) -> Coord;
@@ -294,41 +295,199 @@ impl Drop for ActionMonitor {
     }
 }
 
+fn set_marker_loop<T: Read + ReaderExtra + Write + WriterExtra>(
+    stream: &mut T,
+    g: &Game,
+    a: &mut Action,
+    fc: &mut [u8; FC_LEN],
+    input: &mut [u8],
+) -> bool {
+    let mut i = 8;
+    assert!(fc.iter().all(|&x| x == 0));
+    for i in 0..DOCTOR_MARKER as usize {
+        fc[8 /* set marker */ + i] = 1;
+    }
+    if g.turn == Camp::Plague {
+        fc[12 /* final one: Plague has only 4 markers */] = 0;
+    }
+    // XXX: this is a bad structure... an i-while-loop but the update
+    //      logic to i is out of it and controlled within an unconditional
+    //      loop???
+    while i < FC_LEN {
+        assert_eq!(a.action_phase, ActionPhase::SetMarkers);
+        if fc[i] == 0 {
+            continue;
+        }
+        if !get_action(stream, input) {
+            return false;
+        }
+        if input[0] == QUERY_CODE {
+            if false == stream.return_query(g, a) {
+                return false;
+            }
+            continue;
+        }
+
+        let s = if input[0] > MAX_ENV_CODE {
+            "Ex27"
+        } else {
+            let c = (input[0] as u8).to_coord();
+            match a.add_single_marker(g, c) {
+                Err(e) => e,
+                Ok(o) => o,
+            }
+        };
+        if stream.update_agent(g, a, fc, &s) == false {
+            return false;
+        } else {
+            if s.as_bytes()[0] == b'E' {
+                continue;
+            } else {
+                fc[i] = 0;
+                if s == "Ix02" {
+                    return true;
+                }
+            }
+        }
+        i = i + 1;
+    }
+    // This is not reachable in theory because it is the final phase
+    // of the action, but of course Rust cannot know this.
+    return true;
+}
+
+fn set_board_move_loop<T: Read + ReaderExtra + Write + WriterExtra>(
+    stream: &mut T,
+    g: &Game,
+    a: &mut Action,
+    fc: &mut [u8; FC_LEN],
+    input: &mut [u8],
+) -> bool {
+    assert_eq!(a.action_phase, ActionPhase::BoardMove);
+    fc[2 /* set character */] = 0;
+    for i in 0..a.steps {
+        loop {
+            if !get_action(stream, input) {
+                return false;
+            }
+            if input[0] == QUERY_CODE {
+                if false == stream.return_query(g, a) {
+                    return false;
+                }
+                continue;
+            }
+
+            let s = if input[0] > MAX_ENV_CODE {
+                "Ex27"
+            } else {
+                let c = (input[0] as u8).to_coord();
+                match a.add_board_single_step(g, c) {
+                    Err(e) => e,
+                    Ok(o) => o,
+                }
+            };
+            if stream.update_agent(g, a, fc, &s) == false {
+                return false;
+            } else {
+                if s.as_bytes()[0] == b'E' {
+                    continue;
+                } else if s == "Ix02" {
+                    return true;
+                }
+                break;
+            }
+        }
+        fc[3 /* board step */ + i] = 0;
+    }
+    return true;
+}
+
+fn set_character_loop<T: Read + ReaderExtra + Write + WriterExtra>(
+    stream: &mut T,
+    g: &Game,
+    a: &mut Action,
+    fc: &mut [u8; FC_LEN],
+    input: &mut [u8],
+) -> bool {
+    assert_eq!(a.action_phase, ActionPhase::SetCharacter);
+    fc[0 /* set map */] = 0;
+    fc[1 /* lockdown */] = 0;
+    for i in 0..=a.steps {
+        fc[2 /* set character */ + i] = 1;
+    }
+    loop {
+        if !get_action(stream, input) {
+            return false;
+        }
+        if input[0] == QUERY_CODE {
+            if false == stream.return_query(g, a) {
+                return false;
+            }
+            continue;
+        }
+        let s = if input[0] > MAX_ENV_CODE {
+            "Ex27"
+        } else {
+            let c = (input[0] as u8).to_coord();
+            match a.add_character(g, c) {
+                Err(e) => e,
+                Ok(o) => o,
+            }
+        };
+        if stream.update_agent(g, a, fc, &s) == false {
+            return false;
+        } else {
+            if s.as_bytes()[0] == b'E' {
+                continue;
+            }
+            break;
+        }
+    }
+    return true;
+}
+
+fn get_action<T: Read>(stream: &mut T, buffer: &mut [u8]) -> bool {
+    match stream.read(buffer) {
+        Ok(0) => {
+            return false;
+        }
+        Err(x) => {
+            #[cfg(debug_assertions)]
+            {
+                println!("{}", x);
+            }
+            return false;
+        }
+        _ => {
+            #[cfg(debug_assertions)]
+            {
+                println!("{:?}", buffer[0]);
+            }
+            return true;
+        }
+    }
+}
+
+// These functions that have mutable stream have a return type of bool.
+// I shouldn't say it is by design, but it is a simplified Result type.
+// With true, it means all communications are happy;
+// with false, there was something wrong, and not about game logic.
+// However, during the refactorization I realize that,
+// the return true behavior is not possible to preserve:
+// We don't know if it is successfullt done only (Ix01), or the action
+// itself is done (Ix02, which involving the call to next()).
+// I will still try not to introduce a more complicated return type,
+// for now.
 fn handle_client<T: Read + ReaderExtra + Write + WriterExtra>(
     stream: &mut T,
     g: &mut Game,
 ) -> bool {
     let mut buffer = [0; 1]; // to read the 1-byte action from agent
-    fn get_action<T>(stream: &mut T, buffer: &mut [u8]) -> bool
-    where
-        T: std::io::Read,
-    {
-        match stream.read(buffer) {
-            Ok(0) => {
-                return false;
-            }
-            Err(x) => {
-                #[cfg(debug_assertions)]
-                {
-                    println!("{}", x);
-                }
-                return false;
-            }
-            _ => {
-                #[cfg(debug_assertions)]
-                {
-                    println!("{:?}", buffer[0]);
-                }
-                return true;
-            }
-        }
-    }
 
     let ea = Action::new();
     let mut ec: [u8; FC_LEN] = [0; FC_LEN];
     ec[0 /* set map */] = 1;
     let mut s = "Ix03";
-    let ss = "Wx00";
     if stream.update_agent(g, &ea, &ec, &s) == false {
         return false;
     }
@@ -354,9 +513,14 @@ fn handle_client<T: Read + ReaderExtra + Write + WriterExtra>(
                     }
                     if buffer[0] < MIN_MAP_CODE {
                         s = "Ex26";
-                    } else if buffer[0] == QUERY_CODE {
+                    } else if buffer[0] >= MIN_SPECIAL_CODE {
                         if false == stream.return_query(g, &am.action) {
                             return false;
+                        }
+                        match buffer[0] {
+                            SAVE_CODE => {}
+                            RESET_CODE => {}
+                            _ => {}
                         }
                         continue 'set_map;
                     } else {
@@ -421,143 +585,23 @@ fn handle_client<T: Read + ReaderExtra + Write + WriterExtra>(
                     }
                 }
 
-                // Set the character
-                assert_eq!(am.action.action_phase, ActionPhase::SetCharacter);
-                fc[0 /* set map */] = 0;
-                fc[1 /* lockdown */] = 0;
-                for i in 0..=am.action.steps {
-                    fc[2 /* set character */ + i] = 1;
-                }
-                'set_character: loop {
-                    if !get_action(stream, &mut buffer) {
+                // the suffix "_loop" is meant to be a reminder that these
+                // are themselves states that accept unlimited failed trials,
+                // well, mostly only for accumodating trial-and-error random agent.
+                // XXX: but actually we can improve this...... all the pieces are
+                //      ready now.
+                let set_funcs = [set_character_loop, set_board_move_loop, set_marker_loop];
+                for sf in set_funcs.iter() {
+                    if !sf(stream, g, &mut am.action, &mut fc, &mut buffer) {
                         return false;
-                    }
-                    if buffer[0] == QUERY_CODE {
-                        if false == stream.return_query(g, &am.action) {
-                            return false;
-                        }
-                        continue 'set_character;
-                    } else if buffer[0] > MAX_ENV_CODE {
-                        s = "Ex27";
-                    } else {
-                        let c = (buffer[0] as u8).to_coord();
-                        match am.action.add_character(g, c) {
-                            Err(e) => {
-                                s = e;
-                            }
-                            Ok(o) => {
-                                s = o;
-                            }
-                        }
-                    }
-                    if stream.update_agent(g, &am.action, &fc, &s) == false {
-                        return false;
-                    } else {
-                        if s.as_bytes()[0] == b'E' {
-                            continue 'set_character;
-                        }
+                    } else if am.action.action_phase == ActionPhase::Done {
                         break;
                     }
                 }
 
-                // Move the character on the board
-                assert_eq!(am.action.action_phase, ActionPhase::BoardMove);
-                fc[2 /* set character */] = 0;
-                for i in 0..am.action.steps {
-                    'board_move: loop {
-                        if !get_action(stream, &mut buffer) {
-                            return false;
-                        }
-                        if buffer[0] == QUERY_CODE {
-                            if false == stream.return_query(g, &am.action) {
-                                return false;
-                            }
-                            continue 'board_move;
-                        } else if buffer[0] > MAX_ENV_CODE {
-                            s = "Ex27";
-                        } else {
-                            let c = (buffer[0] as u8).to_coord();
-                            match am.action.add_board_single_step(g, c) {
-                                Err(e) => {
-                                    s = e;
-                                }
-                                Ok(o) => {
-                                    s = o;
-                                }
-                            }
-                        }
-                        if stream.update_agent(g, &am.action, &fc, &s) == false {
-                            return false;
-                        } else {
-                            if s.as_bytes()[0] == b'E' {
-                                continue 'board_move;
-                            } else if s == "Ix02" {
-                                next(g, &am.action);
-                                return true;
-                            }
-                            break;
-                        }
-                    }
-                    fc[3 /* board step */ + i] = 0;
-                }
-
-                // Set the markers
+                // Yeah, all status clear
                 assert!(fc.iter().all(|&x| x == 0));
-                let mut i = 8;
-                for i in 0..DOCTOR_MARKER as usize {
-                    fc[8 /* set marker */ + i] = 1;
-                }
-                if g.turn == Camp::Plague {
-                    fc[12 /* final one: Plague has only 4 markers */] = 0;
-                }
-                'set_marker: loop {
-                    assert_eq!(am.action.action_phase, ActionPhase::SetMarkers);
-                    while i < FC_LEN {
-                        if fc[i] == 0 {
-                            continue;
-                        }
-                        if !get_action(stream, &mut buffer) {
-                            return false;
-                        }
-                        if buffer[0] == QUERY_CODE {
-                            if false == stream.return_query(g, &am.action) {
-                                return false;
-                            }
-                            continue 'set_marker;
-                        } else if buffer[0] > MAX_ENV_CODE {
-                            s = "Ex27";
-                        } else {
-                            let c = (buffer[0] as u8).to_coord();
-                            match am.action.add_single_marker(g, c) {
-                                Err(e) => {
-                                    s = e;
-                                }
-                                Ok(o) => {
-                                    s = o;
-                                }
-                            }
-                        }
-                        if stream.update_agent(g, &am.action, &fc, &s) == false {
-                            return false;
-                        } else {
-                            if s.as_bytes()[0] == b'E' {
-                                continue 'set_marker;
-                            } else if s == "Ix02" {
-                                break 'set_marker;
-                            }
-                            break;
-                        }
-                    }
-                    fc[i] = 0;
-                    i = i + 1;
-                }
                 // commit the action to the game
-                assert_eq!(am.action.action_phase, ActionPhase::Done);
-                //assert!(fc.iter().all(|&x| x == 0));
-                // Holy shit, the order of the following two lines
-                // is tricky. You shouldn't commit it first and then
-                // try to interpret the Action with the new Game
-                // status.
                 next(g, &am.action);
                 break;
             }
@@ -688,8 +732,7 @@ impl<T: Write> WriterExtra for T {
         }
     }
     fn return_query(&mut self, g: &Game, a: &Action) -> bool {
-        let mut response: Vec<u8> = Vec::new();
-        match a.action_phase {
+        let mut response = match a.action_phase {
             ActionPhase::SetMap => {
                 let mut coord_candidate: Vec<Coord> = Vec::new();
                 for i in -MAP_OFFSET.x + 1..MAP_OFFSET.x {
@@ -716,11 +759,12 @@ impl<T: Write> WriterExtra for T {
                 }
 
                 let len = coord_candidate.len() + 5;
-                response = vec![0; len];
+                let mut response = vec![0; len];
                 response[0] = coord_candidate.len() as u8;
                 for j in 1..coord_candidate.len() + 1 {
                     response[j] = coord_candidate[j - 1].to_map_encode();
                 }
+                response
             }
             ActionPhase::Lockdown => {
                 let h = <Vec<Candidate> as Clone>::clone(&a.candidate)
@@ -729,7 +773,7 @@ impl<T: Write> WriterExtra for T {
                     .collect::<HashSet<_>>();
 
                 let len = h.len() + 5;
-                response = vec![0; len];
+                let mut response = vec![0; len];
                 response[0] = h.len() as u8;
 
                 let cp = *g.map.get(&Camp::Plague).unwrap();
@@ -738,6 +782,7 @@ impl<T: Write> WriterExtra for T {
                     response[j] = cp.lockdown(*ld).to_map_encode();
                     j = j + 1;
                 }
+                response
             }
             ActionPhase::SetCharacter => {
                 let h = <Vec<Candidate> as Clone>::clone(&a.candidate)
@@ -746,7 +791,7 @@ impl<T: Write> WriterExtra for T {
                     .collect::<HashSet<_>>();
 
                 let len = h.len() + 5;
-                response = vec![0; len];
+                let mut response = vec![0; len];
                 response[0] = h.len() as u8;
 
                 let mut j = 1;
@@ -754,6 +799,7 @@ impl<T: Write> WriterExtra for T {
                     response[j] = c.to_env_encode();
                     j = j + 1;
                 }
+                response
             }
             ActionPhase::BoardMove => {
                 let trajectory_index = a.trajectory.len();
@@ -763,7 +809,7 @@ impl<T: Write> WriterExtra for T {
                     .collect::<HashSet<_>>();
 
                 let len = h.len() + 5;
-                response = vec![0; len];
+                let mut response = vec![0; len];
                 response[0] = h.len() as u8;
 
                 let mut j = 1;
@@ -771,6 +817,7 @@ impl<T: Write> WriterExtra for T {
                     response[j] = c.to_env_encode();
                     j = j + 1;
                 }
+                response
             }
             ActionPhase::SetMarkers => {
                 let mut marker_candidate: Vec<Coord> = Vec::new();
@@ -784,18 +831,20 @@ impl<T: Write> WriterExtra for T {
                     }
                 }
                 let len = marker_candidate.len() + 5;
-                response = vec![0; len];
+                let mut response = vec![0; len];
                 response[0] = marker_candidate.len() as u8;
                 let mut j = 1;
                 for c in marker_candidate.iter() {
                     response[j] = c.to_env_encode();
                     j = j + 1;
                 }
+                response
             }
             _ => {
+                println!("Not an anticipated action phase");
                 return false;
             }
-        }
+        };
         let len = response.len();
         response[len - 4] = 'W' as u8;
         response[len - 3] = 'x' as u8;
