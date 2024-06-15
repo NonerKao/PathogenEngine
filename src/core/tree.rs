@@ -59,6 +59,7 @@ impl Property {
 #[derive(Debug, Default, PartialEq)]
 pub struct TreeNode {
     pub divergent: bool,
+    pub savepoint: bool,
     pub properties: Vec<Property>,
     pub children: Vec<Rc<RefCell<TreeNode>>>,
     pub parent: Option<Rc<RefCell<TreeNode>>>,
@@ -86,6 +87,7 @@ impl TreeNode {
         let root = Rc::new(RefCell::new(TreeNode {
             properties: Vec::new(),
             divergent: false,
+            savepoint: false,
             children: Vec::new(),
             parent: p,
         }));

@@ -446,7 +446,6 @@ impl Game {
     // XXX: Do we still need that? the capacity mechanism should
     //      have solved this?
     pub fn add_marker(&mut self, c: &Coord, camp: &Camp) {
-        println!("{:?}", c);
         match self.stuff.get(c) {
             None => {
                 self.stuff.insert(*c, (*camp, Stuff::Marker(1)));
@@ -875,8 +874,6 @@ impl Game {
         return max;
     }
 
-    pub fn save(&mut self) {}
-
     pub fn undo(&mut self) {
         if let Phase::End(x) = self.phase {
             self.phase = Phase::Main(x);
@@ -902,11 +899,6 @@ impl Game {
                     if x != 2 {
                         p.as_ref().borrow().properties[0].value[0].as_str().to_map()
                     } else {
-                        for pi in p.as_ref().borrow().properties.iter() {
-                            for vi in &pi.value {
-                                println!("{:?}: {:?}", pi.ident, vi)
-                            }
-                        }
                         p.as_ref()
                             .borrow()
                             .properties
@@ -1010,7 +1002,23 @@ impl Game {
         }
     }
 
-    pub fn reset(&mut self) {}
+    pub fn save(&mut self) {
+        self.history.borrow_mut().savepoint = true;
+    }
+
+    pub fn reset(&mut self) {
+        loop {
+            if self.history.borrow().savepoint == true {
+                break;
+            }
+            self.undo();
+            if self.phase == Phase::Main(1) {
+                break;
+            }
+        }
+        self.history.borrow_mut().savepoint = false;
+        let _ = self.history.borrow_mut().children.pop();
+    }
 }
 
 #[cfg(test)]
@@ -1792,5 +1800,61 @@ mod tests {
         g.undo();
         assert_eq!(g.phase, Phase::Main(1));
         assert_eq!(g.turn, Camp::Plague);
+    }
+
+    #[test]
+    fn test_save_reset1() {
+        let s0 = "(
+            ;C[Setup0]
+            AW[df][da][db][ab][ba][ea][cc][fd][fc][af][ce][ee][cb][ef][bd][bc][fe]
+            AB[aa][ec][cd][bb][ae][be][ed][ad][ff][eb][fb][bf][ac][fa][dd][dc][cf][de][ca]
+            ;C[Setup1]AB[fc][ed][ab][cf]
+            ;C[Setup2]AW[cc]
+            ;C[Setup2]AB[ec]
+            ;C[Setup2]AW[ca]
+            ;C[Setup2]AB[ce]
+            ;C[Setup3]AW[jj]
+        )"
+        .to_string();
+        let mut iter = s0.trim().chars().peekable();
+        let t = TreeNode::new(&mut iter, None);
+        let mut g = Game::init(Some(t));
+
+        g.save();
+
+        let s1 = "(;B[ki][ce][cc][fc][ce][ce][ce][ce]             C[1])";
+        iter = s1.trim().chars().peekable();
+        let t2 = TreeNode::new(&mut iter, None);
+        if let Ok(a) = t2.borrow().children[0].borrow().to_action(&g) {
+            g.append_history_with_new_tree(&a.to_sgf_string(&g));
+            g.commit_action(&a);
+            g.next();
+        };
+
+        let s2 = "(;W[ji][cc][bc][cc][cc][cc][cc][cc]             C[2])";
+        iter = s2.trim().chars().peekable();
+        let t3 = TreeNode::new(&mut iter, None);
+        if let Ok(a) = t3.borrow().children[0].borrow().to_action(&g) {
+            g.append_history_with_new_tree(&a.to_sgf_string(&g));
+            g.commit_action(&a);
+            g.next();
+        };
+
+        let s3 = "(;B[hh][ec][dc][ac][aa][ac][ec][dc][ac]         C[3])";
+        iter = s3.trim().chars().peekable();
+        let t4 = TreeNode::new(&mut iter, None);
+        if let Ok(a) = t4.borrow().children[0].borrow().to_action(&g) {
+            g.append_history_with_new_tree(&a.to_sgf_string(&g));
+            g.commit_action(&a);
+            g.next();
+        };
+
+        assert_eq!(g.phase, Phase::Main(4));
+        assert_eq!(g.turn, Camp::Doctor);
+
+        g.reset();
+        assert_eq!(g.phase, Phase::Main(1));
+        assert_eq!(g.turn, Camp::Plague);
+        assert_eq!(g.history.borrow().children.len(), 0);
     }
 }
