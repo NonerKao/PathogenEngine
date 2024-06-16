@@ -84,6 +84,7 @@ pub struct Game {
     pub phase: Phase,
     // Given history, given empty tree for recording, or None
     pub history: Rc<RefCell<TreeNode>>,
+    pub savepoint: bool,
 
     rng: Rc<RefCell<StdRng>>,
 }
@@ -114,6 +115,7 @@ impl Game {
             turn: Camp::Plague,
             phase: Phase::Setup0,
             history: TreeNode::new(&mut iter, None),
+            savepoint: false,
             rng: rng.clone(),
         };
         // OK, I admit, this is a over-engineering mistake...
@@ -1002,21 +1004,41 @@ impl Game {
         }
     }
 
+    // RL support function
+    // When we set some state (Main(x)) and its sub-state (Action) as
+    // the root node to be explored, the agent will issue a SAVE_CODE.
     pub fn save(&mut self) {
         self.history.borrow_mut().savepoint = true;
+        self.savepoint = true;
     }
 
-    pub fn reset(&mut self) {
+    // RL support function
+    // This is called by agent **actively** when one evaluation trial ends,
+    // or **passively** when the end of a game is reached.
+    // General usage for this call:
+    // * active/passive reset for EVAL_TIMES, then the agent decides the move
+    // * in the next state+action state, issue save
+    //
+    // assigning clear as true will erase the savepoint flags, and mark the
+    // game a **normal** game; otherwise, it is a game being evaluating and
+    // backtracking.
+    pub fn reset(&mut self, clear: bool) {
         loop {
-            if self.history.borrow().savepoint == true {
+            if self.history.borrow().savepoint {
                 break;
             }
             self.undo();
             if self.phase == Phase::Main(1) {
+                // Otherwise, why are we reseting history???
+                // If in the future we can undo setup, it would be useful, but...
+                assert_eq!(self.history.borrow().savepoint, true);
                 break;
             }
         }
-        self.history.borrow_mut().savepoint = false;
+        if clear {
+            self.history.borrow_mut().savepoint = false;
+            self.savepoint = false;
+        }
         let _ = self.history.borrow_mut().children.pop();
     }
 }
@@ -1831,6 +1853,19 @@ mod tests {
             g.next();
         };
 
+        g.reset(false);
+
+        let s1_5 = "(;B[ki][ce][cc][fc][ce][ce][ce][ce]             C[1])";
+        iter = s1_5.trim().chars().peekable();
+        let t2_5 = TreeNode::new(&mut iter, None);
+        if let Ok(a) = t2_5.borrow().children[0].borrow().to_action(&g) {
+            g.append_history_with_new_tree(&a.to_sgf_string(&g));
+            g.commit_action(&a);
+            g.next();
+        } else {
+            panic!("!!!");
+        };
+
         let s2 = "(;W[ji][cc][bc][cc][cc][cc][cc][cc]             C[2])";
         iter = s2.trim().chars().peekable();
         let t3 = TreeNode::new(&mut iter, None);
@@ -1852,9 +1887,11 @@ mod tests {
         assert_eq!(g.phase, Phase::Main(4));
         assert_eq!(g.turn, Camp::Doctor);
 
-        g.reset();
+        g.reset(true);
+
         assert_eq!(g.phase, Phase::Main(1));
         assert_eq!(g.turn, Camp::Plague);
         assert_eq!(g.history.borrow().children.len(), 0);
+        assert_eq!(g.savepoint, false);
     }
 }

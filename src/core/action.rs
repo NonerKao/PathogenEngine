@@ -14,7 +14,7 @@ pub enum ActionPhase {
     Done,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct Candidate {
     pub lockdown: Lockdown,
     pub character: Coord,
@@ -31,7 +31,7 @@ impl Candidate {
     }
 }
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, PartialEq)]
 pub struct Action {
     pub map: Option<Coord>,
     pub lockdown: Lockdown,

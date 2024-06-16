@@ -229,10 +229,11 @@ fn encode(g: &Game, a: &Action) -> Array1<u8> {
 
 const MIN_MAP_CODE: u8 = 100;
 const MAX_ENV_CODE: u8 = 36;
-const MIN_SPECIAL_CODE: u8 = 253;
 const QUERY_CODE: u8 = 255;
 const SAVE_CODE: u8 = 254;
-const RESET_CODE: u8 = 253;
+const RETURN_CODE: u8 = 253;
+const CLEAR_CODE: u8 = 252;
+const MIN_SPECIAL_CODE: u8 = CLEAR_CODE;
 
 trait ActionCoord {
     fn to_coord(&self) -> Coord;
@@ -291,13 +292,7 @@ impl Drop for ActionMonitor {
     }
 }
 
-fn do_action<F>(
-    g: &Game,
-    a: &mut Action,
-    func: F,
-    input: &mut [u8],
-    is_map: bool,
-) -> &'static str
+fn do_action<F>(g: &Game, a: &mut Action, func: F, input: &mut [u8], is_map: bool) -> &'static str
 where
     F: Fn(&mut Action, &Game, Coord) -> Result<&'static str, &'static str>,
 {
@@ -317,7 +312,7 @@ where
 const MAX_STEPS: usize = 5;
 fn common_loop<F, T: Read + ReaderExtra + Write + WriterExtra>(
     stream: &mut T,
-    g: &Game,
+    g: &mut Game,
     a: &mut Action,
     input: &mut [u8],
     func: F,
@@ -345,9 +340,17 @@ where
                     return false;
                 }
                 match input[0] {
-                    SAVE_CODE => {}
-                    RESET_CODE => {}
-                    QUERY_CODE => {}
+                    SAVE_CODE => g.save(),
+                    RETURN_CODE => {
+                        g.reset(false);
+                    }
+                    CLEAR_CODE => {
+                        g.reset(true);
+                    }
+                    QUERY_CODE => {
+                        // nothing special to be done because the `return_query` is
+                        // shared by all special codes now.
+                    }
                     _ => {}
                 }
                 continue;
@@ -373,7 +376,7 @@ where
 
 fn set_marker_loop<T: Read + ReaderExtra + Write + WriterExtra>(
     stream: &mut T,
-    g: &Game,
+    g: &mut Game,
     a: &mut Action,
     input: &mut [u8],
 ) -> bool {
@@ -390,7 +393,7 @@ fn set_marker_loop<T: Read + ReaderExtra + Write + WriterExtra>(
 
 fn set_board_move_loop<T: Read + ReaderExtra + Write + WriterExtra>(
     stream: &mut T,
-    g: &Game,
+    g: &mut Game,
     a: &mut Action,
     input: &mut [u8],
 ) -> bool {
@@ -407,7 +410,7 @@ fn set_board_move_loop<T: Read + ReaderExtra + Write + WriterExtra>(
 
 fn set_character_loop<T: Read + ReaderExtra + Write + WriterExtra>(
     stream: &mut T,
-    g: &Game,
+    g: &mut Game,
     a: &mut Action,
     input: &mut [u8],
 ) -> bool {
@@ -424,7 +427,7 @@ fn set_character_loop<T: Read + ReaderExtra + Write + WriterExtra>(
 
 fn set_lockdown_loop<T: Read + ReaderExtra + Write + WriterExtra>(
     stream: &mut T,
-    g: &Game,
+    g: &mut Game,
     a: &mut Action,
     input: &mut [u8],
 ) -> bool {
@@ -444,7 +447,7 @@ fn set_lockdown_loop<T: Read + ReaderExtra + Write + WriterExtra>(
 
 fn set_map_loop<T: Read + ReaderExtra + Write + WriterExtra>(
     stream: &mut T,
-    g: &Game,
+    g: &mut Game,
     a: &mut Action,
     input: &mut [u8],
 ) -> bool {
@@ -499,11 +502,24 @@ fn handle_client<T: Read + ReaderExtra + Write + WriterExtra>(
     let mut buffer = [0; 1]; // to read the 1-byte action from agent
 
     let ea = Action::new();
-    let es = "Ix03";
-    if stream.update_agent(g, &ea, &es) == false {
-        return false;
-    }
+    let mut es = "Ix03";
     loop {
+        // A state machine for RL support mode
+        // This way, when an "Ix02"/"Ix00" is encounted,
+        // this agent keeps occupying the server by staying
+        // in this loop, but use a different initial code to
+        // indicate the situation.
+        if g.savepoint {
+            if es == "Ix03" || es == "Ix08" {
+                es = "Ix07";
+            } else if es == "Ix07" {
+                es = "Ix08";
+            }
+        }
+
+        if stream.update_agent(g, &ea, &es) == false {
+            return false;
+        }
         match stream.peek(&mut buffer) {
             Ok(0) => {
                 println!("Client disconnected.");
@@ -537,7 +553,12 @@ fn handle_client<T: Read + ReaderExtra + Write + WriterExtra>(
 
                 // commit the action to the game
                 next(g, &am.action);
-                break;
+
+                if g.savepoint {
+                    continue;
+                } else {
+                    break;
+                }
             }
             Err(e) => {
                 println!("Error occurred: {:?}", e);
@@ -1351,5 +1372,204 @@ mod tests {
         assert_eq!(Ok("Ix01"), a.add_single_marker(&g, "ca".to_env()));
         assert_eq!(Ok("Ix01"), a.add_single_marker(&g, "ca".to_env()));
         assert_eq!(Ok("Ix02"), a.add_single_marker(&g, "aa".to_env()));
+    }
+
+    #[test]
+    fn test_save() {
+        let s0 = "(
+            ;C[Setup0]
+            AW[aa][ab][ad][ae][bb][bc][bf][ca][ce][dc][dd][df][ea][ec][ee][fa][fb][fe][ff]
+            AB[ac][af][ba][bd][be][cb][cc][cd][cf][da][db][de][eb][ed][ef][fc][fd]
+            ;C[Setup1]AB[ab][ce][ef][da]
+            ;C[Setup2]AW[aa]
+            ;C[Setup2]AB[ac]
+            ;C[Setup2]AW[af]
+            ;C[Setup2]AB[ad]
+            ;C[Setup3]AW[ij]
+            ;B[jj][ac][cc][ac][ac][ac][ac]
+            )"
+        .to_string();
+        let mut iter = s0.trim().chars().peekable();
+        let t = TreeNode::new(&mut iter, None);
+        let mut g = Game::init(Some(t));
+        let mut a = Action::new();
+
+        // SetMap
+        const LEN: usize = 1 + 2 + 4;
+        let mut buf_origin: [u8; LEN] = [0; LEN];
+        let buf = &mut buf_origin[..];
+        let mut fake_stream = Cursor::new(buf);
+        assert_eq!(true, fake_stream.return_query(&g, &a));
+        let buf_after = fake_stream.get_ref();
+        assert_eq!(3 as u8, buf_after[0]);
+        // In this case, it will be either 112(ii), 117(ji) or 113(ij, skip).
+        let _ = a.add_map_step(&g, "ii".to_map());
+
+        // Lockdown
+        const LEN2: usize = 1 + 2 + 4;
+        let mut buf_origin2: [u8; LEN2] = [0; LEN2];
+        let buf2 = &mut buf_origin2[..];
+        fake_stream = Cursor::new(buf2);
+        assert_eq!(true, fake_stream.return_query(&g, &a));
+        let buf_after2 = fake_stream.get_ref();
+        assert_eq!(2 as u8, buf_after2[0]);
+        // it will be either 106(hh) or 108(hj). we choose 106 here.
+        assert_eq!(Ok("Ix01"), a.add_lockdown_by_coord(&g, "hh".to_map()));
+
+        g.save();
+
+        // SetCharacter
+        const LEN3: usize = 1 + 1 + 4;
+        let mut buf_origin3: [u8; LEN3] = [0; LEN3];
+        let buf3 = &mut buf_origin3[..];
+        fake_stream = Cursor::new(buf3);
+        assert_eq!(true, fake_stream.return_query(&g, &a));
+        let buf_after3 = fake_stream.get_ref();
+        assert_eq!(1 as u8, buf_after3[0]);
+        // it will be 0(aa)
+        assert_eq!(Ok("Ix01"), a.add_character(&g, "aa".to_env()));
+
+        // BoardMove1
+        const LEN4: usize = 1 + 2 + 4;
+        let mut buf_origin4: [u8; LEN4] = [0; LEN4];
+        let buf4 = &mut buf_origin4[..];
+        fake_stream = Cursor::new(buf4);
+        assert_eq!(true, fake_stream.return_query(&g, &a));
+        let buf_after4 = fake_stream.get_ref();
+        assert_eq!(2 as u8, buf_after4[0]);
+        // it will be 12(ca) and 1(ab)
+        assert_eq!(Ok("Ix01"), a.add_board_single_step(&g, "ca".to_env()));
+        // BoardMove2
+        const LEN5: usize = 1 + 1 + 4;
+        let mut buf_origin5: [u8; LEN5] = [0; LEN5];
+        let buf5 = &mut buf_origin5[..];
+        fake_stream = Cursor::new(buf5);
+        assert_eq!(true, fake_stream.return_query(&g, &a));
+        let buf_after5 = fake_stream.get_ref();
+        assert_eq!(1 as u8, buf_after5[0]);
+        // it will be 16(ce)
+        assert_eq!(Ok("Ix01"), a.add_board_single_step(&g, "ce".to_env()));
+
+        // SetMarker
+        const LEN6: usize = 1 + 2 + 4;
+        let mut buf_origin6: [u8; LEN6] = [0; LEN6];
+        let buf6 = &mut buf_origin6[..];
+        fake_stream = Cursor::new(buf6);
+        assert_eq!(true, fake_stream.return_query(&g, &a));
+        let buf_after6 = fake_stream.get_ref();
+        assert_eq!(2 as u8, buf_after6[0]);
+        // it will be 12(ca) and 0(aa)
+        g.stuff
+            .insert("aa".to_env(), (Camp::Plague, Stuff::Marker(1)));
+        assert_eq!(Err("Ex24"), a.add_single_marker(&g, "ca".to_env()));
+        assert_eq!(Ok("Ix01"), a.add_single_marker(&g, "aa".to_env()));
+        assert_eq!(Ok("Ix01"), a.add_single_marker(&g, "aa".to_env()));
+        assert_eq!(Ok("Ix01"), a.add_single_marker(&g, "ca".to_env()));
+        assert_eq!(Ok("Ix01"), a.add_single_marker(&g, "ca".to_env()));
+        assert_eq!(Ok("Ix02"), a.add_single_marker(&g, "aa".to_env()));
+
+        g.reset(true);
+        assert_eq!(g.savepoint, false);
+        assert_eq!(g.phase, Phase::Main(2));
+    }
+
+    #[test]
+    fn test_simulated_turn() {
+        let s0 = "(
+            ;C[Setup0]
+            AW[aa][ab][ad][ae][bb][bc][bf][ca][cd][ce][dc][dd][df][ea][ec][ee][fa][fb][fe][ff]
+            AB[ac][af][ba][bd][be][cb][cc][cf][da][db][de][eb][ed][ef][fc][fd]
+            ;C[Setup1]AB[ab][cd][ef][da]
+            ;C[Setup2]AW[aa]
+            ;C[Setup2]AB[ac]
+            ;C[Setup2]AW[af]
+            ;C[Setup2]AB[ad]
+            ;C[Setup3]AW[ij]
+            ;B[jj][ad][cd][ad][ad][ad][ad]
+            )"
+        .to_string();
+        let mut iter = s0.trim().chars().peekable();
+        let t = TreeNode::new(&mut iter, None);
+        let mut g = Game::init(Some(t));
+
+        const SAVE: usize = 1 + 1 + 2 + 4;
+        const CLEAR: usize = 1 + 1 + 8 + 4;
+        const SIM: usize = DATA_UNIT;
+        const LEN: usize = DATA_UNIT + SAVE + (1 + DATA_UNIT) * 10 + SIM + CLEAR + (1 + DATA_UNIT);
+        let mut buf_origin: [u8; LEN] = [0; LEN];
+        let buf = &mut buf_origin[..];
+        let _s1 = ";W[ii][hh][aa][ab][bb][ab][aa][ab][aa][ab]";
+        buf[DATA_UNIT] = SAVE_CODE;
+        buf[SAVE + DATA_UNIT] = "ii".to_map().to_map_encode();
+        buf[SAVE + (DATA_UNIT + 1) * 2 - 1] = "hh".to_map().to_map_encode();
+        buf[SAVE + (DATA_UNIT + 1) * 3 - 1] = "aa".to_env().to_env_encode();
+        buf[SAVE + (DATA_UNIT + 1) * 4 - 1] = "ab".to_env().to_env_encode();
+        buf[SAVE + (DATA_UNIT + 1) * 5 - 1] = "bb".to_env().to_env_encode();
+        buf[SAVE + (DATA_UNIT + 1) * 6 - 1] = "ab".to_env().to_env_encode();
+        buf[SAVE + (DATA_UNIT + 1) * 7 - 1] = "aa".to_env().to_env_encode();
+        buf[SAVE + (DATA_UNIT + 1) * 8 - 1] = "ab".to_env().to_env_encode();
+        buf[SAVE + (DATA_UNIT + 1) * 9 - 1] = "aa".to_env().to_env_encode();
+        buf[SAVE + (DATA_UNIT + 1) * 10 - 1] = "ab".to_env().to_env_encode();
+        buf[SAVE + (DATA_UNIT + 1) * 11 - 1 + SIM] = CLEAR_CODE;
+        buf[SAVE + (DATA_UNIT + 1) * 11 - 1 + SIM + CLEAR] = "ij".to_map().to_map_encode();
+        let mut fake_stream = Cursor::new(buf);
+        assert!(handle_client(&mut fake_stream, &mut g) == true);
+
+        let buf_after = fake_stream.get_ref();
+
+        // Wx00: returned by an save request
+        assert_eq!(buf_after[DATA_UNIT + 1], 2);
+        assert_eq!(buf_after[DATA_UNIT + SAVE - 4], 87);
+        assert_eq!(buf_after[DATA_UNIT + SAVE - 3], 120);
+        assert_eq!(buf_after[DATA_UNIT + SAVE - 2], 48);
+        assert_eq!(buf_after[DATA_UNIT + SAVE - 1], 48);
+
+        // Ix02: After the doctor's turn is over
+        assert_eq!(buf_after[SAVE + (DATA_UNIT + 1) * 10], 73);
+        assert_eq!(buf_after[SAVE + (DATA_UNIT + 1) * 10 + 1], 120);
+        assert_eq!(buf_after[SAVE + (DATA_UNIT + 1) * 10 + 2], 48);
+        assert_eq!(buf_after[SAVE + (DATA_UNIT + 1) * 10 + 3], 50);
+
+        // Ix07: Begin a simulated Plague's turn
+        assert_eq!(buf_after[SAVE + (DATA_UNIT + 1) * 11 - 1], 73);
+        assert_eq!(buf_after[SAVE + (DATA_UNIT + 1) * 11], 120);
+        assert_eq!(buf_after[SAVE + (DATA_UNIT + 1) * 11 + 1], 48);
+        assert_eq!(buf_after[SAVE + (DATA_UNIT + 1) * 11 + 2], 55);
+
+        // Wx00: returned by an clear request
+        assert_eq!(
+            buf_after[DATA_UNIT + SAVE + (DATA_UNIT + 1) * 10 + SIM + CLEAR - 4],
+            87
+        );
+        assert_eq!(
+            buf_after[DATA_UNIT + SAVE + (DATA_UNIT + 1) * 10 + SIM + CLEAR - 3],
+            120
+        );
+        assert_eq!(
+            buf_after[DATA_UNIT + SAVE + (DATA_UNIT + 1) * 10 + SIM + CLEAR - 2],
+            48
+        );
+        assert_eq!(
+            buf_after[DATA_UNIT + SAVE + (DATA_UNIT + 1) * 10 + SIM + CLEAR - 1],
+            48
+        );
+
+        // Ix00: return to Doctor's play and close
+        assert_eq!(
+            buf_after[DATA_UNIT + SAVE + (DATA_UNIT + 1) * 10 + SIM + CLEAR + 1],
+            73
+        );
+        assert_eq!(
+            buf_after[DATA_UNIT + SAVE + (DATA_UNIT + 1) * 10 + SIM + CLEAR + 2],
+            120
+        );
+        assert_eq!(
+            buf_after[DATA_UNIT + SAVE + (DATA_UNIT + 1) * 10 + SIM + CLEAR + 3],
+            48
+        );
+        assert_eq!(
+            buf_after[DATA_UNIT + SAVE + (DATA_UNIT + 1) * 10 + SIM + CLEAR + 4],
+            48
+        );
     }
 }
