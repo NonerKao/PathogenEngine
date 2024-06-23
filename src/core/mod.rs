@@ -897,41 +897,14 @@ impl Game {
                 // self.history.
                 self.switch();
 
-                let op_map = if let Some(p) = &self.history.borrow().parent {
-                    if x != 2 {
-                        p.as_ref().borrow().properties[0].value[0].as_str().to_map()
-                    } else {
-                        p.as_ref()
-                            .borrow()
-                            .properties
-                            .iter()
-                            .find(|prop| prop.ident == "AW")
-                            .unwrap()
-                            .value[0]
-                            .as_str()
-                            .to_map()
-                    }
-                } else {
-                    panic!("No parent");
-                };
-
-                let my_map = self.history.borrow().properties[0].value[0]
-                    .as_str()
-                    .to_map();
-                let restriction = my_map - &op_map;
-                let steps = restriction.iter().map(|(_, i)| *i as usize).sum::<usize>();
-
-                // undo the map, this will need the reference from
-                // 2 moves ago
-                let my_map_prev = if let Some(p) = &self.history.borrow().parent {
-                    if let Some(pp) = &p.as_ref().borrow().parent {
-                        if x > 3 {
-                            pp.as_ref().borrow().properties[0].value[0]
-                                .as_str()
-                                .to_map()
-                                .clone()
-                        } else if x == 3 {
-                            pp.as_ref()
+                // If there was ann Ix00, then we should need to do anything,
+                // except for reverting the history.
+                if self.history.borrow().properties[0].value.len() != 1 {
+                    let op_map = if let Some(p) = &self.history.borrow().parent {
+                        if x != 2 {
+                            p.as_ref().borrow().properties[0].value[0].as_str().to_map()
+                        } else {
+                            p.as_ref()
                                 .borrow()
                                 .properties
                                 .iter()
@@ -940,58 +913,88 @@ impl Game {
                                 .value[0]
                                 .as_str()
                                 .to_map()
-                                .clone()
-                        } else {
-                            // x == 2
-                            // Plauge undo-es its first move, which goes back to some
-                            // value that will be overwirtten soon anyway.
-                            Coord::new(-999, -999)
                         }
-                    } else {
-                        panic!("No grandparent");
-                    }
-                } else {
-                    panic!("No parent");
-                };
-                self.set_map(self.turn, my_map_prev);
-
-                // if this is lockdown, set this for the Plague as well
-                let op_camp = self.opposite(self.turn);
-                if self.turn == Camp::Doctor && my_map == "ii".to_map() {
-                    let op_map_prev = if let Some(p) = &self.history.borrow().parent {
-                        p.borrow().properties[0].value[0].as_str().to_map()
                     } else {
                         panic!("No parent");
                     };
-                    self.set_map(op_camp, op_map_prev);
-                }
 
-                // undo the character
-                let index = if self.turn == Camp::Doctor && my_map == "ii".to_map() {
-                    2
-                } else {
-                    1
-                };
-                let my_character_prev = self.history.borrow().properties[0].value[index]
-                    .as_str()
-                    .to_env();
-                let my_character_now = self.history.borrow().properties[0].value[index + steps]
-                    .as_str()
-                    .to_env();
-                for ((_w, _t), c) in self.character.iter_mut() {
-                    if *c == my_character_now {
-                        *c = my_character_prev;
+                    let my_map = self.history.borrow().properties[0].value[0]
+                        .as_str()
+                        .to_map();
+                    let restriction = my_map - &op_map;
+                    let steps = restriction.iter().map(|(_, i)| *i as usize).sum::<usize>();
+
+                    // undo the map, this will need the reference from
+                    // 2 moves ago
+                    let my_map_prev = if let Some(p) = &self.history.borrow().parent {
+                        if let Some(pp) = &p.as_ref().borrow().parent {
+                            if x > 3 {
+                                pp.as_ref().borrow().properties[0].value[0]
+                                    .as_str()
+                                    .to_map()
+                                    .clone()
+                            } else if x == 3 {
+                                pp.as_ref()
+                                    .borrow()
+                                    .properties
+                                    .iter()
+                                    .find(|prop| prop.ident == "AW")
+                                    .unwrap()
+                                    .value[0]
+                                    .as_str()
+                                    .to_map()
+                                    .clone()
+                            } else {
+                                // x == 2
+                                // Plauge undo-es its first move, which goes back to some
+                                // value that will be overwirtten soon anyway.
+                                Coord::new(-999, -999)
+                            }
+                        } else {
+                            panic!("No grandparent");
+                        }
+                    } else {
+                        panic!("No parent");
+                    };
+                    self.set_map(self.turn, my_map_prev);
+
+                    // if this is lockdown, set this for the Plague as well
+                    let op_camp = self.opposite(self.turn);
+                    if self.turn == Camp::Doctor && my_map == "ii".to_map() {
+                        let op_map_prev = if let Some(p) = &self.history.borrow().parent {
+                            p.borrow().properties[0].value[0].as_str().to_map()
+                        } else {
+                            panic!("No parent");
+                        };
+                        self.set_map(op_camp, op_map_prev);
+                    }
+
+                    // undo the character
+                    let index = if self.turn == Camp::Doctor && my_map == "ii".to_map() {
+                        2
+                    } else {
+                        1
+                    };
+                    let my_character_prev = self.history.borrow().properties[0].value[index]
+                        .as_str()
+                        .to_env();
+                    let my_character_now = self.history.borrow().properties[0].value[index + steps]
+                        .as_str()
+                        .to_env();
+                    for ((_w, _t), c) in self.character.iter_mut() {
+                        if *c == my_character_now {
+                            *c = my_character_prev;
+                        }
+                    }
+
+                    // undo markers, this can be done by adding opponent's markers
+                    let len = self.history.borrow().properties[0].value.len();
+                    for i in (index + steps + 1)..len {
+                        let c_str = self.history.borrow().properties[0].value[i].clone();
+                        let c = c_str.to_env().clone();
+                        self.add_marker(&c, &op_camp);
                     }
                 }
-
-                // undo markers, this can be done by adding opponent's markers
-                let len = self.history.borrow().properties[0].value.len();
-                for i in (index + steps + 1)..len {
-                    let c_str = self.history.borrow().properties[0].value[i].clone();
-                    let c = c_str.to_env().clone();
-                    self.add_marker(&c, &op_camp);
-                }
-
                 self.phase = Phase::Main(x - 1);
                 let temp = if let Some(p) = &self.history.borrow().parent {
                     p.clone()
@@ -1886,6 +1889,65 @@ mod tests {
 
         assert_eq!(g.phase, Phase::Main(4));
         assert_eq!(g.turn, Camp::Doctor);
+
+        g.reset(true);
+
+        assert_eq!(g.phase, Phase::Main(1));
+        assert_eq!(g.turn, Camp::Plague);
+        assert_eq!(g.history.borrow().children.len(), 0);
+        assert_eq!(g.savepoint, false);
+    }
+
+    #[test]
+    fn test_save_reset2() {
+        let s0 = "(
+            ;C[Setup0]
+            AW[df][da][db][ab][ba][ea][cc][fd][fc][af][ce][ee][cb][ef][bd][bc][fe]
+            AB[aa][ec][cd][bb][ae][be][ed][ad][ff][eb][fb][bf][ac][fa][dd][dc][cf][de][ca]
+            ;C[Setup1]AB[fc][ed][ab][cf]
+            ;C[Setup2]AW[cc]
+            ;C[Setup2]AB[ec]
+            ;C[Setup2]AW[ca]
+            ;C[Setup2]AB[ce]
+            ;C[Setup3]AW[jj]
+        )"
+        .to_string();
+        let mut iter = s0.trim().chars().peekable();
+        let t = TreeNode::new(&mut iter, None);
+        let mut g = Game::init(Some(t));
+
+        g.save();
+
+        let s1 = "(;B[ki][ce][cc][fc][ce][ce][ce][ce]             C[1])";
+        iter = s1.trim().chars().peekable();
+        let t2 = TreeNode::new(&mut iter, None);
+        if let Ok(a) = t2.borrow().children[0].borrow().to_action(&g) {
+            g.append_history_with_new_tree(&a.to_sgf_string(&g));
+            g.commit_action(&a);
+            g.next();
+        };
+
+        g.reset(false);
+
+        let s1_5 = "(;B[ki][ce][cc][fc][ce][ce][ce][ce]             C[1])";
+        iter = s1_5.trim().chars().peekable();
+        let t2_5 = TreeNode::new(&mut iter, None);
+        if let Ok(a) = t2_5.borrow().children[0].borrow().to_action(&g) {
+            g.append_history_with_new_tree(&a.to_sgf_string(&g));
+            g.commit_action(&a);
+            g.next();
+        } else {
+            panic!("!!!");
+        };
+
+        let s2 = "(;W[jj]             C[2])";
+        iter = s2.trim().chars().peekable();
+        let t3 = TreeNode::new(&mut iter, None);
+        if let Ok(a) = t3.borrow().children[0].borrow().to_action(&g) {
+            g.append_history_with_new_tree(&a.to_sgf_string(&g));
+            g.commit_action(&a);
+            g.next();
+        };
 
         g.reset(true);
 

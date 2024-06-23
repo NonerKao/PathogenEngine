@@ -10,6 +10,14 @@ from reinforcement_network import *
 
 TOPK = 3
 
+QUERY = 255
+SAVE = 254
+RETURN = 253
+CLEAR = 252
+
+TRIAL_UNIT = 1000
+DELAY_UNIT = 20
+
 def init_model(model_name):
     torch.set_default_dtype(torch.float32)
     if os.path.exists(model_name):
@@ -19,6 +27,7 @@ def init_model(model_name):
         # Start with a newly initialized model
         model = PathogenNet()
         print("Warning: Starting with a new model.")
+        torch.save(model, model_name)
     return model
 
 class RLAgent(Agent):
@@ -28,13 +37,26 @@ class RLAgent(Agent):
         self.action = 255
         self.all_transitions = torch.tensor([])
 
+        ### MCTS stuff
+        # Most of the time this is True.
+        # Only when we finish a bunch of MCTS simulations, 
+        # we make a real play by revert this flag.
+        self.simulation = False
+        # when num_trials becomes 0, simulation goes from True to False;
+        # when simulation goes from False to True, reset num_trials;
+        # decrease this value each time a run of MCTS is finished
+        self.num_trials = TRIAL_UNIT
+        # I want it to "feel" the end game condition first.
+        # the average steps of a game is around 30.
+        self.delay = DELAY_UNIT
+
         # initialize the device
         self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
         torch.set_default_device(self.device)
         if not torch.cuda.is_available():
             print('Warning: Use CPU')
 
-        # We will only use this model for inference, at this phase
+        # We will only use this model for inference/simulation, at this phase
         self.model = init_model(f.model)
         self.model.eval()
         
@@ -43,6 +65,15 @@ class RLAgent(Agent):
         if self.record is not None:
             self.record.close()
             # states, actions, rewards = self.all_transitions[:, :S].clone().to(dtype=torch.float32), self.all_transitions[:, S], self.all_transitions[:, S+1]
+
+    def send_special(self, action):
+        self.s.sendall(bytes([action]))
+        self.num_candidate = int.from_bytes(self.s.recv(1), byteorder='big')
+        self.candidate = self.s.recv(self.num_candidate)
+        code = self.s.recv(CODE_DATA)
+        while code not in (b'Wx00'):
+            print("Unexpected query results:", self.num_candidate, "; candidates:", self.candidate);
+            sys.exit(255)
 
     def analyze(self, data):
         if ord('E') == data[0]:
@@ -56,20 +87,24 @@ class RLAgent(Agent):
             # Ix04: we won!
             # Ix05: we lost...
             # Ix06: somehow, either we or the component lost the connection
-            if data[0:4] not in (b'Ix00'):
-                pass
             self.action = 255
+            if self.delay > 0:
+                self.delay = self.delay - 1
             return
-        elif data[0:4] in (b'Ix01', b'Ix03'):
+        elif data[0:4] in (b'Ix01', b'Ix03', b'Ix07', b'Ix08'):
             # get candidate move from query
-            self.action = 255
-            self.s.sendall(bytes([self.action]))
-            self.num_candidate = int.from_bytes(self.s.recv(1), byteorder='big')
-            self.candidate = self.s.recv(self.num_candidate)
-            code = self.s.recv(CODE_DATA)
-            while code not in (b'Wx00'):
-                print("Unexpected query results!")
-                sys.exit(255)
+            if self.simulation and self.delay > 0:
+                self.action = QUERY
+            elif not self.simulation and self.delay > 0:
+                self.action = QUERY
+            elif not self.simulation and self.delay <= 0:
+                self.action = SAVE
+                self.simulation = True
+            else:
+                self.action = CLEAR
+                self.simulation = False
+                self.delay = DELAY_UNIT
+            self.send_special(self.action)
 
         # Make next action
         self.state = np.frombuffer(data[4:], dtype=np.uint8)

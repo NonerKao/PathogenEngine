@@ -1,6 +1,6 @@
 use clap::Parser;
 use ndarray::{Array, Array1};
-use std::collections::HashSet;
+use std::collections::BTreeSet;
 use std::fs::File;
 use std::io::{Read, Write};
 use std::net::{TcpListener, TcpStream};
@@ -336,11 +336,10 @@ where
                 return false;
             }
             if input[0] >= MIN_SPECIAL_CODE {
-                if false == stream.return_query(g, a) {
-                    return false;
-                }
                 match input[0] {
-                    SAVE_CODE => g.save(),
+                    SAVE_CODE => {
+                        g.save();
+                    }
                     RETURN_CODE => {
                         g.reset(false);
                     }
@@ -352,6 +351,9 @@ where
                         // shared by all special codes now.
                     }
                     _ => {}
+                }
+                if false == stream.return_query(g, a) {
+                    return false;
                 }
                 continue;
             }
@@ -724,7 +726,7 @@ impl<T: Write> WriterExtra for T {
                 let h = <Vec<Candidate> as Clone>::clone(&a.candidate)
                     .into_iter()
                     .map(|c| c.lockdown)
-                    .collect::<HashSet<_>>();
+                    .collect::<BTreeSet<_>>();
 
                 let len = h.len() + 5;
                 let mut response = vec![0; len];
@@ -742,7 +744,7 @@ impl<T: Write> WriterExtra for T {
                 let h = <Vec<Candidate> as Clone>::clone(&a.candidate)
                     .into_iter()
                     .map(|c| c.character)
-                    .collect::<HashSet<_>>();
+                    .collect::<BTreeSet<_>>();
 
                 let len = h.len() + 5;
                 let mut response = vec![0; len];
@@ -760,7 +762,7 @@ impl<T: Write> WriterExtra for T {
                 let h = <Vec<Candidate> as Clone>::clone(&a.candidate)
                     .into_iter()
                     .map(|c| c.trajectory[trajectory_index])
-                    .collect::<HashSet<_>>();
+                    .collect::<BTreeSet<_>>();
 
                 let len = h.len() + 5;
                 let mut response = vec![0; len];
