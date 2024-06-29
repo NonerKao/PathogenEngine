@@ -487,16 +487,8 @@ fn get_action<T: Read>(stream: &mut T, buffer: &mut [u8]) -> bool {
     }
 }
 
-// These functions that have mutable stream have a return type of bool.
-// I shouldn't say it is by design, but it is a simplified Result type.
 // With true, it means all communications are happy;
 // with false, there was something wrong, and not about game logic.
-// However, during the refactorization I realize that,
-// the return true behavior is not possible to preserve:
-// We don't know if it is successfullt done only (Ix01), or the action
-// itself is done (Ix02, which involving the call to next()).
-// I will still try not to introduce a more complicated return type,
-// for now.
 fn handle_client<T: Read + ReaderExtra + Write + WriterExtra>(
     stream: &mut T,
     g: &mut Game,
@@ -530,26 +522,32 @@ fn handle_client<T: Read + ReaderExtra + Write + WriterExtra>(
             Ok(_) => {
                 let mut am = ActionMonitor::new();
 
-                // Check tree.rs:to_action() function for the following
-                // big block of state machine. s for status code in the spec.
-
+                // Check tree.rs:to_action() function for the state machine
                 // the suffix "_loop" is meant to be a reminder that these
                 // are themselves states that accept unlimited failed trials,
                 // well, mostly only for accumodating trial-and-error random agent.
                 // XXX: but actually we can improve this...... all the pieces are
                 //      ready now.
-                let set_funcs = [
-                    set_map_loop,
-                    set_lockdown_loop,
-                    set_character_loop,
-                    set_board_move_loop,
-                    set_marker_loop,
-                ];
-                for sf in set_funcs.iter() {
-                    if !sf(stream, g, &mut am.action, &mut buffer) {
+                loop {
+                    if !match am.action.action_phase {
+                        ActionPhase::SetMap => set_map_loop(stream, g, &mut am.action, &mut buffer),
+                        ActionPhase::Lockdown => {
+                            set_lockdown_loop(stream, g, &mut am.action, &mut buffer)
+                        }
+                        ActionPhase::SetCharacter => {
+                            set_character_loop(stream, g, &mut am.action, &mut buffer)
+                        }
+                        ActionPhase::BoardMove => {
+                            set_board_move_loop(stream, g, &mut am.action, &mut buffer)
+                        }
+                        ActionPhase::SetMarkers => {
+                            set_marker_loop(stream, g, &mut am.action, &mut buffer)
+                        }
+                        ActionPhase::Done => {
+                            break;
+                        }
+                    } {
                         return false;
-                    } else if am.action.action_phase == ActionPhase::Done {
-                        break;
                     }
                 }
 
@@ -1495,12 +1493,12 @@ mod tests {
         let mut g = Game::init(Some(t));
 
         const SAVE: usize = 1 + 1 + 2 + 4;
-        const CLEAR: usize = 1 + 1 + 8 + 4;
         const SIM: usize = DATA_UNIT;
-        const LEN: usize = DATA_UNIT + SAVE + (1 + DATA_UNIT) * 10 + SIM + CLEAR + (1 + DATA_UNIT);
+        const LEN: usize = DATA_UNIT + SAVE + (1 + DATA_UNIT) * 10 + SIM + SAVE + (1 + DATA_UNIT);
         let mut buf_origin: [u8; LEN] = [0; LEN];
         let buf = &mut buf_origin[..];
         let _s1 = ";W[ii][hh][aa][ab][bb][ab][aa][ab][aa][ab]";
+        // First we do a save here, right at the beginning of the Main(2)
         buf[DATA_UNIT] = SAVE_CODE;
         buf[SAVE + DATA_UNIT] = "ii".to_map().to_map_encode();
         buf[SAVE + (DATA_UNIT + 1) * 2 - 1] = "hh".to_map().to_map_encode();
@@ -1513,13 +1511,20 @@ mod tests {
         buf[SAVE + (DATA_UNIT + 1) * 9 - 1] = "aa".to_env().to_env_encode();
         buf[SAVE + (DATA_UNIT + 1) * 10 - 1] = "ab".to_env().to_env_encode();
         buf[SAVE + (DATA_UNIT + 1) * 11 - 1 + SIM] = CLEAR_CODE;
-        buf[SAVE + (DATA_UNIT + 1) * 11 - 1 + SIM + CLEAR] = "ij".to_map().to_map_encode();
+        buf[SAVE + (DATA_UNIT + 1) * 11 - 1 + SIM + SAVE] = "ij".to_map().to_map_encode();
         let mut fake_stream = Cursor::new(buf);
         assert!(handle_client(&mut fake_stream, &mut g) == true);
 
         let buf_after = fake_stream.get_ref();
 
+        // Ix03: The start, sad that I have to check this
+        assert_eq!(buf_after[0], 73);
+        assert_eq!(buf_after[1], 120);
+        assert_eq!(buf_after[2], 48);
+        assert_eq!(buf_after[3], 51);
+
         // Wx00: returned by an save request
+        assert_eq!(buf_after[DATA_UNIT], 254);
         assert_eq!(buf_after[DATA_UNIT + 1], 2);
         assert_eq!(buf_after[DATA_UNIT + SAVE - 4], 87);
         assert_eq!(buf_after[DATA_UNIT + SAVE - 3], 120);
@@ -1540,37 +1545,45 @@ mod tests {
 
         // Wx00: returned by an clear request
         assert_eq!(
-            buf_after[DATA_UNIT + SAVE + (DATA_UNIT + 1) * 10 + SIM + CLEAR - 4],
+            buf_after[DATA_UNIT + SAVE + (DATA_UNIT + 1) * 10 + SIM],
+            252
+        );
+        assert_eq!(
+            buf_after[DATA_UNIT + SAVE + (DATA_UNIT + 1) * 10 + SIM + 1],
+            2
+        );
+        assert_eq!(
+            buf_after[DATA_UNIT + SAVE + (DATA_UNIT + 1) * 10 + SIM + SAVE - 4],
             87
         );
         assert_eq!(
-            buf_after[DATA_UNIT + SAVE + (DATA_UNIT + 1) * 10 + SIM + CLEAR - 3],
+            buf_after[DATA_UNIT + SAVE + (DATA_UNIT + 1) * 10 + SIM + SAVE - 3],
             120
         );
         assert_eq!(
-            buf_after[DATA_UNIT + SAVE + (DATA_UNIT + 1) * 10 + SIM + CLEAR - 2],
+            buf_after[DATA_UNIT + SAVE + (DATA_UNIT + 1) * 10 + SIM + SAVE - 2],
             48
         );
         assert_eq!(
-            buf_after[DATA_UNIT + SAVE + (DATA_UNIT + 1) * 10 + SIM + CLEAR - 1],
+            buf_after[DATA_UNIT + SAVE + (DATA_UNIT + 1) * 10 + SIM + SAVE - 1],
             48
         );
 
         // Ix00: return to Doctor's play and close
         assert_eq!(
-            buf_after[DATA_UNIT + SAVE + (DATA_UNIT + 1) * 10 + SIM + CLEAR + 1],
+            buf_after[DATA_UNIT + SAVE + (DATA_UNIT + 1) * 10 + SIM + SAVE + 1],
             73
         );
         assert_eq!(
-            buf_after[DATA_UNIT + SAVE + (DATA_UNIT + 1) * 10 + SIM + CLEAR + 2],
+            buf_after[DATA_UNIT + SAVE + (DATA_UNIT + 1) * 10 + SIM + SAVE + 2],
             120
         );
         assert_eq!(
-            buf_after[DATA_UNIT + SAVE + (DATA_UNIT + 1) * 10 + SIM + CLEAR + 3],
+            buf_after[DATA_UNIT + SAVE + (DATA_UNIT + 1) * 10 + SIM + SAVE + 3],
             48
         );
         assert_eq!(
-            buf_after[DATA_UNIT + SAVE + (DATA_UNIT + 1) * 10 + SIM + CLEAR + 4],
+            buf_after[DATA_UNIT + SAVE + (DATA_UNIT + 1) * 10 + SIM + SAVE + 4],
             48
         );
     }
