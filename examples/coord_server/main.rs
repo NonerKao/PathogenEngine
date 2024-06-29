@@ -318,6 +318,7 @@ fn common_loop<F, T: Read + ReaderExtra + Write + WriterExtra>(
     func: F,
     outer_bound: usize,
     ap: ActionPhase,
+    saved: &mut Action,
 ) -> bool
 where
     // Check action.rs add_* calls
@@ -336,24 +337,37 @@ where
                 return false;
             }
             if input[0] >= MIN_SPECIAL_CODE {
-                match input[0] {
-                    SAVE_CODE => {
-                        g.save();
-                    }
-                    RETURN_CODE => {
-                        g.reset(false);
-                    }
-                    CLEAR_CODE => {
-                        g.reset(true);
-                    }
+                let possible_change = match input[0] {
                     QUERY_CODE => {
                         // nothing special to be done because the `return_query` is
                         // shared by all special codes now.
+                        false
                     }
-                    _ => {}
-                }
+                    SAVE_CODE => {
+                        g.save();
+                        *saved = a.clone();
+                        false
+                    }
+                    // Both reset functions can potentially alter the action phase.
+                    // Keep looping inside this one doesn't make sense, so we have to return
+                    // true, to re-route to an appropriate action.
+                    RETURN_CODE => {
+                        g.reset(false);
+                        *a = saved.clone();
+                        true
+                    }
+                    CLEAR_CODE => {
+                        g.reset(true);
+                        *a = saved.clone();
+                        true
+                    }
+                    _ => false,
+                };
                 if false == stream.return_query(g, a) {
                     return false;
+                }
+                if possible_change {
+                    return true;
                 }
                 continue;
             }
@@ -381,6 +395,7 @@ fn set_marker_loop<T: Read + ReaderExtra + Write + WriterExtra>(
     g: &mut Game,
     a: &mut Action,
     input: &mut [u8],
+    saved: &mut Action,
 ) -> bool {
     common_loop(
         stream,
@@ -390,6 +405,7 @@ fn set_marker_loop<T: Read + ReaderExtra + Write + WriterExtra>(
         Action::add_single_marker,
         MAX_STEPS,
         ActionPhase::SetMarkers,
+        saved,
     )
 }
 
@@ -398,6 +414,7 @@ fn set_board_move_loop<T: Read + ReaderExtra + Write + WriterExtra>(
     g: &mut Game,
     a: &mut Action,
     input: &mut [u8],
+    saved: &mut Action,
 ) -> bool {
     common_loop(
         stream,
@@ -407,6 +424,7 @@ fn set_board_move_loop<T: Read + ReaderExtra + Write + WriterExtra>(
         Action::add_board_single_step,
         a.steps,
         ActionPhase::BoardMove,
+        saved,
     )
 }
 
@@ -415,6 +433,7 @@ fn set_character_loop<T: Read + ReaderExtra + Write + WriterExtra>(
     g: &mut Game,
     a: &mut Action,
     input: &mut [u8],
+    saved: &mut Action,
 ) -> bool {
     common_loop(
         stream,
@@ -424,6 +443,7 @@ fn set_character_loop<T: Read + ReaderExtra + Write + WriterExtra>(
         Action::add_character,
         1,
         ActionPhase::SetCharacter,
+        saved,
     )
 }
 
@@ -432,6 +452,7 @@ fn set_lockdown_loop<T: Read + ReaderExtra + Write + WriterExtra>(
     g: &mut Game,
     a: &mut Action,
     input: &mut [u8],
+    saved: &mut Action,
 ) -> bool {
     if a.action_phase != ActionPhase::Lockdown {
         return true;
@@ -444,6 +465,7 @@ fn set_lockdown_loop<T: Read + ReaderExtra + Write + WriterExtra>(
         Action::add_lockdown_by_coord,
         1,
         ActionPhase::Lockdown,
+        saved,
     )
 }
 
@@ -452,6 +474,7 @@ fn set_map_loop<T: Read + ReaderExtra + Write + WriterExtra>(
     g: &mut Game,
     a: &mut Action,
     input: &mut [u8],
+    saved: &mut Action,
 ) -> bool {
     // Add the map move first
     common_loop(
@@ -462,6 +485,7 @@ fn set_map_loop<T: Read + ReaderExtra + Write + WriterExtra>(
         Action::add_map_step,
         1,
         ActionPhase::SetMap,
+        saved,
     )
 }
 
@@ -495,7 +519,9 @@ fn handle_client<T: Read + ReaderExtra + Write + WriterExtra>(
 ) -> bool {
     let mut buffer = [0; 1]; // to read the 1-byte action from agent
 
-    let ea = Action::new();
+    // Previously this was called ea for Empty Action, but now I want to reuse
+    // it as the save slot.
+    let mut saved_action = Action::new();
     let mut es = "Ix03";
     loop {
         // A state machine for RL support mode
@@ -511,7 +537,7 @@ fn handle_client<T: Read + ReaderExtra + Write + WriterExtra>(
             }
         }
 
-        if stream.update_agent(g, &ea, &es) == false {
+        if stream.update_agent(g, &saved_action, &es) == false {
             return false;
         }
         match stream.peek(&mut buffer) {
@@ -529,20 +555,40 @@ fn handle_client<T: Read + ReaderExtra + Write + WriterExtra>(
                 // XXX: but actually we can improve this...... all the pieces are
                 //      ready now.
                 loop {
+                    println!("{:?}", am.action);
+                    println!("===");
                     if !match am.action.action_phase {
-                        ActionPhase::SetMap => set_map_loop(stream, g, &mut am.action, &mut buffer),
-                        ActionPhase::Lockdown => {
-                            set_lockdown_loop(stream, g, &mut am.action, &mut buffer)
+                        ActionPhase::SetMap => {
+                            set_map_loop(stream, g, &mut am.action, &mut buffer, &mut saved_action)
                         }
-                        ActionPhase::SetCharacter => {
-                            set_character_loop(stream, g, &mut am.action, &mut buffer)
-                        }
-                        ActionPhase::BoardMove => {
-                            set_board_move_loop(stream, g, &mut am.action, &mut buffer)
-                        }
-                        ActionPhase::SetMarkers => {
-                            set_marker_loop(stream, g, &mut am.action, &mut buffer)
-                        }
+                        ActionPhase::Lockdown => set_lockdown_loop(
+                            stream,
+                            g,
+                            &mut am.action,
+                            &mut buffer,
+                            &mut saved_action,
+                        ),
+                        ActionPhase::SetCharacter => set_character_loop(
+                            stream,
+                            g,
+                            &mut am.action,
+                            &mut buffer,
+                            &mut saved_action,
+                        ),
+                        ActionPhase::BoardMove => set_board_move_loop(
+                            stream,
+                            g,
+                            &mut am.action,
+                            &mut buffer,
+                            &mut saved_action,
+                        ),
+                        ActionPhase::SetMarkers => set_marker_loop(
+                            stream,
+                            g,
+                            &mut am.action,
+                            &mut buffer,
+                            &mut saved_action,
+                        ),
                         ActionPhase::Done => {
                             break;
                         }
@@ -1474,7 +1520,7 @@ mod tests {
     }
 
     #[test]
-    fn test_simulated_turn() {
+    fn test_simulated_turn1() {
         let s0 = "(
             ;C[Setup0]
             AW[aa][ab][ad][ae][bb][bc][bf][ca][cd][ce][dc][dd][df][ea][ec][ee][fa][fb][fe][ff]
@@ -1538,6 +1584,10 @@ mod tests {
         assert_eq!(buf_after[SAVE + (DATA_UNIT + 1) * 10 + 3], 50);
 
         // Ix07: Begin a simulated Plague's turn
+        // A minus 1 offset is becuase, the agent doesn't need to make an
+        // action to move from Ix02 to Ix07. Instead, Ix02 indicates a temporary
+        // stop, and the follow-up information is totally automatic from the
+        // server side.
         assert_eq!(buf_after[SAVE + (DATA_UNIT + 1) * 11 - 1], 73);
         assert_eq!(buf_after[SAVE + (DATA_UNIT + 1) * 11], 120);
         assert_eq!(buf_after[SAVE + (DATA_UNIT + 1) * 11 + 1], 48);
@@ -1586,5 +1636,115 @@ mod tests {
             buf_after[DATA_UNIT + SAVE + (DATA_UNIT + 1) * 10 + SIM + SAVE + 4],
             48
         );
+    }
+
+    #[test]
+    fn test_simulated_turn2() {
+        let s0 = "(
+            ;C[Setup0]
+            AW[aa][ab][ad][ae][bb][bc][bf][ca][cd][ce][dc][dd][df][ea][ec][ee][fa][fb][fe][ff]
+            AB[ac][af][ba][bd][be][cb][cc][cf][da][db][de][eb][ed][ef][fc][fd]
+            ;C[Setup1]AB[ab][cd][ef][da]
+            ;C[Setup2]AW[aa]
+            ;C[Setup2]AB[ac]
+            ;C[Setup2]AW[af]
+            ;C[Setup2]AB[ad]
+            ;C[Setup3]AW[ij]
+            ;B[jj][ad][cd][ad][ad][ad][ad]
+            )"
+        .to_string();
+        let mut iter = s0.trim().chars().peekable();
+        let t = TreeNode::new(&mut iter, None);
+        let mut g = Game::init(Some(t));
+
+        const SAVE1: usize = 1 + 1 + 2 + 4;
+        const SAVE2: usize = 1 + 1 + 1 + 4;
+        // CLEAR after 3 sub-moves
+        // SAVE2 when it is to choose the character
+        const LEN: usize = DATA_UNIT
+            + SAVE1
+            + (1 + DATA_UNIT) * 3
+            + SAVE1
+            + (1 + DATA_UNIT) * 2
+            + SAVE2
+            + (1 + DATA_UNIT) * 5
+            + SAVE2
+            + (1 + DATA_UNIT) * 8;
+        let mut buf_origin: [u8; LEN] = [0; LEN];
+        let buf = &mut buf_origin[..];
+        let _s1 = ";W[ii][hh][aa][ab][bb][ab][aa][ab][aa][aa]";
+        buf[DATA_UNIT] = SAVE_CODE;
+        let mut base_offset = DATA_UNIT + SAVE1;
+        buf[base_offset + (DATA_UNIT + 1) * 0] = "ii".to_map().to_map_encode();
+        buf[base_offset + (DATA_UNIT + 1) * 1] = "hh".to_map().to_map_encode();
+        buf[base_offset + (DATA_UNIT + 1) * 2] = "aa".to_env().to_env_encode();
+        buf[base_offset + (DATA_UNIT + 1) * 3] = CLEAR_CODE;
+        base_offset = base_offset + (DATA_UNIT + 1) * 3 + SAVE1;
+        buf[base_offset + (DATA_UNIT + 1) * 0] = "ii".to_map().to_map_encode();
+        buf[base_offset + (DATA_UNIT + 1) * 1] = "hh".to_map().to_map_encode();
+        buf[base_offset + (DATA_UNIT + 1) * 2] = SAVE_CODE;
+        base_offset = base_offset + (DATA_UNIT + 1) * 2 + SAVE2;
+        buf[base_offset + (DATA_UNIT + 1) * 0] = "aa".to_env().to_env_encode();
+        buf[base_offset + (DATA_UNIT + 1) * 1] = "ab".to_env().to_env_encode();
+        buf[base_offset + (DATA_UNIT + 1) * 2] = "bb".to_env().to_env_encode();
+        buf[base_offset + (DATA_UNIT + 1) * 3] = "ab".to_env().to_env_encode();
+        buf[base_offset + (DATA_UNIT + 1) * 4] = "aa".to_env().to_env_encode();
+        buf[base_offset + (DATA_UNIT + 1) * 5] = CLEAR_CODE;
+        base_offset = base_offset + (DATA_UNIT + 1) * 5 + SAVE2;
+        buf[base_offset + (DATA_UNIT + 1) * 0] = "aa".to_env().to_env_encode();
+        buf[base_offset + (DATA_UNIT + 1) * 1] = "ab".to_env().to_env_encode();
+        buf[base_offset + (DATA_UNIT + 1) * 2] = "bb".to_env().to_env_encode();
+        buf[base_offset + (DATA_UNIT + 1) * 3] = "ab".to_env().to_env_encode();
+        buf[base_offset + (DATA_UNIT + 1) * 4] = "aa".to_env().to_env_encode();
+        buf[base_offset + (DATA_UNIT + 1) * 5] = "ab".to_env().to_env_encode();
+        buf[base_offset + (DATA_UNIT + 1) * 6] = "aa".to_env().to_env_encode();
+        buf[base_offset + (DATA_UNIT + 1) * 7] = "aa".to_env().to_env_encode();
+
+        let mut fake_stream = Cursor::new(buf);
+        assert!(handle_client(&mut fake_stream, &mut g) == true);
+
+        let buf_after = fake_stream.get_ref();
+
+        // Ix03: The start, sad that I have to check this
+        assert_eq!(buf_after[0], 73);
+        assert_eq!(buf_after[1], 120);
+        assert_eq!(buf_after[2], 48);
+        assert_eq!(buf_after[3], 51);
+
+        // Wx00: returned by the first save request
+        assert_eq!(buf_after[DATA_UNIT], 254);
+        assert_eq!(buf_after[DATA_UNIT + 1], 2);
+        base_offset = DATA_UNIT + SAVE1;
+        assert_eq!(buf_after[base_offset - 4], 87);
+        assert_eq!(buf_after[base_offset - 3], 120);
+        assert_eq!(buf_after[base_offset - 2], 48);
+        assert_eq!(buf_after[base_offset - 1], 48);
+
+        // Wx00: returned by the first clear request
+        base_offset = base_offset + (DATA_UNIT + 1) * 3 + SAVE1;
+        assert_eq!(buf_after[base_offset - 4], 87);
+        assert_eq!(buf_after[base_offset - 3], 120);
+        assert_eq!(buf_after[base_offset - 2], 48);
+        assert_eq!(buf_after[base_offset - 1], 48);
+
+        // Wx00: returned by the second save request
+        base_offset = base_offset + (DATA_UNIT + 1) * 2 + SAVE2;
+        assert_eq!(buf_after[base_offset - 4], 87);
+        assert_eq!(buf_after[base_offset - 3], 120);
+        assert_eq!(buf_after[base_offset - 2], 48);
+        assert_eq!(buf_after[base_offset - 1], 48);
+
+        // Wx00: returned by the second clear request
+        base_offset = base_offset + (DATA_UNIT + 1) * 5 + SAVE2;
+        assert_eq!(buf_after[base_offset - 4], 87);
+        assert_eq!(buf_after[base_offset - 3], 120);
+        assert_eq!(buf_after[base_offset - 2], 48);
+        assert_eq!(buf_after[base_offset - 1], 48);
+
+        // Ix02: After the doctor's turn is over
+        assert_eq!(buf_after[base_offset + (DATA_UNIT + 1) * 7 + 1], 73);
+        assert_eq!(buf_after[base_offset + (DATA_UNIT + 1) * 7 + 2], 120);
+        assert_eq!(buf_after[base_offset + (DATA_UNIT + 1) * 7 + 3], 48);
+        assert_eq!(buf_after[base_offset + (DATA_UNIT + 1) * 7 + 4], 50);
     }
 }
