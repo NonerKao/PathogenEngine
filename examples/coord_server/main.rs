@@ -522,6 +522,7 @@ fn handle_client<T: Read + ReaderExtra + Write + WriterExtra>(
     // Previously this was called ea for Empty Action, but now I want to reuse
     // it as the save slot.
     let mut saved_action = Action::new();
+    let ea = Action::new();
     let mut es = "Ix03";
     loop {
         // A state machine for RL support mode
@@ -529,15 +530,41 @@ fn handle_client<T: Read + ReaderExtra + Write + WriterExtra>(
         // this agent keeps occupying the server by staying
         // in this loop, but use a different initial code to
         // indicate the situation.
-        if g.savepoint {
+        es = if g.savepoint {
             if es == "Ix03" || es == "Ix08" {
-                es = "Ix07";
+                if g.is_ended() {
+                    // simulated myself's win
+                    "Ix0a"
+                } else {
+                    // simulated opponent's turn
+                    "Ix07"
+                }
             } else if es == "Ix07" {
-                es = "Ix08";
+                if g.is_ended() {
+                    // simulated opponent's win
+                    "Ix09"
+                } else {
+                    // simulated myself's turn
+                    "Ix08"
+                }
+            } else if es == "Ix09" || es == "Ix0a" {
+                // The agent will rewind the game back to the point it
+                // saved, and restart from there.
+                // Under such a circumstance, we will start a simulated
+                // opponet's move here. You may wonder why we don't consider
+                // the CLAER action. Because at an end for that action,
+                // we will break out of this function and trigger the real
+                // opponent's turn, and we will have a Ix03 after they finish
+                // their move, or receieve a real end notificaiton of losing.
+                "Ix07"
+            } else {
+                panic!("Unexpected state: {}", es);
             }
-        }
+        } else {
+            es
+        };
 
-        if stream.update_agent(g, &saved_action, &es) == false {
+        if stream.update_agent(g, if g.is_ended() { &ea } else { &saved_action }, &es) == false {
             return false;
         }
         match stream.peek(&mut buffer) {
@@ -555,8 +582,6 @@ fn handle_client<T: Read + ReaderExtra + Write + WriterExtra>(
                 // XXX: but actually we can improve this...... all the pieces are
                 //      ready now.
                 loop {
-                    println!("{:?}", am.action);
-                    println!("===");
                     if !match am.action.action_phase {
                         ActionPhase::SetMap => {
                             set_map_loop(stream, g, &mut am.action, &mut buffer, &mut saved_action)
@@ -600,11 +625,14 @@ fn handle_client<T: Read + ReaderExtra + Write + WriterExtra>(
                 // commit the action to the game
                 next(g, &am.action);
 
-                if g.savepoint {
-                    continue;
-                } else {
+                if !g.savepoint {
                     break;
                 }
+
+                // If it is simulated now, do repeat this loop.
+                // Apparently it will be odd if the game has just finished by this
+                // current action, we need to tell the agent that it should stop
+                // the simulation.
             }
             Err(e) => {
                 println!("Error occurred: {:?}", e);
@@ -1746,5 +1774,260 @@ mod tests {
         assert_eq!(buf_after[base_offset + (DATA_UNIT + 1) * 7 + 2], 120);
         assert_eq!(buf_after[base_offset + (DATA_UNIT + 1) * 7 + 3], 48);
         assert_eq!(buf_after[base_offset + (DATA_UNIT + 1) * 7 + 4], 50);
+    }
+
+    #[test]
+    fn test_simulated_turn3() {
+        // From a previously recorded file.
+        let s0 = "(
+                ;C[Setup0]
+                AW[bd][be][bc][ab][da][fb][dd][cb][ae][fc][cf][cd][ff][ec][ee][aa][fd]
+                AB[fe][ce][de][fa][cc][bf][ea][ac][df][ed][dc][bb][eb][ef][af][db][ad][ca][ba]
+                ;C[Setup1]AB[cb]
+				;C[Setup1]AB[be]
+				;C[Setup1]AB[ef]
+				;C[Setup1]AB[da]
+				;C[Setup2]AW[bf]
+				;C[Setup2]AB[fb]
+				;C[Setup2]AW[aa]
+				;C[Setup2]AB[ce]
+				;C[Setup3]AW[hh]
+				;B[hi][fb][fc][fb][fb][fb][fb]
+				;W[jj][aa][da][dd][fd][da][da][dd][dd][aa]
+				;B[ii][fc][fb][cb][fc][fb][fb][fc]
+				;W[ij][fd][ff][fd][fd][fd][fd][fd]
+				;B[jh][ce][de][dc][db][de][dc][ce][dc]
+				;W[ii][jj][ff][fd][dd][fd][ff][ff][ff][ff]
+				;B[jj]
+				;W[ij][bf][af][bf][bf][bf][bf][bf]
+				;B[jj]
+				;W[ij]
+				;B[ji][db][eb][ea][db][eb][db][eb]
+				;W[hi][dd][cd][bd][dd][cd][cd][cd][dd]
+				;B[ji]
+				;W[ii][ij][af][ad][af][af][af][af][af]
+				;B[hj][ea][eb][db][ea][eb][eb][ea]
+				;W[ii]
+				;B[hj]
+				;W[jh][ad][ed][eb][ea][fa][eb][eb][eb][ea][eb]
+				;B[ih][cb][ab][cb][cb][cb][cb]
+				;W[hi][fa][fe][de][fa][fa][fa][fe][fe]
+				;B[ij][ab][cb][cd][ab][cb][ab][ab]
+				;W[jj][de][fe][de][de][de][de][de]
+				;B[ih][cd][cb][ab][aa][cd][ab][cd][ab]
+				;W[hh][fe][de][fe][fe][fe]
+				;B[jj][aa][ab][ae][be][ee][aa][ae][be][aa]
+				;W[ii][jh][bd][be][ae][be][be][be][be][be]
+				;B[ji][db][eb][db][db][db]
+				;W[hj][de][df][bf][af][df][df][bf][de][df]
+				;B[gj][ee][be][ee][ee][ee][ee]
+				;W[hj]
+				;B[hh][be][bd][bc][bd][be][bd][be]
+				;W[jh][ae][be][ee][ae][ae][ae][ae][ae]
+				;B[kh][bc][ec][bc][bc][bc][bc]
+				;W[ih][ee][be][ae][ee][ee][ee][ee][be]
+				;B[jh][ec][fc][ec][ec][ec][ec]
+				;W[ih]
+				;B[gj][fc][ec][bc][bd][be][fc][bd][ec][bc]
+				;W[ii][gj][af][bf][bb][db][bb][bb][bb][bb][bb]
+				;B[ih][eb][ea][eb][eb][eb][eb]
+				;W[jj][db][dc][de][fe][db][dc][dc][db][db]
+				;B[ji][be][bd][be][be][be][be]
+				;W[hi][fe][de][ce]
+				;B[ih][bd][cd][cb][bd][cd][cd][bd]
+				;W[ji][ce][de][df][ce][ce][ce][ce][ce]
+				;B[kj][cb][cd][dd][cd][cd][cd][cd]
+				;W[jh][df][bf][bb][ba][bb][df][df]
+				;B[gj][ea][eb][db][dc][cc][ac][cc][db][ea][dc]
+            )"
+        .to_string();
+        let mut iter = s0.trim().chars().peekable();
+        let t = TreeNode::new(&mut iter, None);
+        let mut g = Game::init(Some(t));
+
+        // The scenario is like the follows:
+        // 1. Save at the beginning of the last Doctor move,
+        //    simulating the original move as is.
+        //    Expect Ix07 at the beginning of Plague's turn,
+        // 2. Keep playing as is, and expect Ix09 for the win.
+        // 3. Return. Change the Plague's final move this time,
+        //    Expect Ix08 at the beginning of Doctor's turn.
+        // 4. Play a counter move to win the game this time,
+        //    Expect Ix0a for the win.
+        // 5. Clear and play a dummy move to end this test.
+
+        const SAVE: usize = 1 + 1 + 9 + 4;
+        const LEN: usize = DATA_UNIT
+            + SAVE
+            + (1 + DATA_UNIT) * 9 + DATA_UNIT + (1 + DATA_UNIT) * 9 + DATA_UNIT
+            + SAVE /*RETURN*/
+            + (1 + DATA_UNIT) * 9 + DATA_UNIT + (1 + DATA_UNIT) * 1 + DATA_UNIT + (1 + DATA_UNIT) * 10 + DATA_UNIT + (1 + DATA_UNIT) * 1 + DATA_UNIT + (1 + DATA_UNIT) * 11 + DATA_UNIT
+            + SAVE /*CLEAR*/
+            + (1 + DATA_UNIT) * 1;
+
+        let mut buf_origin: [u8; LEN] = [0; LEN];
+        let buf = &mut buf_origin[..];
+
+        // 1. Save at the beginning of the last Doctor move (_s1),
+        //    simulating the original move as is.
+        //    Expect Ix07 at the beginning of Plague's turn,
+        let _s1 = ";W[hi][ae][be][bd][be][be][be][be][be]";
+        buf[DATA_UNIT] = SAVE_CODE;
+        let mut base_offset = DATA_UNIT + SAVE;
+        buf[base_offset + (DATA_UNIT + 1) * 0] = "hi".to_map().to_map_encode();
+        buf[base_offset + (DATA_UNIT + 1) * 1] = "ae".to_env().to_env_encode();
+        buf[base_offset + (DATA_UNIT + 1) * 2] = "be".to_env().to_env_encode();
+        buf[base_offset + (DATA_UNIT + 1) * 3] = "bd".to_env().to_env_encode();
+        buf[base_offset + (DATA_UNIT + 1) * 4] = "be".to_env().to_env_encode();
+        buf[base_offset + (DATA_UNIT + 1) * 5] = "be".to_env().to_env_encode();
+        buf[base_offset + (DATA_UNIT + 1) * 6] = "be".to_env().to_env_encode();
+        buf[base_offset + (DATA_UNIT + 1) * 7] = "be".to_env().to_env_encode();
+        buf[base_offset + (DATA_UNIT + 1) * 8] = "be".to_env().to_env_encode();
+
+        // 2. Keep playing as is, and expect Ix09 for the win.
+        let _s2 = ";B[jj][ac][cc][dc][de][ac][dc][cc][ac]";
+        base_offset = base_offset + (DATA_UNIT + 1) * 9 + DATA_UNIT;
+        buf[base_offset + (DATA_UNIT + 1) * 0] = "jj".to_map().to_map_encode();
+        buf[base_offset + (DATA_UNIT + 1) * 1] = "ac".to_env().to_env_encode();
+        buf[base_offset + (DATA_UNIT + 1) * 2] = "cc".to_env().to_env_encode();
+        buf[base_offset + (DATA_UNIT + 1) * 3] = "dc".to_env().to_env_encode();
+        buf[base_offset + (DATA_UNIT + 1) * 4] = "de".to_env().to_env_encode();
+        buf[base_offset + (DATA_UNIT + 1) * 5] = "ac".to_env().to_env_encode();
+        buf[base_offset + (DATA_UNIT + 1) * 6] = "dc".to_env().to_env_encode();
+        buf[base_offset + (DATA_UNIT + 1) * 7] = "cc".to_env().to_env_encode();
+        buf[base_offset + (DATA_UNIT + 1) * 8] = "ac".to_env().to_env_encode();
+
+        // 3. Return. Change the Plague's final move this time,
+        //    Expect Ix08 at the beginning of Doctor's turn.
+        base_offset = base_offset + (DATA_UNIT + 1) * 9 + DATA_UNIT;
+        buf[base_offset] = RETURN_CODE;
+        base_offset = base_offset + SAVE;
+        buf[base_offset + (DATA_UNIT + 1) * 0] = "hi".to_map().to_map_encode();
+        buf[base_offset + (DATA_UNIT + 1) * 1] = "ae".to_env().to_env_encode();
+        buf[base_offset + (DATA_UNIT + 1) * 2] = "be".to_env().to_env_encode();
+        buf[base_offset + (DATA_UNIT + 1) * 3] = "bd".to_env().to_env_encode();
+        buf[base_offset + (DATA_UNIT + 1) * 4] = "be".to_env().to_env_encode();
+        buf[base_offset + (DATA_UNIT + 1) * 5] = "be".to_env().to_env_encode();
+        buf[base_offset + (DATA_UNIT + 1) * 6] = "be".to_env().to_env_encode();
+        buf[base_offset + (DATA_UNIT + 1) * 7] = "be".to_env().to_env_encode();
+        buf[base_offset + (DATA_UNIT + 1) * 8] = "be".to_env().to_env_encode();
+        base_offset = base_offset + (DATA_UNIT + 1) * 9 + DATA_UNIT;
+        let _s2_alt = ";B[gj]";
+        buf[base_offset + (DATA_UNIT + 1) * 0] = "gj".to_map().to_map_encode();
+
+        // 4. Play a counter move to win the game this time,
+        //    Expect Ix0a for the win.
+        let _s3 = ";W[jj][ba][ca][ea][fa][ea][ea][ea][ea][ea]";
+        let _s4 = ";B[gj]";
+        let _s5 = ";W[ii][kh][fa][ea][ca][cc][fa][fa][fa][ca][ca]";
+        base_offset = base_offset + (DATA_UNIT + 1) * 1 + DATA_UNIT;
+        buf[base_offset + (DATA_UNIT + 1) * 0] = "jj".to_map().to_map_encode();
+        buf[base_offset + (DATA_UNIT + 1) * 1] = "ba".to_env().to_env_encode();
+        buf[base_offset + (DATA_UNIT + 1) * 2] = "ca".to_env().to_env_encode();
+        buf[base_offset + (DATA_UNIT + 1) * 3] = "ea".to_env().to_env_encode();
+        buf[base_offset + (DATA_UNIT + 1) * 4] = "fa".to_env().to_env_encode();
+        buf[base_offset + (DATA_UNIT + 1) * 5] = "ea".to_env().to_env_encode();
+        buf[base_offset + (DATA_UNIT + 1) * 6] = "ea".to_env().to_env_encode();
+        buf[base_offset + (DATA_UNIT + 1) * 7] = "ea".to_env().to_env_encode();
+        buf[base_offset + (DATA_UNIT + 1) * 8] = "ea".to_env().to_env_encode();
+        buf[base_offset + (DATA_UNIT + 1) * 9] = "ea".to_env().to_env_encode();
+        base_offset = base_offset + (DATA_UNIT + 1) * 10 + DATA_UNIT;
+        buf[base_offset + (DATA_UNIT + 1) * 0] = "gj".to_map().to_map_encode();
+        base_offset = base_offset + (DATA_UNIT + 1) * 1 + DATA_UNIT;
+        buf[base_offset + (DATA_UNIT + 1) * 0] = "ii".to_map().to_map_encode();
+        buf[base_offset + (DATA_UNIT + 1) * 1] = "kh".to_map().to_map_encode();
+        buf[base_offset + (DATA_UNIT + 1) * 2] = "fa".to_env().to_env_encode();
+        buf[base_offset + (DATA_UNIT + 1) * 3] = "ea".to_env().to_env_encode();
+        buf[base_offset + (DATA_UNIT + 1) * 4] = "ca".to_env().to_env_encode();
+        buf[base_offset + (DATA_UNIT + 1) * 5] = "cc".to_env().to_env_encode();
+        buf[base_offset + (DATA_UNIT + 1) * 6] = "fa".to_env().to_env_encode();
+        buf[base_offset + (DATA_UNIT + 1) * 7] = "fa".to_env().to_env_encode();
+        buf[base_offset + (DATA_UNIT + 1) * 8] = "fa".to_env().to_env_encode();
+        buf[base_offset + (DATA_UNIT + 1) * 9] = "ca".to_env().to_env_encode();
+        buf[base_offset + (DATA_UNIT + 1) * 10] = "ca".to_env().to_env_encode();
+
+        // 5. Clear and play a dummy move to end this test.
+        base_offset = base_offset + (DATA_UNIT + 1) * 11 + DATA_UNIT;
+        buf[base_offset] = CLEAR_CODE;
+        base_offset = base_offset + SAVE;
+        buf[base_offset + (DATA_UNIT + 1) * 0] = "jh".to_map().to_map_encode();
+
+        let mut fake_stream = Cursor::new(buf);
+        assert!(handle_client(&mut fake_stream, &mut g) == true);
+        let buf_after = fake_stream.get_ref();
+
+        // Ix03: The start, sad that I have to check this
+        assert_eq!(buf_after[0], 73);
+        assert_eq!(buf_after[1], 120);
+        assert_eq!(buf_after[2], 48);
+        assert_eq!(buf_after[3], 51);
+
+        // Wx00: returned by the first save request
+        assert_eq!(buf_after[DATA_UNIT], 254);
+        assert_eq!(buf_after[DATA_UNIT + 1], 9);
+        base_offset = DATA_UNIT + SAVE;
+        assert_eq!(buf_after[base_offset - 4], 87);
+        assert_eq!(buf_after[base_offset - 3], 120);
+        assert_eq!(buf_after[base_offset - 2], 48);
+        assert_eq!(buf_after[base_offset - 1], 48);
+
+        // Ix07: simulated Plague starts
+        assert_eq!(buf_after[base_offset + (DATA_UNIT + 1) * 9 + 0], 73);
+        assert_eq!(buf_after[base_offset + (DATA_UNIT + 1) * 9 + 1], 120);
+        assert_eq!(buf_after[base_offset + (DATA_UNIT + 1) * 9 + 2], 48);
+        assert_eq!(buf_after[base_offset + (DATA_UNIT + 1) * 9 + 3], 55);
+        base_offset = base_offset + (DATA_UNIT + 1) * 9 + DATA_UNIT;
+
+        // Ix09: simulated Plague wins
+        assert_eq!(buf_after[base_offset + (DATA_UNIT + 1) * 9 + 0], 73);
+        assert_eq!(buf_after[base_offset + (DATA_UNIT + 1) * 9 + 1], 120);
+        assert_eq!(buf_after[base_offset + (DATA_UNIT + 1) * 9 + 2], 48);
+        assert_eq!(buf_after[base_offset + (DATA_UNIT + 1) * 9 + 3], 57);
+        base_offset = base_offset + (DATA_UNIT + 1) * 9 + DATA_UNIT;
+
+        // Wx00: returned by the first save request
+        assert_eq!(buf_after[base_offset], 253);
+        assert_eq!(buf_after[base_offset + 1], 9);
+        base_offset = base_offset + SAVE;
+        assert_eq!(buf_after[base_offset - 4], 87);
+        assert_eq!(buf_after[base_offset - 3], 120);
+        assert_eq!(buf_after[base_offset - 2], 48);
+        assert_eq!(buf_after[base_offset - 1], 48);
+
+        // Ix08: simulated Doctor starts
+        base_offset = base_offset + (DATA_UNIT + 1) * 9 + DATA_UNIT;
+        assert_eq!(buf_after[base_offset + (DATA_UNIT + 1) * 1 + 0], 73);
+        assert_eq!(buf_after[base_offset + (DATA_UNIT + 1) * 1 + 1], 120);
+        assert_eq!(buf_after[base_offset + (DATA_UNIT + 1) * 1 + 2], 48);
+        assert_eq!(buf_after[base_offset + (DATA_UNIT + 1) * 1 + 3], 56);
+
+        // Ix0a: simulated Doctor wins, and the intermediates
+        base_offset =
+            base_offset + (DATA_UNIT + 1) * 1 + DATA_UNIT + (DATA_UNIT + 1) * 10 + DATA_UNIT;
+        assert_eq!(buf_after[base_offset + (DATA_UNIT + 1) * 1 + 0], 73);
+        assert_eq!(buf_after[base_offset + (DATA_UNIT + 1) * 1 + 1], 120);
+        assert_eq!(buf_after[base_offset + (DATA_UNIT + 1) * 1 + 2], 48);
+        assert_eq!(buf_after[base_offset + (DATA_UNIT + 1) * 1 + 3], 56);
+        base_offset = base_offset + (DATA_UNIT + 1) * 1 + DATA_UNIT;
+        assert_eq!(buf_after[base_offset + (DATA_UNIT + 1) * 11 + 0], 73);
+        assert_eq!(buf_after[base_offset + (DATA_UNIT + 1) * 11 + 1], 120);
+        assert_eq!(buf_after[base_offset + (DATA_UNIT + 1) * 11 + 2], 48);
+        assert_eq!(buf_after[base_offset + (DATA_UNIT + 1) * 11 + 3], 97);
+        base_offset = base_offset + (DATA_UNIT + 1) * 11 + DATA_UNIT;
+
+        // Wx00: returned by the first save request
+        assert_eq!(buf_after[base_offset], 252);
+        assert_eq!(buf_after[base_offset + 1], 9);
+        base_offset = base_offset + SAVE;
+        assert_eq!(buf_after[base_offset - 4], 87);
+        assert_eq!(buf_after[base_offset - 3], 120);
+        assert_eq!(buf_after[base_offset - 2], 48);
+        assert_eq!(buf_after[base_offset - 1], 48);
+
+        // Ix00: After the doctor's turn is over
+        assert_eq!(buf_after[base_offset + (DATA_UNIT + 1) * 0 + 1], 73);
+        assert_eq!(buf_after[base_offset + (DATA_UNIT + 1) * 0 + 2], 120);
+        assert_eq!(buf_after[base_offset + (DATA_UNIT + 1) * 0 + 3], 48);
+        assert_eq!(buf_after[base_offset + (DATA_UNIT + 1) * 0 + 4], 48);
     }
 }

@@ -468,7 +468,15 @@ impl Game {
                     }
                 }
             }
-            Some((_, Stuff::Colony)) => panic!("Cannot add marker to Colony"),
+            Some((cc, Stuff::Colony)) => {
+                if self.savepoint {
+                    // since we are in simulation, this is allowed to revert the effect.
+                    assert_ne!(cc, camp);
+                    self.stuff.insert(*c, (*cc, Stuff::Marker(MAX_MARKER)));
+                } else {
+                    panic!("Cannot add marker to Colony");
+                }
+            }
         }
     }
 
