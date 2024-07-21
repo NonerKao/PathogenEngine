@@ -519,49 +519,42 @@ fn handle_client<T: Read + ReaderExtra + Write + WriterExtra>(
 ) -> bool {
     let mut buffer = [0; 1]; // to read the 1-byte action from agent
 
-    // Previously this was called ea for Empty Action, but now I want to reuse
-    // it as the save slot.
     let mut saved_action = Action::new();
     let ea = Action::new();
-    let mut es = "Ix03";
+    // old camp: This is important information.
+    // Previously we make the variable `possible_change` for accomodating
+    // the shift of actions (and of course, game steps). Unfortunately,
+    // we didn't consider that camp can also shift across turns.
+    // With `oc` here, we can always compared the current camp, and thus
+    // determine the status code without maintaining the impossible
+    // state machine.
+    let oc = g.turn;
     loop {
         // A state machine for RL support mode
         // This way, when an "Ix02"/"Ix00" is encounted,
         // this agent keeps occupying the server by staying
         // in this loop, but use a different initial code to
         // indicate the situation.
-        es = if g.savepoint {
-            if es == "Ix03" || es == "Ix08" {
-                if g.is_ended() {
+        let es = if g.savepoint {
+            if g.is_ended() {
+                if oc != g.turn {
                     // simulated myself's win
                     "Ix0a"
                 } else {
-                    // simulated opponent's turn
-                    "Ix07"
-                }
-            } else if es == "Ix07" {
-                if g.is_ended() {
                     // simulated opponent's win
                     "Ix09"
+                }
+            } else {
+                if oc != g.turn {
+                    // simulated opponent's turn
+                    "Ix07"
                 } else {
                     // simulated myself's turn
                     "Ix08"
                 }
-            } else if es == "Ix09" || es == "Ix0a" {
-                // The agent will rewind the game back to the point it
-                // saved, and restart from there.
-                // Under such a circumstance, we will start a simulated
-                // opponet's move here. You may wonder why we don't consider
-                // the CLAER action. Because at an end for that action,
-                // we will break out of this function and trigger the real
-                // opponent's turn, and we will have a Ix03 after they finish
-                // their move, or receieve a real end notificaiton of losing.
-                "Ix07"
-            } else {
-                panic!("Unexpected state: {}", es);
             }
         } else {
-            es
+            "Ix03"
         };
 
         if stream.update_agent(g, if g.is_ended() { &ea } else { &saved_action }, &es) == false {
@@ -2029,5 +2022,167 @@ mod tests {
         assert_eq!(buf_after[base_offset + (DATA_UNIT + 1) * 0 + 2], 120);
         assert_eq!(buf_after[base_offset + (DATA_UNIT + 1) * 0 + 3], 48);
         assert_eq!(buf_after[base_offset + (DATA_UNIT + 1) * 0 + 4], 48);
+    }
+
+    #[test]
+    fn test_simulated_turn4() {
+        // From a previously recorded file.
+        let s0 = "(
+                ;C[Setup0]AW[da][ce][fe][fb][cc][ab][bd][df][bb][ac][fc][ba][ad][eb][dc][ee][dd][cf][af][fd]
+                ;C[Setup0]AB[bf][ae][ea][ec][fa][ff][ed][be][bc][cd][cb][aa][de][ca][db][ef]
+                ;C[Setup1]AB[dd]
+                ;C[Setup1]AB[bf]
+                ;C[Setup1]AB[fa]
+                ;C[Setup1]AB[ab]
+                ;C[Setup2]AW[be]
+                ;C[Setup2]AB[cf]
+                ;C[Setup2]AW[fd]
+                ;C[Setup2]AB[aa]
+                ;C[Setup3]AW[ij]
+                ;B[hj][cf][af][cf][cf][cf][cf]
+            )"
+        .to_string();
+        let mut iter = s0.trim().chars().peekable();
+        let t = TreeNode::new(&mut iter, None);
+        let mut g = Game::init(Some(t));
+
+        // The scenario is like the follows:
+
+        const SAVE: usize = 1 + 1 + 6 + 4;
+        const QUERY1: usize = 1 + 1 + 2 + 4;
+        const QUERY2: usize = 1 + 1 + 1 + 4;
+        const QUERY3: usize = 1 + 1 + 13 + 4;
+        const QUERY4: usize = 1 + 1 + 4 + 4;
+        const LEN: usize = DATA_UNIT
+            + SAVE + SAVE /* RETURN, expanding root's child: [106, 107, 111, 112, 113, 116] */
+            + (1 + DATA_UNIT) /* 107 */
+            + QUERY1 + SAVE /* RETURN, expanding 107's child: [10, 33] */
+            + (1 + DATA_UNIT) /* 116 */
+            + QUERY2 + SAVE /* RETURN, expanding 116's child: [10] */
+            + (1 + DATA_UNIT) /* 116 */
+            + QUERY2
+            + (1 + DATA_UNIT) /* 10 */
+            + QUERY2 + SAVE /* RETURN, expanding 10's child: [8] */
+            + (1 + DATA_UNIT) /* 113 */ + DATA_UNIT /* Ix07 */
+            + QUERY3 + SAVE /* RETURN, expanding 113's child: [108, 110, 111, 112, 114, 115, 116, 117, 118, 119, 121, 122, 123] */
+            + (1 + DATA_UNIT) /* 116 */
+            + QUERY2
+            + (1 + DATA_UNIT) /* 10 */
+            + QUERY2
+            + (1 + DATA_UNIT) /* 8 */
+            + QUERY2 + SAVE /* RETURN, expanding 8's child: [26] */
+            + (1 + DATA_UNIT) /* 112 */
+            + QUERY4 + SAVE /* RETURN, expanding 112's child: [108, 118, 116, 106] */
+            + (1 + DATA_UNIT) /* 112 */
+            + QUERY4
+            + (1 + DATA_UNIT) /* 118 */
+            + QUERY2 + SAVE /* RETURN, expanding 118's child: [33] */
+            + (1 + DATA_UNIT) /* 113 */ + DATA_UNIT /* Ix07 */
+            + /* to end this pattern */ SAVE /* CLEAR */ + (1 + DATA_UNIT);
+
+        let mut buf_origin: [u8; LEN] = [0; LEN];
+        let buf = &mut buf_origin[..];
+
+        let mut base_offset = DATA_UNIT;
+        buf[base_offset] = SAVE_CODE;
+        base_offset = base_offset + SAVE;
+        buf[base_offset] = RETURN_CODE;
+        base_offset = base_offset + SAVE;
+        buf[base_offset] = 107;
+        base_offset = base_offset + 1;
+        base_offset = base_offset + DATA_UNIT;
+        buf[base_offset] = QUERY_CODE;
+        base_offset = base_offset + QUERY1;
+        buf[base_offset] = RETURN_CODE;
+        base_offset = base_offset + SAVE;
+        buf[base_offset] = 116;
+        base_offset = base_offset + 1;
+        base_offset = base_offset + DATA_UNIT;
+        buf[base_offset] = QUERY_CODE;
+        base_offset = base_offset + QUERY2;
+        buf[base_offset] = RETURN_CODE;
+        base_offset = base_offset + SAVE;
+        buf[base_offset] = 116;
+        base_offset = base_offset + 1;
+        base_offset = base_offset + DATA_UNIT;
+        buf[base_offset] = QUERY_CODE;
+        base_offset = base_offset + QUERY2;
+        buf[base_offset] = 10;
+        base_offset = base_offset + 1;
+        base_offset = base_offset + DATA_UNIT;
+        buf[base_offset] = QUERY_CODE;
+        base_offset = base_offset + QUERY2;
+        buf[base_offset] = RETURN_CODE;
+        base_offset = base_offset + SAVE;
+        buf[base_offset] = 113;
+        base_offset = base_offset + 1;
+        base_offset = base_offset + DATA_UNIT;
+        base_offset = base_offset + DATA_UNIT;
+        buf[base_offset] = QUERY_CODE;
+        let assert_this_index = base_offset;
+        base_offset = base_offset + QUERY3;
+        buf[base_offset] = RETURN_CODE;
+        base_offset = base_offset + SAVE;
+        buf[base_offset] = 116;
+        base_offset = base_offset + 1;
+        base_offset = base_offset + DATA_UNIT;
+        buf[base_offset] = QUERY_CODE;
+        base_offset = base_offset + QUERY2;
+        buf[base_offset] = 10;
+        base_offset = base_offset + 1;
+        base_offset = base_offset + DATA_UNIT;
+        buf[base_offset] = QUERY_CODE;
+        base_offset = base_offset + QUERY2;
+        buf[base_offset] = 8;
+        base_offset = base_offset + 1;
+        base_offset = base_offset + DATA_UNIT;
+        buf[base_offset] = QUERY_CODE;
+        base_offset = base_offset + QUERY2;
+        buf[base_offset] = RETURN_CODE;
+        base_offset = base_offset + SAVE;
+        buf[base_offset] = 112;
+        base_offset = base_offset + 1;
+        base_offset = base_offset + DATA_UNIT;
+        buf[base_offset] = QUERY_CODE;
+        base_offset = base_offset + QUERY4;
+        buf[base_offset] = RETURN_CODE;
+        base_offset = base_offset + SAVE;
+        buf[base_offset] = 112;
+        base_offset = base_offset + 1;
+        base_offset = base_offset + DATA_UNIT;
+        buf[base_offset] = QUERY_CODE;
+        base_offset = base_offset + QUERY4;
+        buf[base_offset] = 118;
+        base_offset = base_offset + 1;
+        base_offset = base_offset + DATA_UNIT;
+        buf[base_offset] = QUERY_CODE;
+        base_offset = base_offset + QUERY2;
+        buf[base_offset] = RETURN_CODE;
+        base_offset = base_offset + SAVE;
+        buf[base_offset] = 113;
+        base_offset = base_offset + 1;
+        base_offset = base_offset + DATA_UNIT;
+        // To end this pattern
+        buf[base_offset + DATA_UNIT] = CLEAR_CODE;
+        buf[base_offset + DATA_UNIT + SAVE] = 113;
+
+        let mut fake_stream = Cursor::new(buf);
+        assert!(handle_client(&mut fake_stream, &mut g) == true);
+        let buf_after = fake_stream.get_ref();
+
+        // Ix03: The start, sad that I have to check this
+        assert_eq!(buf_after[0], 73);
+        assert_eq!(buf_after[1], 120);
+        assert_eq!(buf_after[2], 48);
+        assert_eq!(buf_after[3], 51);
+
+        assert_eq!(buf_after[assert_this_index], QUERY_CODE);
+        assert_eq!(buf_after[assert_this_index + 1], 13);
+
+        // Ix07: simulated Doctor starts
+        assert_eq!(buf_after[base_offset + 0], 73);
+        assert_eq!(buf_after[base_offset + 1], 120);
+        assert_eq!(buf_after[base_offset + 2], 48);
+        assert_eq!(buf_after[base_offset + 3], 55);
     }
 }
