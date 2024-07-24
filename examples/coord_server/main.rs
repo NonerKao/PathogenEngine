@@ -328,6 +328,12 @@ where
     // Others are either redundent (SetMarkers) or one-shot.
     // But this helps that I don't have to consider the indirection among
     // different phases.
+    // As the RLAgent needs simulation, it seems that the BoardMove phase
+    // is no longer safe with this static bound, because the savepoint
+    // can be some middle point during the move. It is then not possible
+    // to break the for loop (or return) before turning into SetMarkers,
+    // nor can it act like Plague's SetMarkers that can return earlier
+    // without really reaching this outer bound.
     for _ in 0..outer_bound {
         // Unconditioned loop that was mainly designed to eliminate the
         // trial-and-error behavior from the agents.
@@ -422,7 +428,7 @@ fn set_board_move_loop<T: Read + ReaderExtra + Write + WriterExtra>(
         a,
         input,
         Action::add_board_single_step,
-        a.steps,
+        a.steps + 1 - a.trajectory.len(),
         ActionPhase::BoardMove,
         saved,
     )
@@ -557,7 +563,8 @@ fn handle_client<T: Read + ReaderExtra + Write + WriterExtra>(
             "Ix03"
         };
 
-        if stream.update_agent(g, if g.is_ended() { &ea } else { &saved_action }, &es) == false {
+        // I don't think this one has anything to do with saved_action
+        if stream.update_agent(g, &ea, &es) == false {
             return false;
         }
         match stream.peek(&mut buffer) {
@@ -944,7 +951,10 @@ mod tests {
             1
         );
         // Doctor's token
-        assert_eq!(buf_after[env_offset + 2 * 5 * 2 + 3 * 2] /* "ij" */, 1);
+        assert_eq!(
+            buf_after[env_offset + 2 * 5 * 2 + 3 * 2 + 0], /* "ij" */
+            1
+        );
         // Plague's token
         assert_eq!(
             buf_after[env_offset + 3 * 5 * 2 + 3 * 2 + 1], /* "jj" */
@@ -970,8 +980,12 @@ mod tests {
         );
         // it moves to "ii" in SetMap
         assert_eq!(
-            buf_after[base_offset + flow_map_offset + 2 * 5 * 2 + 2 * 2], /* "ii" */
+            buf_after[base_offset + flow_map_offset + 2 * 5 * 2 + 2 * 2 + 0], /* "ii" */
             1
+        );
+        assert_eq!(
+            buf_after[base_offset + flow_map_offset + 1 * 5 * 2 + 1 * 2 + 1], /* "hh" */
+            0
         );
 
         // when it is SetCharacter...
@@ -985,12 +999,16 @@ mod tests {
             1
         );
         assert_eq!(
-            buf_after[base_offset + CODE_DATA + 0 * 6 * 11 + 0 * 11 + 0], /* "aa" */
+            buf_after[base_offset + flow_env_offset + 0 * 6 * 11 + 0 * 11 + 0], /* "aa" */
             0
         );
 
         // when it is BoardMove...
         base_offset = base_offset + (DATA_UNIT + 1);
+        assert_eq!(
+            buf_after[base_offset + flow_map_offset + 2 * 5 * 2 + 2 * 2 + 0], /* "ii" */
+            1
+        );
         assert_eq!(
             buf_after[base_offset + flow_map_offset + 1 * 5 * 2 + 1 * 2 + 1], /* "hh" */
             1
@@ -1018,6 +1036,10 @@ mod tests {
             buf_after[base_offset + flow_env_offset + 1 * 6 * 11 + 1 * 11 + 2], /* "bb" */
             0
         );
+        assert_eq!(
+            buf_after[base_offset + flow_env_offset + 1 * 6 * 11 + 1 * 11 + 5], /* "bb" */
+            0
+        );
 
         // when it is SetMarkers... after the second BoardMove
         base_offset = base_offset + (DATA_UNIT + 1);
@@ -1036,6 +1058,10 @@ mod tests {
         // the rest repeat the destination
         assert_eq!(
             buf_after[base_offset + flow_env_offset + 1 * 6 * 11 + 1 * 11 + 3], /* "bb" */
+            1
+        );
+        assert_eq!(
+            buf_after[base_offset + flow_env_offset + 1 * 6 * 11 + 1 * 11 + 4], /* "bb" */
             1
         );
         assert_eq!(

@@ -37,7 +37,7 @@ class Agent(ABC):
         self.analyze(data)
         if self.record is not None:
             self.record.write(self.action.to_bytes(1, 'little'))
-        if data[0:4] in (b'Ix01', b'Ix03', b'Ix07', b'Ix08'):
+        if data[0:4] in (b'Ix01', b'Ix03', b'Ix07', b'Ix08', b'Ix09', b'Ix0a'):
             self.s.sendall(bytes([self.action]))
             if self.verbose:
                 print(self.action)
@@ -61,6 +61,9 @@ class Agent(ABC):
                 if self.verbose:
                     print("disconnected")
                 return False;
+            else:
+                print("What is this?")
+                panic()
 
         return True
 
