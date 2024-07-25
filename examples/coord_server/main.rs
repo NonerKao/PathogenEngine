@@ -2211,4 +2211,148 @@ mod tests {
         assert_eq!(buf_after[base_offset + 2], 48);
         assert_eq!(buf_after[base_offset + 3], 55);
     }
+
+    #[test]
+    fn test_simulated_turn5() {
+        // From a previously recorded file.
+        let s0 = "(
+                ;C[Setup0]AW[cf][bd][ba][fd][ea][ac][df][ed][fb][ee][af][be][dc][bb][ad][aa][cc][de][fa]
+                ;C[Setup0]AB[ff][ec][eb][ca][dd][fe][db][cb][cd][ab][bf][ef][ce][da][fc][bc][ae]
+                ;C[Setup1]AB[ae]
+                ;C[Setup1]AB[ba]
+                ;C[Setup1]AB[ff]
+                ;C[Setup1]AB[dc]
+                ;C[Setup2]AW[ce]
+                ;C[Setup2]AB[fe]
+                ;C[Setup2]AW[cc]
+                ;C[Setup2]AB[aa]
+                ;C[Setup3]AW[ih]
+                ;B[gh][fe][ce][ae][fe][fe][fe][fe]
+                ;W[hj][cc][dc][de][df][dc][dc][dc][cc][cc]
+                ;B[kh][ae][ce][cd][dd][db][eb][ae][db][dd][cd]
+                ;W[hj]
+                ;B[hk][aa][ac][aa][aa][aa][aa]
+                ;W[ij][df][de][ee][de][de][de][de][df]
+                ;B[hk]
+                ;W[hh][ce][cd][cb][ca][cd][cd][cd][ce][cd]
+                ;B[ig][ac][aa][ba][aa][ac][ac][aa]
+                ;W[hj][ca][cb][cd][ce][ae][ca][ca][ca][ca][ca]
+                ;B[hk][eb][ec][eb][eb][eb][eb]
+                ;W[hi][ee][ed][ea][ee][ed][ee][ed][ee]
+                ;B[gh][ec][eb][db][eb][ec][ec][eb]
+                ;W[ih][ae][ce][fe][ae][ae][ce][ae][ce]
+                ;B[jh][db][eb][db][db][db][db]
+                ;W[ih]
+                ;B[ji][ba][bb][fb][bb][ba][ba][bb]
+                ;W[jh][fe][fc][fe][fe][fe][fe][fe]
+                ;B[hi][fb][fd][ed][bd][fb][ed][fd][ed]
+                ;W[jh]
+                ;B[ij][eb][ec][bc][bf][ec][bc][bc][ec]
+                ;W[ii][hi][ea][fa][ea][ea][ea][ea][ea])"
+        .to_string();
+        let mut iter = s0.trim().chars().peekable();
+        let t = TreeNode::new(&mut iter, None);
+        let mut g = Game::init(Some(t));
+
+        // The scenario is like the follows:
+
+        let _s1 = ";B[ih][bf][bc][bf][bf][bf][bf]";
+        const _ONE: usize = 1 + 1 + 1 + 4;
+        const TWO: usize = 1 + 1 + 2 + 4;
+        const LEN: usize = DATA_UNIT + (1 + DATA_UNIT) /* 111 */
+            + TWO /* SAVE, expanding root's child: [9, 11] */
+            + (1 + DATA_UNIT) /* 11 */
+            + (1 + DATA_UNIT) /* 8 */
+            + (1 + DATA_UNIT) /* 11 */
+            + (1 + DATA_UNIT) /* 11 */
+            + (1 + DATA_UNIT) /* 11 */
+            + (1 + DATA_UNIT) /* 11 */ + DATA_UNIT /* Ix07 */
+            + TWO /* RETURN */
+            + (1 + DATA_UNIT) /* 11 <=== focus on this. undoing lockdown'ed plague token can be wrong */
+            + TWO /* CLEAR */
+            + (1 + DATA_UNIT) /* 11 */
+            + (1 + DATA_UNIT) /* 8 */
+            + (1 + DATA_UNIT) /* 11 */
+            + (1 + DATA_UNIT) /* 11 */
+            + (1 + DATA_UNIT) /* 11 */
+            + (1 + DATA_UNIT) /* 11 */ + DATA_UNIT /* Ix02 */ ;
+
+        let mut buf_origin: [u8; LEN] = [0; LEN];
+        let buf = &mut buf_origin[..];
+
+        let mut base_offset = DATA_UNIT;
+        buf[base_offset] = 111;
+        base_offset = base_offset + (1 + DATA_UNIT);
+        buf[base_offset] = SAVE_CODE;
+        base_offset = base_offset + TWO;
+        buf[base_offset] = 11;
+        base_offset = base_offset + (1 + DATA_UNIT);
+        buf[base_offset] = 8;
+        base_offset = base_offset + (1 + DATA_UNIT);
+        buf[base_offset] = 11;
+        base_offset = base_offset + (1 + DATA_UNIT);
+        buf[base_offset] = 11;
+        base_offset = base_offset + (1 + DATA_UNIT);
+        buf[base_offset] = 11;
+        base_offset = base_offset + (1 + DATA_UNIT);
+        buf[base_offset] = 11;
+        base_offset = base_offset + (1 + DATA_UNIT);
+        base_offset = base_offset + DATA_UNIT;
+        buf[base_offset] = RETURN_CODE;
+        base_offset = base_offset + TWO;
+        buf[base_offset] = 11;
+        base_offset = base_offset + 1;
+        let assert_this_index = base_offset;
+        base_offset = base_offset + DATA_UNIT;
+        buf[base_offset] = CLEAR_CODE;
+        base_offset = base_offset + TWO;
+        buf[base_offset] = 11;
+        base_offset = base_offset + (1 + DATA_UNIT);
+        buf[base_offset] = 8;
+        base_offset = base_offset + (1 + DATA_UNIT);
+        buf[base_offset] = 11;
+        base_offset = base_offset + (1 + DATA_UNIT);
+        buf[base_offset] = 11;
+        base_offset = base_offset + (1 + DATA_UNIT);
+        buf[base_offset] = 11;
+        base_offset = base_offset + (1 + DATA_UNIT);
+        buf[base_offset] = 11;
+        base_offset = base_offset + 1;
+
+        let mut fake_stream = Cursor::new(buf);
+        assert!(handle_client(&mut fake_stream, &mut g) == true);
+        let buf_after = fake_stream.get_ref();
+
+        // Ix03: The start, sad that I have to check this
+        assert_eq!(buf_after[0], 73);
+        assert_eq!(buf_after[1], 120);
+        assert_eq!(buf_after[2], 48);
+        assert_eq!(buf_after[3], 51);
+
+        // Ix01: Returning from simulated doctor turn:
+        //       Will undoing lockdown'ed plague token go wrong?
+        let env_offset = CODE_DATA + BOARD_DATA;
+        assert_eq!(buf_after[assert_this_index + 0], 73);
+        assert_eq!(buf_after[assert_this_index + 1], 120);
+        assert_eq!(buf_after[assert_this_index + 2], 48);
+        assert_eq!(buf_after[assert_this_index + 3], 49);
+        assert_eq!(
+            buf_after[assert_this_index + env_offset + 2 * 5 * 2 + 2 * 2 + 0], /* "ii" */
+            1
+        );
+        assert_eq!(
+            buf_after[assert_this_index + env_offset + 2 * 5 * 2 + 3 * 2 + 1], /* "ij" */
+            0
+        );
+        assert_eq!(
+            buf_after[assert_this_index + env_offset + 1 * 5 * 2 + 2 * 2 + 1], /* "hi" */
+            1
+        );
+
+        // Ix02: Close this pattern
+        assert_eq!(buf_after[base_offset + 0], 73);
+        assert_eq!(buf_after[base_offset + 1], 120);
+        assert_eq!(buf_after[base_offset + 2], 48);
+        assert_eq!(buf_after[base_offset + 3], 50);
+    }
 }

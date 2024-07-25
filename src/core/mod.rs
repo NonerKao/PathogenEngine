@@ -932,10 +932,21 @@ impl Game {
                     let restriction = my_map - &op_map;
                     let steps = restriction.iter().map(|(_, i)| *i as usize).sum::<usize>();
 
-                    // undo the map, this will need the reference from
-                    // 2 moves ago
+                    // undo the map
+                    // Normally, this will need the reference from 2 moves ago.
                     let my_map_prev = if let Some(p) = &self.history.borrow().parent {
-                        if let Some(pp) = &p.as_ref().borrow().parent {
+                        // BUT! A special case is when undoing a Plague's move,
+                        // and the previous Doctor's move happens to be a locked-down!
+                        // AND Doctor doesn't just stay there!
+                        if self.turn == Camp::Plague
+                            && op_map == "ii".to_map()
+                            && p.as_ref().borrow().properties[0].value.len() > 1
+                        {
+                            p.as_ref().borrow().properties[0].value[1]
+                                .as_str()
+                                .to_map()
+                                .clone()
+                        } else if let Some(pp) = &p.as_ref().borrow().parent {
                             if x > 3 {
                                 pp.as_ref().borrow().properties[0].value[0]
                                     .as_str()
