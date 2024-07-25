@@ -191,7 +191,11 @@ class RLAgent(Agent):
                 self.current_node = self.root
         elif data[0:4] in (b'Ix09', b'Ix0a'):
             self.num_trials = self.num_trials - 1
-            self.action = RETURN
+            if self.num_trials <= 0:
+                self.action = CLEAR
+                self.simulation = False
+            else:
+                self.action = RETURN
             self.update()
             # XXX: remove this when update is done
             self.current_node = self.root

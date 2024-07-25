@@ -905,7 +905,7 @@ impl Game {
                 // self.history.
                 self.switch();
 
-                // If there was ann Ix00, then we should need to do anything,
+                // If there was an Ix00, then we shouldn't need to do anything,
                 // except for reverting the history.
                 if self.history.borrow().properties[0].value.len() != 1 {
                     let op_map = if let Some(p) = &self.history.borrow().parent {
@@ -956,7 +956,21 @@ impl Game {
                                 // x == 2
                                 // Plauge undo-es its first move, which goes back to some
                                 // value that will be overwirtten soon anyway.
-                                Coord::new(-999, -999)
+                                // Previously we use Coord::new(-998, -997) for this purpose,
+                                // but as we use the information for encoding,
+                                // the coordinate is obviuosly not OK.
+                                // Similar to the way we initialize a game, we set the
+                                // map position of the Plague to that of the Doctor.
+                                p.as_ref()
+                                    .borrow()
+                                    .properties
+                                    .iter()
+                                    .find(|prop| prop.ident == "AW")
+                                    .unwrap()
+                                    .value[0]
+                                    .as_str()
+                                    .to_map()
+                                    .clone()
                             }
                         } else {
                             panic!("No grandparent");
