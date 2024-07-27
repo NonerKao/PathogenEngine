@@ -184,11 +184,13 @@ class RLAgent(Agent):
                 self.num_trials = self.num_trials - 1
                 for action in self.candidate:
                     self.current_node.child_nodes[action] = Node(None, self.current_node, None)
-                self.action = RETURN
-                self.send_special(self.action)
-                self.update()
-                # XXX: remove this when update is done
-                self.current_node = self.root
+                # why would we backtracking for this single option?
+                if len(self.candidate) > 1:
+                    self.action = RETURN
+                    self.send_special(self.action)
+                    self.update()
+                    # XXX: remove this when update is done
+                    self.current_node = self.root
         elif data[0:4] in (b'Ix09', b'Ix0a'):
             self.num_trials = self.num_trials - 1
             if self.num_trials <= 0:
