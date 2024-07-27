@@ -9,7 +9,7 @@ use pathogen_engine::core::action::Action;
 use pathogen_engine::core::action::ActionPhase;
 use pathogen_engine::core::action::Candidate;
 use pathogen_engine::core::grid_coord::{Coord, MAP_OFFSET};
-use pathogen_engine::core::tree::TreeNode;
+use pathogen_engine::core::tree::{Property, TreeNode};
 use pathogen_engine::core::*;
 
 const BOARD_DATA: usize = 288; /*8x6x6*/
@@ -692,21 +692,30 @@ fn main() -> Result<(), std::io::Error> {
     let mut s: [TcpStream; 2] = [w, b];
 
     let ea = Action::new();
-    while let Phase::Main(x) = g.phase {
-        let turn: usize = x.try_into().unwrap();
-        if !handle_client(&mut s[turn % 2], &mut g) {
-            s[turn % 2].update_agent(&g, &ea, &"Ix06");
-            s[1 - turn % 2].update_agent(&g, &ea, &"Ix06");
-            drop(s);
-            break;
+    let result: String = loop {
+        if let Phase::Main(x) = g.phase {
+            let turn: usize = x.try_into().unwrap();
+            if !handle_client(&mut s[turn % 2], &mut g) {
+                s[turn % 2].update_agent(&g, &ea, &"Ix06");
+                s[1 - turn % 2].update_agent(&g, &ea, &"Ix06");
+                drop(s);
+                break format!("RE[{}+{}]", "O", turn);
+            }
+            if g.is_ended() {
+                s[turn % 2].update_agent(&g, &ea, &"Ix04");
+                s[1 - turn % 2].update_agent(&g, &ea, &"Ix05");
+                break format!("RE[{}+{}]", if turn % 2 == 0 { "W" } else { "B" }, turn);
+            }
+        } else {
+            panic!("Not in the main game!");
         }
-        if g.is_ended() {
-            s[turn % 2].update_agent(&g, &ea, &"Ix04");
-            s[1 - turn % 2].update_agent(&g, &ea, &"Ix05");
-            break;
-        }
-    }
+    };
 
+    let mut iter = result.trim().chars().peekable();
+    g.history.borrow().to_root().borrow().children[0]
+        .borrow_mut()
+        .properties
+        .push(Property::new(&mut iter));
     to_file(&g)
 }
 
