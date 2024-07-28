@@ -1044,6 +1044,25 @@ mod tests {
     }
 
     #[test]
+    fn test_find_route5() {
+        let s0 = "(;C[Setup0]AW[da][cc][ee][aa][be][ff][ab][ea][dd][ba][ec][fb][ad][bf][db][ed][ce][fe][bc];C[Setup0]AB[fc][de][eb][bb][dc][ae][cf][af][ef][cb][ca][cd][df][fd][bd][ac][fa];C[Setup1]AB[fe];C[Setup1]AB[bf];C[Setup1]AB[ea];C[Setup1]AB[cc];C[Setup2]AW[ee];C[Setup2]AB[bc];C[Setup2]AW[cd];C[Setup2]AB[ca];C[Setup3]AW[hi])"
+        .to_string();
+        let mut iter = s0.trim().chars().peekable();
+        let t = TreeNode::new(&mut iter, None);
+        let g = Game::init(Some(t));
+        let mut buffer = String::new();
+        g.history.borrow().to_root().borrow().to_string(&mut buffer);
+        assert_eq!(s0, buffer);
+        let _s1 = "(;B[gj][cc][ce][be][ce][ce][cc][cc])";
+        let mut a = Action::new();
+        let r1 = a.add_map_step(&g, "gj".to_map());
+        assert_eq!(Ok("Ix01"), r1);
+        assert_eq!(a.candidate.len(), 1);
+        let r2 = a.add_character(&g, "cc".to_env());
+        assert_eq!(Err("Ex21"), r2);
+    }
+
+    #[test]
     fn test_fail_to_lockdown() {
         let s0 = "(;FF[4]GM[41]SZ[6]GN[https://boardgamegeek.com/boardgame/369862/pathogen];C[Setup0]AW[fa][ef][ed][eb][cf][cc][dc][ca][ad][fe][ab][db][bb][be][fb][ae][ac][df];C[Setup0]AB[af][ba][dd][da][ff][bf][ee][bc][de][ec][cb][aa][ea][bd][ce][fc][cd][fd];C[Setup1]AB[ee];C[Setup1]AB[cf];C[Setup1]AB[fa];C[Setup1]AB[bc];C[Setup2]AW[bf];C[Setup2]AB[ce];C[Setup2]AW[db];C[Setup2]AB[eb];C[Setup3]AW[ih];B[jg][ce][de][dd][ce][de][ce][de])"
         .to_string();
