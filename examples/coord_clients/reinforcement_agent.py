@@ -59,6 +59,13 @@ class Node():
             # print("=================")
         return
 
+    def puct(self, t):
+        explore = np.sqrt(t)/(1 + self.n)
+        if self.n == 0:
+            return explore
+        else:
+            return (self.w / self.n) + explore
+
 class RLAgent(Agent):
     torch.set_default_device(torch.device("cuda"))
     def __init__(self, f):
@@ -273,16 +280,45 @@ class RLAgent(Agent):
                 self.current_node = self.root.child_nodes[self.action]
                 self.root = self.current_node
 
+        elif self.candidate == None:
+            print("This doesn't make any sense. Check it!")
+            output(data)
+            sys.exit(255)
+        elif len(self.candidate) == 1:
+            self.action = self.candidate[0]
+            self.current_node = self.current_node.child_nodes[self.action]
         else:
             # [RL]
-            # XXX: Apply the MCTS result and the boltzman distribution
-            if self.candidate != None:
-                self.action = random.choice(self.candidate)
-            else:
-                print("This doesn't make any sense. Check it!")
-                output(data)
-                sys.exit(255)
+            # Run the child node who has the maximum PUCT
+            max_action_puct = 0;
+            for candidate in self.candidate:
+                puct = self.current_node.child_nodes[candidate].puct(self.current_node.n)
+                if max_action_puct < puct:
+                    max_action_puct = puct
+                    self.action = candidate
 
             self.current_node = self.current_node.child_nodes[self.action]
 
         self.current_node.action = self.action
+
+def boltzmann_distribution(tensor, temperature):
+    """
+    Compute the Boltzmann distribution of a 1D tensor.
+    
+    Args:
+    tensor (torch.Tensor): A 1D tensor.
+    temperature (float): Temperature parameter.
+    
+    Returns:
+    torch.Tensor: The Boltzmann distribution of the input tensor.
+    """
+    # Ensure the tensor is a 1D tensor
+    assert tensor.dim() == 1, "Input tensor must be 1D"
+    
+    # Compute the exponentials of the tensor divided by the temperature
+    exp_tensor = torch.exp(tensor / temperature)
+    
+    # Compute the Boltzmann distribution by normalizing the exponentials
+    boltzmann_dist = exp_tensor / torch.sum(exp_tensor)
+    
+    return boltzmann_dist
