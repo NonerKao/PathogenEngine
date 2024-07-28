@@ -32,6 +32,7 @@ def init_model(model_name):
 
 class Node():
     def __init__(self, state, parent, is_me):
+        self.action = None
         self.state = state
         self.policy = None
         self.w = 0
@@ -41,8 +42,22 @@ class Node():
         self.is_me = is_me
 
     def update(self, w):
+        coef = 1.0 if self.is_me else -1.0
+        self.w += w * coef
+        self.n += 1
+        # print("=== this node ===")
+        # print("action: ", self.action, "; state: ", self.state[:4] if self.state else None)
+        # print("next: ", self.child_nodes.keys())
+        # print("w: ", self.w, self.is_me)
+        # print("n: ", self.n)
+        # print("=== backtrack ===")
+        if self.parent:
+            self.parent.update(w)
+        # else:
+            # print("=================")
+            # print("=== update end  =")
+            # print("=================")
         return
-        # XXX: loop upward until the parent. Note the camp setting?
 
 class RLAgent(Agent):
     torch.set_default_device(torch.device("cuda"))
@@ -94,7 +109,22 @@ class RLAgent(Agent):
             print("Unexpected query results:", self.num_candidate, "; candidates:", self.candidate);
             sys.exit(255)
 
-    def update(self):
+    # result value:
+    #    -1: lose
+    #     0: win
+    #     1: not sure yet, need inference
+    def update(self, result):
+        coef = 1.0 if self.current_node.is_me else -1.0
+        w = 0
+        if result == 1:
+            state = np.frombuffer(self.current_node.state[4:], dtype=np.uint8)
+            state = torch.tensor(state).float().unsqueeze(0)
+            _, w, _ = self.model(state)
+        else:
+            w = result
+        w = float(w) * coef
+        self.current_node.update(w)
+        self.current_node = self.root
         return
 
     def analyze(self, data):
@@ -114,9 +144,9 @@ class RLAgent(Agent):
             # [RL]
             # Since this move is finished, we decrease the delay value by 1,
             # if the delay was not yet zero'ed.
-            # Otherwise, do nothing. For normal closers Ix00/Ix02, they are
-            # just normal status; for Ix04/Ix05, they show that we are not in
-            # a simulation and the game just ends.
+            # Otherwise: for Ix04/Ix05, they show that we are not in
+            # a simulation and the game just ends;
+            # clear nodes for normal closers Ix00/Ix02 when it is a real move.
             if self.delay > 0:
                 self.delay = self.delay - 1
             if not self.simulation:
@@ -129,7 +159,8 @@ class RLAgent(Agent):
             elif data[0:4] in (b'Ix03', b'Ix08'):
                 self.is_me = True
             else:
-                self.is_me = self.is_me
+                assert self.current_node.parent != None, "An Ix01 node is supposed to have a parent"
+                self.is_me = self.current_node.parent.is_me
             if self.root is not None and self.root.is_me is None:
                 self.root.is_me = self.is_me
             if self.current_node is not None and self.current_node.is_me is None:
@@ -146,20 +177,30 @@ class RLAgent(Agent):
                 self.action = QUERY
             elif not self.simulation:
                 # [RL]
-                # We **just finished a true move** or have a fresh start now.
-                # Ideally most of the time this is trying simulated moves, so if 
-                # it is not in a simulation, just enable it.
-                # We can see this SAVE as a special variant of a RETURN to the
-                # root state because this one has no child currently.
-                self.action = SAVE
-                self.num_trials = TRIAL_UNIT
-                self.simulation = True
-                if not self.root:
+                # The situation diverges.
+                # Ix03: We have a fresh new start. Make a new root now.
+                # Ix07: A simulated opponent's start.
+                # Ix08: A simulated start.
+                # Ix01: A submove is done.
+                if data[0:4] in (b'Ix03') or not self.root:
                     self.root = Node(data, None, self.is_me)
                     self.current_node = self.root
                 elif not self.root.state:
                     self.root.state = data
                     self.current_node = self.root
+
+                if self.current_node.child_nodes and len(self.current_node.child_nodes) <= 1:
+                    # no point to SAVE such a root
+                    self.action = QUERY
+                else:
+                    # Ideally most of the time this is trying simulated moves, so if 
+                    # it is not in a simulation, just enable it.
+                    # We can see this SAVE as a special variant of a RETURN to the
+                    # root state because this one has no child currently.
+                    self.root.parent = None
+                    self.action = SAVE
+                    self.num_trials = TRIAL_UNIT
+                    self.simulation = True
             else: # self.simulation
                 # [RL]
                 # Do a simulation then. What nodes are we exploring? Does it have
@@ -173,24 +214,20 @@ class RLAgent(Agent):
                     # Now the simulation is done.
                     self.simulation = False
                     self.action = CLEAR
-                    self.update()
-                    # XXX: remove this when update is done
-                    self.current_node = self.root
+                    self.update(1)
                 else:
                     self.action = QUERY
 
             self.send_special(self.action)
             if self.simulation and not self.current_node.child_nodes:
-                self.num_trials = self.num_trials - 1
                 for action in self.candidate:
                     self.current_node.child_nodes[action] = Node(None, self.current_node, None)
                 # why would we backtracking for this single option?
                 if len(self.candidate) > 1:
+                    self.num_trials = self.num_trials - 1
                     self.action = RETURN
                     self.send_special(self.action)
-                    self.update()
-                    # XXX: remove this when update is done
-                    self.current_node = self.root
+                    self.update(1)
         elif data[0:4] in (b'Ix09', b'Ix0a'):
             self.num_trials = self.num_trials - 1
             if self.num_trials <= 0:
@@ -198,9 +235,7 @@ class RLAgent(Agent):
                 self.simulation = False
             else:
                 self.action = RETURN
-            self.update()
-            # XXX: remove this when update is done
-            self.current_node = self.root
+            self.update(-1 if data[0:4] == b'Ix09' else 0)
             self.send_special(self.action)
         else:
             print("What is this?")
@@ -211,7 +246,7 @@ class RLAgent(Agent):
             # Make next action
             self.state = np.frombuffer(self.current_node.state[4:], dtype=np.uint8)
             self.state = torch.tensor(self.state).float().unsqueeze(0)
-            policy, value, understanding = self.model(self.state)
+            policy, value, valid = self.model(self.state)
             probabilities = torch.nn.functional.softmax(policy, dim=1)
             top_k_probs, top_k_indices = torch.topk(probabilities, TOPK)
 
@@ -249,3 +284,5 @@ class RLAgent(Agent):
                 sys.exit(255)
 
             self.current_node = self.current_node.child_nodes[self.action]
+
+        self.current_node.action = self.action
