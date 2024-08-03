@@ -115,4 +115,4 @@ class PathogenNet(torch.nn.Module):
         understanding = self.understanding_fc(understanding)
         understanding = torch.nn.functional.tanh(understanding)
 
-        return policy, value, understanding
+        return policy, understanding, value

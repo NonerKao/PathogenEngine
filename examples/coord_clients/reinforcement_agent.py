@@ -17,6 +17,7 @@ TRIAL_UNIT = 10
 DELAY_UNIT = 0
 TEMPERATURE = 2.0
 SPICE = 3
+DATASET_UNIT = 4096
 
 def init_model(model_name):
     torch.set_default_dtype(torch.float32)
@@ -68,10 +69,9 @@ class Node():
 
 class RLAgent(Agent):
     torch.set_default_device(torch.device("cuda"))
-    def __init__(self, f):
-        super().__init__(f)
+    def __init__(self, args, n):
+        super().__init__(args)
         self.action = 255
-        self.all_transitions = torch.tensor([])
 
         ### MCTS stuff
         # Most of the time this is True.
@@ -90,6 +90,9 @@ class RLAgent(Agent):
         # The nodes
         self.root = None
         self.current_node = None
+        # The record of the game
+        self.dataset = open(args.dataset+"_"+self.fraction+"_"+str(n)+".log", 'wb')
+        self.dataset_counter = 0
 
         # initialize the device
         self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
@@ -98,14 +101,13 @@ class RLAgent(Agent):
             print('Warning: Use CPU')
 
         # We will only use this model for inference/simulation, at this phase
-        self.model = init_model(f.model)
+        self.model = init_model(args.model)
         self.model.eval()
 
         while self.play():
             continue
         if self.record is not None:
             self.record.close()
-            # states, actions, rewards = self.all_transitions[:, :S].clone().to(dtype=torch.float32), self.all_transitions[:, S], self.all_transitions[:, S+1]
 
     def send_special(self, action):
         self.s.sendall(bytes([action]))
@@ -126,13 +128,30 @@ class RLAgent(Agent):
         if result == 1:
             state = np.frombuffer(self.current_node.state[4:], dtype=np.uint8)
             state = torch.tensor(state).float().unsqueeze(0)
-            _, w, _ = self.model(state)
+            _, _, w = self.model(state)
         else:
             w = result
         w = float(w) * coef
         self.current_node.update(w)
         self.current_node = self.root
         return
+
+    def candidates_to_prob(self):
+        onehot_array = np.zeros(TOTAL_POS, dtype=np.float32)
+
+        # sum up all the trials
+        sum = 0
+        for i in self.current_node.child_nodes:
+            sum = sum + self.current_node.child_nodes[i].n
+
+        # calculate the array
+        for i in self.current_node.child_nodes:
+            index = i
+            if i >= BOARD_POS:
+                index = i - MAP_POS_OFFSET
+            onehot_array[index] = self.current_node.child_nodes[i].n/sum
+
+        return onehot_array
 
     def analyze(self, data):
         if ord('E') == data[0]:
@@ -159,6 +178,18 @@ class RLAgent(Agent):
             if not self.simulation:
                 self.root = None
                 self.current_node = None
+
+            if data[0:4] in (b'Ix04', b'Ix05'):
+                i = 0
+                WIN = np.ndarray([1], dtype=np.float32)
+                WIN[0] = 1.0
+                LOSE = np.ndarray([1], dtype=np.float32)
+                LOSE[0] = -1.0
+                while i < self.dataset_counter:
+                    self.dataset.seek(i * DATASET_UNIT + 4*(S+2*TOTAL_POS), 0)
+                    self.dataset.write(WIN.tobytes() if data[0:4] in (b'Ix04') else LOSE.tobytes())
+                    i = i + 1
+                self.dataset.close()
             return
         elif data[0:4] in (b'Ix01', b'Ix03', b'Ix07', b'Ix08'):
             if data[0:4] in (b'Ix07'):
@@ -250,14 +281,25 @@ class RLAgent(Agent):
 
         self.action = None
         if not self.simulation:
+            # Get ready for the dataset file offset
+            self.dataset.seek(self.dataset_counter * DATASET_UNIT, 0)
+
             # Make next action
             self.state = np.frombuffer(self.current_node.state[4:], dtype=np.uint8)
             self.state = torch.tensor(self.state).float().unsqueeze(0)
-            policy, value, valid = self.model(self.state)
+            self.dataset.write(self.state.cpu().numpy().tobytes()) # section 1: state
+            policy, valid, value = self.model(self.state)
             probabilities = spice(torch.nn.functional.softmax(policy, dim=1).squeeze(0), TEMPERATURE)
 
-            print(probabilities.shape, probabilities)
-            print(list(self.candidate))
+            # Then, record the probabilities and the valid head. Once the game is
+            # over, we can add value back.
+            self.dataset.write(self.candidates_to_prob().tobytes()) # section 2: policy
+            self.dataset.write(shsor(self.candidate).tobytes()) # section 3: valid
+            # section 4, value, is not known until the end of the game
+            self.dataset_counter = self.dataset_counter + 1
+
+            # print(probabilities.shape, probabilities)
+            # print(list(self.candidate))
             for action_index in probabilities:
                 index = int(action_index)
                 if index in self.candidate:
@@ -306,3 +348,21 @@ def spice(x, t):
     x_tensor = torch.tensor(x, dtype=torch.float32)
     x_tensor = x_tensor ** (1 / t)
     return torch.multinomial(x_tensor / x_tensor.sum(), SPICE if SPICE <= len(x_tensor) else len(x_tensor))
+
+# Regarding this naming, it is an unintetional typo feeded into chatGPT,
+# and it keeps it. It was meant to be `a short utility`.
+def shsor(input_bytes):
+    # Initialize a one-hot encoded array of length 61 with zeros
+    onehot_array = np.zeros(TOTAL_POS, dtype=np.float32)
+
+    # Iterate over each byte in the input
+    for byte in input_bytes:
+        # Check if the byte is within the first range [0, 36)
+        if 0 <= byte < BOARD_POS:
+            onehot_array[byte] = 1.0
+        # Check if the byte is within the second range [100, 125)
+        elif 0 <= byte - MAP_POS_OFFSET - BOARD_POS < MAP_POS:
+            onehot_array[byte - MAP_POS_OFFSET] = 1.0
+
+    return onehot_array
+

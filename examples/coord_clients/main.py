@@ -19,6 +19,7 @@ if __name__ == "__main__":
 
     # Only for ML agents
     parser.add_argument('-m', '--model', type=str, help='A trained pytorch model that provides (sub-)move to current game state', default='model.pth')
+    parser.add_argument('-d', '--dataset', type=str, help='Output dataset to this file', default='dataset')
 
     args = parser.parse_args()
     if args.seed is not None:
@@ -30,7 +31,7 @@ if __name__ == "__main__":
         if args.type == 'Random':
             a = RandomAgent(args)
         elif args.type == 'Reinforcement':
-            a = RLAgent(args)
+            a = RLAgent(args, i)
         elif args.type == 'Query':
             a = QAgent(args)
 
