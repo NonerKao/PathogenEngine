@@ -13,8 +13,8 @@ SAVE = 254
 RETURN = 253
 CLEAR = 252
 
-TRIAL_UNIT = 10
-DELAY_UNIT = 0
+TRIAL_UNIT = 60
+DELAY_UNIT = 20
 TEMPERATURE = 2.0
 SPICE = 3
 DATASET_UNIT = 4096
@@ -197,8 +197,11 @@ class RLAgent(Agent):
             elif data[0:4] in (b'Ix03', b'Ix08'):
                 self.is_me = True
             else:
-                assert self.current_node.parent != None, "An Ix01 node is supposed to have a parent"
-                self.is_me = self.current_node.parent.is_me
+                if self.delay <= 0:
+                    assert self.current_node.parent != None, "An Ix01 node is supposed to have a parent"
+                    self.is_me = self.current_node.parent.is_me
+                else:
+                    pass
             if self.root is not None and self.root.is_me is None:
                 self.root.is_me = self.is_me
             if self.current_node is not None and self.current_node.is_me is None:
@@ -280,7 +283,9 @@ class RLAgent(Agent):
             panic()
 
         self.action = None
-        if not self.simulation:
+        if self.delay > 0:
+            self.action = self.candidate[0]
+        elif not self.simulation:
             # Get ready for the dataset file offset
             self.dataset.seek(self.dataset_counter * DATASET_UNIT, 0)
 
@@ -319,9 +324,8 @@ class RLAgent(Agent):
             # [RL]
             # not simulating? we just made a real action. Next one will
             # start with a new root
-            if self.delay <= 0:
-                self.current_node = self.root.child_nodes[self.action]
-                self.root = self.current_node
+            self.current_node = self.root.child_nodes[self.action]
+            self.root = self.current_node
 
         elif self.candidate == None:
             print("This doesn't make any sense. Check it!")
@@ -342,7 +346,8 @@ class RLAgent(Agent):
 
             self.current_node = self.current_node.child_nodes[self.action]
 
-        self.current_node.action = self.action
+        if self.delay <= 0:
+            self.current_node.action = self.action
 
 def spice(x, t):
     x_tensor = torch.tensor(x, dtype=torch.float32)
