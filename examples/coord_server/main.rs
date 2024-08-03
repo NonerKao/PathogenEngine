@@ -42,46 +42,46 @@ struct Args {
 fn encode(g: &Game, a: &Action) -> Array1<u8> {
     // 1. BOARD_DATA
     // Check the README/HACKING for why it is 8
-    let mut e = Array::from_shape_fn((SIZE as usize, SIZE as usize, 8 as usize), |(_, _, _)| {
+    let mut e = Array::from_shape_fn((8 as usize, SIZE as usize, SIZE as usize), |(_, _, _)| {
         0 as u8
     });
     for i in 0..SIZE as usize {
         for j in 0..SIZE as usize {
             let c = Coord::new(i.try_into().unwrap(), j.try_into().unwrap());
             if g.env.get(&c).unwrap() == &World::Underworld {
-                e[[i, j, 0 /*Underworld*/]] = 1;
+                e[[0 /*Underworld*/, i, j]] = 1;
             } else {
-                e[[i, j, 1 /*Humanity*/]] = 1;
+                e[[1 /*Humanity*/, i, j]] = 1;
             }
             match g.stuff.get(&c) {
                 None => {}
                 Some((Camp::Doctor, Stuff::Colony)) => {
-                    e[[i, j, 4 /*Doctor Colony*/]] = 1;
+                    e[[4 /*Doctor Colony*/, i, j]] = 1;
                 }
                 Some((Camp::Plague, Stuff::Colony)) => {
-                    e[[i, j, 5 /*Plague Colony*/]] = 1;
+                    e[[5 /*Plague Colony*/, i, j]] = 1;
                 }
                 Some((Camp::Doctor, Stuff::Marker(x))) => {
-                    e[[i, j, 6 /*Doctor Marker*/]] = *x;
+                    e[[6 /*Doctor Marker*/, i, j]] = *x;
                 }
                 Some((Camp::Plague, Stuff::Marker(x))) => {
-                    e[[i, j, 7 /*Plague Marker*/]] = *x;
+                    e[[7 /*Plague Marker*/, i, j]] = *x;
                 }
             }
         }
     }
     for ((_, camp), c) in g.character.iter() {
         if *camp == Camp::Doctor {
-            e[[c.x as usize, c.y as usize, 2 /*Doctor Hero*/]] = 1;
+            e[[2 /*Doctor Hero*/, c.x as usize, c.y as usize]] = 1;
         } else {
-            e[[c.x as usize, c.y as usize, 3 /*Plague Hero*/]] = 1;
+            e[[3 /*Plague Hero*/, c.x as usize, c.y as usize]] = 1;
         }
     }
 
     // 2. MAP_DATA
     // 2 for the two sides
     let mut m = Array::from_shape_fn(
-        (MAP_SIZE as usize, MAP_SIZE as usize, 2 as usize),
+        (2 as usize, MAP_SIZE as usize, MAP_SIZE as usize),
         |(_, _, _)| 0 as u8,
     );
 
@@ -89,15 +89,15 @@ fn encode(g: &Game, a: &Action) -> Array1<u8> {
         let c = *mc;
         if *camp == Camp::Doctor {
             m[[
+                0, /* Doctor Marker */
                 (c.x + MAP_OFFSET.x) as usize,
                 (c.y + MAP_OFFSET.y) as usize,
-                0, /* Doctor Marker */
             ]] = 1;
         } else {
             m[[
+                1, /* Plague Marker */
                 (c.x + MAP_OFFSET.x) as usize,
                 (c.y + MAP_OFFSET.y) as usize,
-                1, /* Plague Marker */
             ]] = 1;
         }
     }
@@ -105,16 +105,16 @@ fn encode(g: &Game, a: &Action) -> Array1<u8> {
     // 3. TURN_DATA
     //
     let mut t = Array::from_shape_fn(
-        (MAP_SIZE as usize, MAP_SIZE as usize, 1 as usize),
+        (1 as usize, MAP_SIZE as usize, MAP_SIZE as usize),
         |(_, _, _)| 0 as u8,
     );
     for (camp, mc) in g.map.iter() {
         let c = *mc;
         if *camp == g.turn {
             t[[
+                0,
                 (c.x + MAP_OFFSET.x) as usize,
                 (c.y + MAP_OFFSET.y) as usize,
-                0,
             ]] = 1;
         }
     }
@@ -122,10 +122,10 @@ fn encode(g: &Game, a: &Action) -> Array1<u8> {
     // 4. FLOW_DATA
     //
     let mut fm = Array::from_shape_fn(
-        (MAP_SIZE as usize, MAP_SIZE as usize, 2 as usize),
+        (2 as usize, MAP_SIZE as usize, MAP_SIZE as usize),
         |(_, _, _)| 0 as u8,
     );
-    let mut fe = Array::from_shape_fn((SIZE as usize, SIZE as usize, 11 as usize), |(_, _, _)| {
+    let mut fe = Array::from_shape_fn((11 as usize, SIZE as usize, SIZE as usize), |(_, _, _)| {
         0 as u8
     });
 
@@ -138,9 +138,9 @@ fn encode(g: &Game, a: &Action) -> Array1<u8> {
             Some(x) => x,
         };
         fm[[
+            0,
             (c.x + MAP_OFFSET.x) as usize,
             (c.y + MAP_OFFSET.y) as usize,
-            0,
         ]] = 1;
     }
     if a.action_phase > ActionPhase::Lockdown {
@@ -150,9 +150,9 @@ fn encode(g: &Game, a: &Action) -> Array1<u8> {
         let mut c = *g.map.get(&g.opposite(g.turn)).unwrap();
         c = c.lockdown(a.lockdown);
         fm[[
+            1,
             (c.x + MAP_OFFSET.x) as usize,
             (c.y + MAP_OFFSET.y) as usize,
-            1,
         ]] = 1;
     }
     if a.action_phase > ActionPhase::SetCharacter {
@@ -175,9 +175,9 @@ fn encode(g: &Game, a: &Action) -> Array1<u8> {
                 a.trajectory.len() - 1
             };
             fe[[
+                i, /* fe starts fresh */
                 a.trajectory[index].x as usize,
                 a.trajectory[index].y as usize,
-                i, /* fe starts fresh */
             ]] = 1;
         }
     }
@@ -188,9 +188,9 @@ fn encode(g: &Game, a: &Action) -> Array1<u8> {
                 break;
             };
             fe[[
+                i + 6, /* offset by the trajectory: 1 + 5 */
                 a.markers[i].x as usize,
                 a.markers[i].y as usize,
-                i + 6, /* offset by the trajectory: 1 + 5 */
             ]] += 1;
         }
     }
@@ -200,9 +200,9 @@ fn encode(g: &Game, a: &Action) -> Array1<u8> {
     {
         let mm = m.clone();
         let mut count = 0;
-        for i in 0..5 {
+        for i in 0..2 {
             for j in 0..5 {
-                for k in 0..2 {
+                for k in 0..5 {
                     if mm[[i, j, k]] > 0 {
                         count += 1;
                     }

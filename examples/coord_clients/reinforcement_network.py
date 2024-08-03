@@ -71,11 +71,11 @@ class PathogenNet(torch.nn.Module):
         # Padding the game board and the map to get ready for a Nx6x7x7 tensor
         genv, gmap, gturn, gfm, gfe = x[:, 0: BOARD_DATA], x[:, BOARD_DATA: E_MAP], x[:, E_MAP: E_TURN], x[:, E_TURN: E_FM], x[:, E_FM: S]
         # XXX: sort the server-side encoding later to eliminate all these permutations
-        genv = genv.reshape(-1, 6, 6, 8).permute(0,3,1,2)
-        gmap = gmap.reshape(-1, 5, 5, 2).permute(0,3,1,2)
-        gturn = gturn.reshape(-1, 5, 5, 1).permute(0,3,1,2)
-        gfm = gfm.reshape(-1, 5, 5, 2).permute(0,3,1,2)
-        gfe = gfe.reshape(-1, 6, 6, 11).permute(0,3,1,2)
+        # genv = genv.reshape(-1, 6, 6, 8).permute(0,3,1,2)
+        # gmap = gmap.reshape(-1, 5, 5, 2).permute(0,3,1,2)
+        # gturn = gturn.reshape(-1, 5, 5, 1).permute(0,3,1,2)
+        # gfm = gfm.reshape(-1, 5, 5, 2).permute(0,3,1,2)
+        # gfe = gfe.reshape(-1, 6, 6, 11).permute(0,3,1,2)
         genv = torch.nn.functional.pad(genv.reshape(-1, 8, 6, 6), (1, 0, 1, 0), mode='constant', value=-1.0)
         gmap = torch.nn.functional.pad(gmap.reshape(-1, 2, 5, 5), (1, 1, 1, 1), mode='constant', value=-1.0)
         gturn = torch.nn.functional.pad(gturn.reshape(-1, 1, 5, 5), (1, 1, 1, 1), mode='constant', value=-1.0)
