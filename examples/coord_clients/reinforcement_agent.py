@@ -8,8 +8,6 @@ import torch
 from constant import *
 from reinforcement_network import *
 
-TOPK = 3
-
 QUERY = 255
 SAVE = 254
 RETURN = 253
@@ -17,6 +15,8 @@ CLEAR = 252
 
 TRIAL_UNIT = 10
 DELAY_UNIT = 0
+TEMPERATURE = 2.0
+SPICE = 3
 
 def init_model(model_name):
     torch.set_default_dtype(torch.float32)
@@ -254,16 +254,17 @@ class RLAgent(Agent):
             self.state = np.frombuffer(self.current_node.state[4:], dtype=np.uint8)
             self.state = torch.tensor(self.state).float().unsqueeze(0)
             policy, value, valid = self.model(self.state)
-            probabilities = torch.nn.functional.softmax(policy, dim=1)
-            top_k_probs, top_k_indices = torch.topk(probabilities, TOPK)
+            probabilities = spice(torch.nn.functional.softmax(policy, dim=1).squeeze(0), TEMPERATURE)
 
-            for i in range(TOPK):
-                action_index = top_k_indices[0, i].item()
-                if action_index in self.candidate:
-                    if action_index >= BOARD_POS:
-                        self.action = action_index + MAP_POS_OFFSET
+            print(probabilities.shape, probabilities)
+            print(list(self.candidate))
+            for action_index in probabilities:
+                index = int(action_index)
+                if index in self.candidate:
+                    if index >= BOARD_POS:
+                        self.action = index + MAP_POS_OFFSET
                     else:
-                        self.action = action_index
+                        self.action = index
 
             if self.action is None:
                 if self.candidate != None:
@@ -301,24 +302,7 @@ class RLAgent(Agent):
 
         self.current_node.action = self.action
 
-def boltzmann_distribution(tensor, temperature):
-    """
-    Compute the Boltzmann distribution of a 1D tensor.
-    
-    Args:
-    tensor (torch.Tensor): A 1D tensor.
-    temperature (float): Temperature parameter.
-    
-    Returns:
-    torch.Tensor: The Boltzmann distribution of the input tensor.
-    """
-    # Ensure the tensor is a 1D tensor
-    assert tensor.dim() == 1, "Input tensor must be 1D"
-    
-    # Compute the exponentials of the tensor divided by the temperature
-    exp_tensor = torch.exp(tensor / temperature)
-    
-    # Compute the Boltzmann distribution by normalizing the exponentials
-    boltzmann_dist = exp_tensor / torch.sum(exp_tensor)
-    
-    return boltzmann_dist
+def spice(x, t):
+    x_tensor = torch.tensor(x, dtype=torch.float32)
+    x_tensor = x_tensor ** (1 / t)
+    return torch.multinomial(x_tensor / x_tensor.sum(), SPICE if SPICE <= len(x_tensor) else len(x_tensor))

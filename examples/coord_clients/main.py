@@ -1,4 +1,5 @@
 import random
+import torch
 import argparse
 from random_agent import RandomAgent
 from reinforcement_agent import RLAgent
@@ -22,6 +23,7 @@ if __name__ == "__main__":
     args = parser.parse_args()
     if args.seed is not None:
         random.seed(args.seed)
+        torch.manual_seed(hash(args.seed))
 
     doctor_wins = 0
     for i in range(0, args.batch):
