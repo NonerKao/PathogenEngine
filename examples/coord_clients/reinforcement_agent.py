@@ -127,7 +127,8 @@ class RLAgent(Agent):
         w = 0
         if result == 1:
             state = np.frombuffer(self.current_node.state[4:], dtype=np.uint8)
-            state = torch.tensor(state).float().unsqueeze(0)
+            state = torch.from_numpy(np.copy(state)).float().unsqueeze(0).to(self.device)
+            # state = torch.tensor(state).float().unsqueeze(0)
             _, _, w = self.model(state)
         else:
             w = result
@@ -179,7 +180,7 @@ class RLAgent(Agent):
                 self.root = None
                 self.current_node = None
 
-            if data[0:4] in (b'Ix04', b'Ix05'):
+            if self.delay <= 0 and data[0:4] in (b'Ix04', b'Ix05'):
                 i = 0
                 WIN = np.ndarray([1], dtype=np.float32)
                 WIN[0] = 1.0
@@ -189,6 +190,13 @@ class RLAgent(Agent):
                     self.dataset.seek(i * DATASET_UNIT + 4*(S+2*TOTAL_POS), 0)
                     self.dataset.write(WIN.tobytes() if data[0:4] in (b'Ix04') else LOSE.tobytes())
                     i = i + 1
+                try:
+                    self.dataset.seek(self.dataset_counter * DATASET_UNIT - 1, 0)
+                except OSError as e:
+                    print(e)
+                    print(self.dataset_counter)
+                    print(self.delay)
+                self.dataset.write(b'\n')
                 self.dataset.close()
             return
         elif data[0:4] in (b'Ix01', b'Ix03', b'Ix07', b'Ix08'):
@@ -284,14 +292,14 @@ class RLAgent(Agent):
 
         self.action = None
         if self.delay > 0:
-            self.action = self.candidate[0]
+            self.action = random.choice(self.candidate)
         elif not self.simulation:
             # Get ready for the dataset file offset
             self.dataset.seek(self.dataset_counter * DATASET_UNIT, 0)
 
             # Make next action
             self.state = np.frombuffer(self.current_node.state[4:], dtype=np.uint8)
-            self.state = torch.tensor(self.state).float().unsqueeze(0)
+            self.state = torch.from_numpy(np.copy(self.state)).float().unsqueeze(0).to(self.device)
             self.dataset.write(self.state.cpu().numpy().tobytes()) # section 1: state
             policy, valid, value = self.model(self.state)
             probabilities = spice(torch.nn.functional.softmax(policy, dim=1).squeeze(0), TEMPERATURE)
@@ -350,7 +358,9 @@ class RLAgent(Agent):
             self.current_node.action = self.action
 
 def spice(x, t):
-    x_tensor = torch.tensor(x, dtype=torch.float32)
+    # We don't really need the gradients, do we?
+    x_tensor = x.clone().detach().requires_grad_(False)
+    # x_tensor = torch.tensor(x, dtype=torch.float32)
     x_tensor = x_tensor ** (1 / t)
     return torch.multinomial(x_tensor / x_tensor.sum(), SPICE if SPICE <= len(x_tensor) else len(x_tensor))
 
