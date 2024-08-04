@@ -38,7 +38,7 @@ if __name__ == "__main__":
         # collect the result
         if args.side == 'Doctor' and a.result == b'Ix04':
             doctor_wins = doctor_wins + 1
-        time.sleep(1)
+        time.sleep(3)
 
     if args.side == 'Doctor':
         print(f"{doctor_wins/args.batch*100:6.2f} %")

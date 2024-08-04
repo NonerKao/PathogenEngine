@@ -68,7 +68,6 @@ class Node():
             return (self.w / self.n) + explore
 
 class RLAgent(Agent):
-    torch.set_default_device(torch.device("cuda"))
     def __init__(self, args, n):
         super().__init__(args)
         self.action = 255
@@ -340,7 +339,8 @@ class RLAgent(Agent):
         else:
             # [RL]
             # Run the child node who has the maximum PUCT
-            max_action_puct = 0;
+            max_action_puct = float('-inf');
+            assert self.current_node.child_nodes.keys() != list(self.candidate), "Why???"
             for candidate in self.candidate:
                 puct = self.current_node.child_nodes[candidate].puct(self.current_node.n)
                 if max_action_puct < puct:
