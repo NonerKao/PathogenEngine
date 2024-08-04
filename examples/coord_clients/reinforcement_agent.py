@@ -180,7 +180,7 @@ class RLAgent(Agent):
                 self.root = None
                 self.current_node = None
 
-            if self.delay <= 0 and data[0:4] in (b'Ix04', b'Ix05'):
+            if self.dataset_counter > 0 and data[0:4] in (b'Ix04', b'Ix05'):
                 i = 0
                 WIN = np.ndarray([1], dtype=np.float32)
                 WIN[0] = 1.0
@@ -190,12 +190,7 @@ class RLAgent(Agent):
                     self.dataset.seek(i * DATASET_UNIT + 4*(S+2*TOTAL_POS), 0)
                     self.dataset.write(WIN.tobytes() if data[0:4] in (b'Ix04') else LOSE.tobytes())
                     i = i + 1
-                try:
-                    self.dataset.seek(self.dataset_counter * DATASET_UNIT - 1, 0)
-                except OSError as e:
-                    print(e)
-                    print(self.dataset_counter)
-                    print(self.delay)
+                self.dataset.seek(self.dataset_counter * DATASET_UNIT - 1, 0)
                 self.dataset.write(b'\n')
                 self.dataset.close()
             return
