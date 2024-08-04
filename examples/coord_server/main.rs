@@ -951,31 +951,31 @@ mod tests {
         // when it is SetMap...
         // Human
         assert_eq!(
-            buf_after[CODE_DATA + 5 * 6 * 8 + 5 * 8 + 1], /* "ff" */
+            buf_after[CODE_DATA + 1 * 6 * 6 + 5 * 6 + 5], /* "ff" */
             1
         );
         // Underworld
         assert_eq!(
-            buf_after[CODE_DATA + 5 * 6 * 8 + 3 * 8 + 0], /* "fd" */
+            buf_after[CODE_DATA + 0 * 6 * 6 + 5 * 6 + 3], /* "fd" */
             1
         );
         // Doctor's token
         assert_eq!(
-            buf_after[env_offset + 2 * 5 * 2 + 3 * 2 + 0], /* "ij" */
+            buf_after[env_offset + 0 * 5 * 5 + 2 * 5 + 3], /* "ij" */
             1
         );
         // Plague's token
         assert_eq!(
-            buf_after[env_offset + 3 * 5 * 2 + 3 * 2 + 1], /* "jj" */
+            buf_after[env_offset + 1 * 5 * 5 + 3 * 5 + 3], /* "jj" */
             1
         );
         // Doctor's turn: duplicate the map for the doctor only
         assert_eq!(
-            buf_after[turn_offset + 3 * 5 * 1 + 3 * 1], /* "jj" */
+            buf_after[turn_offset + 0 * 5 * 5 + 3 * 5 + 3], /* "jj" */
             0
         );
         assert_eq!(
-            buf_after[turn_offset + 2 * 5 * 1 + 3 * 1], /* "ij" */
+            buf_after[turn_offset + 0 * 5 * 5 + 2 * 5 + 3], /* "ij" */
             1
         );
 
@@ -984,153 +984,153 @@ mod tests {
         // Yes, after 0.6, the game status remain the same
         // So this should be 1
         assert_eq!(
-            buf_after[base_offset + env_offset + 2 * 5 * 2 + 3 * 2], /* "ij" */
+            buf_after[base_offset + env_offset + 0 * 5 * 5 + 2 * 5 + 3], /* "ij" */
             1
         );
         // it moves to "ii" in SetMap
         assert_eq!(
-            buf_after[base_offset + flow_map_offset + 2 * 5 * 2 + 2 * 2 + 0], /* "ii" */
+            buf_after[base_offset + flow_map_offset + 0 * 5 * 5 + 2 * 5 + 2], /* "ii" */
             1
         );
         assert_eq!(
-            buf_after[base_offset + flow_map_offset + 1 * 5 * 2 + 1 * 2 + 1], /* "hh" */
+            buf_after[base_offset + flow_map_offset + 1 * 5 * 5 + 1 * 5 + 1], /* "hh" */
             0
         );
 
         // when it is SetCharacter...
         base_offset = base_offset + (DATA_UNIT + 1);
         assert_eq!(
-            buf_after[base_offset + flow_map_offset + 3 * 5 * 2 + 3 * 2 + 1], /* "jj" */
+            buf_after[base_offset + flow_map_offset + 1 * 5 * 5 + 3 * 5 + 3], /* "jj" */
             0
         );
         assert_eq!(
-            buf_after[base_offset + flow_map_offset + 1 * 5 * 2 + 1 * 2 + 1], /* "hh" */
+            buf_after[base_offset + flow_map_offset + 1 * 5 * 5 + 1 * 5 + 1], /* "hh" */
             1
         );
         assert_eq!(
-            buf_after[base_offset + flow_env_offset + 0 * 6 * 11 + 0 * 11 + 0], /* "aa" */
+            buf_after[base_offset + flow_env_offset + 0 * 6 * 6 + 0 * 6 + 0], /* "aa" */
             0
         );
 
         // when it is BoardMove...
         base_offset = base_offset + (DATA_UNIT + 1);
         assert_eq!(
-            buf_after[base_offset + flow_map_offset + 2 * 5 * 2 + 2 * 2 + 0], /* "ii" */
+            buf_after[base_offset + flow_map_offset + 0 * 5 * 5 + 2 * 5 + 2], /* "ii" */
             1
         );
         assert_eq!(
-            buf_after[base_offset + flow_map_offset + 1 * 5 * 2 + 1 * 2 + 1], /* "hh" */
+            buf_after[base_offset + flow_map_offset + 1 * 5 * 5 + 1 * 5 + 1], /* "hh" */
             1
         );
         assert_eq!(
-            buf_after[base_offset + flow_env_offset + 0 * 6 * 11 + 0 * 11 + 0], /* "aa" */
+            buf_after[base_offset + flow_env_offset + 0 * 6 * 6 + 0 * 6 + 0], /* "aa" */
             1
         );
 
         // when it is BoardMove... after the first move
         base_offset = base_offset + (DATA_UNIT + 1);
         assert_eq!(
-            buf_after[base_offset + flow_map_offset + 1 * 5 * 2 + 1 * 2 + 1], /* "hh" */
+            buf_after[base_offset + flow_map_offset + 1 * 5 * 5 + 1 * 5 + 1], /* "hh" */
             1
         );
         assert_eq!(
-            buf_after[base_offset + flow_env_offset + 0 * 6 * 11 + 0 * 11 + 0], /* "aa" */
+            buf_after[base_offset + flow_env_offset + 0 * 6 * 6 + 0 * 6 + 0], /* "aa" */
             1
         );
         assert_eq!(
-            buf_after[base_offset + flow_env_offset + 0 * 6 * 11 + 1 * 11 + 1], /* "ab" */
+            buf_after[base_offset + flow_env_offset + 1 * 6 * 6 + 0 * 6 + 1], /* "ab" */
             1
         );
         assert_eq!(
-            buf_after[base_offset + flow_env_offset + 1 * 6 * 11 + 1 * 11 + 2], /* "bb" */
+            buf_after[base_offset + flow_env_offset + 2 * 6 * 6 + 1 * 6 + 1], /* "bb" */
             0
         );
         assert_eq!(
-            buf_after[base_offset + flow_env_offset + 1 * 6 * 11 + 1 * 11 + 5], /* "bb" */
+            buf_after[base_offset + flow_env_offset + 5 * 6 * 6 + 1 * 6 + 1], /* "bb" */
             0
         );
 
         // when it is SetMarkers... after the second BoardMove
         base_offset = base_offset + (DATA_UNIT + 1);
         assert_eq!(
-            buf_after[base_offset + flow_env_offset + 0 * 6 * 11 + 0 * 11 + 0], /* "aa" */
+            buf_after[base_offset + flow_env_offset + 0 * 6 * 6 + 0 * 6 + 0], /* "aa" */
             1
         );
         assert_eq!(
-            buf_after[base_offset + flow_env_offset + 0 * 6 * 11 + 1 * 11 + 1], /* "ab" */
+            buf_after[base_offset + flow_env_offset + 1 * 6 * 6 + 0 * 6 + 1], /* "ab" */
             1
         );
         assert_eq!(
-            buf_after[base_offset + flow_env_offset + 1 * 6 * 11 + 1 * 11 + 2], /* "bb" */
+            buf_after[base_offset + flow_env_offset + 2 * 6 * 6 + 1 * 6 + 1], /* "bb" */
             1
         );
         // the rest repeat the destination
         assert_eq!(
-            buf_after[base_offset + flow_env_offset + 1 * 6 * 11 + 1 * 11 + 3], /* "bb" */
+            buf_after[base_offset + flow_env_offset + 3 * 6 * 6 + 1 * 6 + 1], /* "bb" */
             1
         );
         assert_eq!(
-            buf_after[base_offset + flow_env_offset + 1 * 6 * 11 + 1 * 11 + 4], /* "bb" */
+            buf_after[base_offset + flow_env_offset + 4 * 6 * 6 + 1 * 6 + 1], /* "bb" */
             1
         );
         assert_eq!(
-            buf_after[base_offset + flow_env_offset + 1 * 6 * 11 + 1 * 11 + 5], /* "bb" */
+            buf_after[base_offset + flow_env_offset + 5 * 6 * 6 + 1 * 6 + 1], /* "bb" */
             1
         );
         // the first marker position is yet to be filled ("ab")
         assert_eq!(
-            buf_after[base_offset + flow_env_offset + 0 * 6 * 11 + 1 * 11 + 6], /* "ab" */
+            buf_after[base_offset + flow_env_offset + 6 * 6 * 6 + 0 * 6 + 1], /* "ab" */
             0
         );
 
         // when it is SetMarkers... the 2nd
         base_offset = base_offset + (DATA_UNIT + 1);
         assert_eq!(
-            buf_after[base_offset + flow_env_offset + 0 * 6 * 11 + 1 * 11 + 6], /* "ab" */
+            buf_after[base_offset + flow_env_offset + 6 * 6 * 6 + 0 * 6 + 1], /* "ab" */
             1
         );
         assert_eq!(
-            buf_after[base_offset + flow_env_offset + 0 * 6 * 11 + 0 * 11 + 7], /* "aa" */
+            buf_after[base_offset + flow_env_offset + 7 * 6 * 6 + 0 * 6 + 0], /* "aa" */
             0
         );
 
         // when it is SetMarkers... the 3rd
         base_offset = base_offset + (DATA_UNIT + 1);
         assert_eq!(
-            buf_after[base_offset + flow_env_offset + 0 * 6 * 11 + 0 * 11 + 7], /* "aa" */
+            buf_after[base_offset + flow_env_offset + 7 * 6 * 6 + 0 * 6 + 0], /* "aa" */
             1
         );
         assert_eq!(
-            buf_after[base_offset + flow_env_offset + 0 * 6 * 11 + 1 * 11 + 8], /* "ab" */
+            buf_after[base_offset + flow_env_offset + 8 * 6 * 6 + 0 * 6 + 1], /* "ab" */
             0
         );
 
         // when it is SetMarkers... the 4th
         base_offset = base_offset + (DATA_UNIT + 1);
         assert_eq!(
-            buf_after[base_offset + flow_env_offset + 0 * 6 * 11 + 1 * 11 + 8], /* "ab" */
+            buf_after[base_offset + flow_env_offset + 8 * 6 * 6 + 0 * 6 + 1], /* "ab" */
             1
         );
         assert_eq!(
-            buf_after[base_offset + flow_env_offset + 0 * 6 * 11 + 0 * 11 + 9], /* "aa" */
+            buf_after[base_offset + flow_env_offset + 9 * 6 * 6 + 0 * 6 + 0], /* "aa" */
             0
         );
 
         // when it is SetMarkers... the 5th
         base_offset = base_offset + (DATA_UNIT + 1);
         assert_eq!(
-            buf_after[base_offset + flow_env_offset + 0 * 6 * 11 + 0 * 11 + 9], /* "aa" */
+            buf_after[base_offset + flow_env_offset + 9 * 6 * 6 + 0 * 6 + 0], /* "aa" */
             1
         );
         assert_eq!(
-            buf_after[base_offset + flow_env_offset + 0 * 6 * 11 + 1 * 11 + 10], /* "ab" */
+            buf_after[base_offset + flow_env_offset + 10 * 6 * 6 + 0 * 6 + 1], /* "ab" */
             0
         );
 
         // Done
         base_offset = base_offset + (DATA_UNIT + 1);
         assert_eq!(
-            buf_after[base_offset + flow_env_offset + 0 * 6 * 11 + 1 * 11 + 10], /* "ab" */
+            buf_after[base_offset + flow_env_offset + 10 * 6 * 6 + 0 * 6 + 1], /* "ab" */
             1
         );
     }
@@ -2346,15 +2346,15 @@ mod tests {
         assert_eq!(buf_after[assert_this_index + 2], 48);
         assert_eq!(buf_after[assert_this_index + 3], 49);
         assert_eq!(
-            buf_after[assert_this_index + env_offset + 2 * 5 * 2 + 2 * 2 + 0], /* "ii" */
+            buf_after[assert_this_index + env_offset + 0 * 5 * 5 + 2 * 5 + 2], /* "ii" */
             1
         );
         assert_eq!(
-            buf_after[assert_this_index + env_offset + 2 * 5 * 2 + 3 * 2 + 1], /* "ij" */
+            buf_after[assert_this_index + env_offset + 1 * 5 * 5 + 2 * 5 + 3], /* "ij" */
             0
         );
         assert_eq!(
-            buf_after[assert_this_index + env_offset + 1 * 5 * 2 + 2 * 2 + 1], /* "hi" */
+            buf_after[assert_this_index + env_offset + 1 * 5 * 5 + 1 * 5 + 2], /* "hi" */
             1
         );
 
