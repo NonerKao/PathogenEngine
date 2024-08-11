@@ -17,7 +17,6 @@ TRIAL_UNIT = 60
 DELAY_UNIT = 20
 TEMPERATURE = 2.0
 SPICE = 3
-DATASET_UNIT = 4096
 
 def init_model(model_name):
     torch.set_default_dtype(torch.float32)
