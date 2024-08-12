@@ -31,3 +31,7 @@ We implement the MCTS algorithm based on Ch.6 of [the book](https://www.books.co
 * When the child nodes of the current node is known. Go to the next node whose PUCT value is the maximum.
 * When we hasn't known what will be the child nodes of the current node. We need to expand the candidates of available actions. Update the w (accumilated weight) and n (#trials) and Return the value (using the model) of this node.
 * When we reach to an end-game node. Update the w (accumilated weight) and n (#trials) and Return the value (using the model) of this node based on winning or losing.
+
+## Hacking Training
+
+## Hacking Playing

@@ -4,7 +4,6 @@ from constant import *
 
 RES_SIZE = 12
 RES_INPUT_SIZE = 84 
-FC_OUTPUT_SIZE = (1 + BOARD_POS + MAP_POS)
 NATURE_CHANNEL_SIZE = (8 + 2 + 1 + 2 + 11)
 
 class PathogenResidualBlock(torch.nn.Module):
@@ -113,6 +112,5 @@ class PathogenNet(torch.nn.Module):
         understanding = torch.nn.functional.relu(understanding)
         understanding = torch.flatten(understanding, 1)
         understanding = self.understanding_fc(understanding)
-        understanding = torch.nn.functional.tanh(understanding)
 
         return policy, understanding, value

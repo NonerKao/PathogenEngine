@@ -16,26 +16,10 @@ TRAINING_OUTER_EPOCH = 20
 LEARNING_RATE = 0.0004
 KFOLD = 5
 
-ALPHA = 0.05
-BETA = 0.90
-GAMMA = 0.05
-
-class MaxErrorLoss(torch.nn.Module):
-    def __init__(self):
-        super(MaxErrorLoss, self).__init__()
-    def forward(self, input, target):
-        return torch.max(torch.abs(input - target))*10000.0
-
-class ScaledLoss(torch.nn.Module):
-    def __init__(self, scale_factor=10000.0):
-        super(ScaledLoss, self).__init__()
-        self.scale_factor = scale_factor
-        self.loss = torch.nn.MSELoss()
-
-    def forward(self, input, target):
-        loss = self.loss(input, target)
-        scaled_loss = loss * self.scale_factor
-        return scaled_loss
+ALPHA = 0.10
+BETA = 0.70
+GAMMA = 0.10
+DELTA = 0.10
 
 def init_optimizer(model):
     # To apply the LR globally
@@ -165,10 +149,11 @@ if __name__ == "__main__":
                 model.train()
                 for state, policy, valid, value in train_dataloader:
                     policy_logits, valid_logits, value_pred = model(state)
-                    policy_loss = policy_loss_func(policy_logits, policy)
+                    policy_loss = policy_loss_func(policy_logits, torch.argmax(policy, dim=1))
                     valid_loss = valid_loss_func(valid_logits, valid)
                     value_loss = value_loss_func(value_pred, value)
-                    total_loss = ALPHA*policy_loss + BETA*valid_loss + GAMMA*value_loss
+                    rule_loss = MSELoss()(policy_logits*(1-valid), torch.zeros(valid.shape))
+                    total_loss = ALPHA*policy_loss + BETA*valid_loss + GAMMA*value_loss + DELTA*rule_loss
                     train_loss[0] += policy_loss.item() * state.size(0)
                     train_loss[1] += valid_loss.item() * state.size(0)
                     train_loss[2] += value_loss.item() * state.size(0)

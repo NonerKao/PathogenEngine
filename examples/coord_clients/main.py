@@ -2,16 +2,18 @@ import random
 import torch
 import argparse
 from random_agent import RandomAgent
-from reinforcement_agent import RLAgent
+from reinforcement_simulator import RLSimAgent
+from reinforcement_player import RLPlayer
 from query_agent import QAgent
 import time
+import sys
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description='Pathogen Agents for the coord server')
     parser.add_argument('--seed', type=str, help='Seed for the random number generator')
     parser.add_argument('-s', '--side', choices=['Doctor', 'Plague'], required=True,
                         help='Choose either "Docter" or "Plague"')
-    parser.add_argument('-t', '--type', choices=['Random', 'Reinforcement', 'Query'], required=True,
+    parser.add_argument('-t', '--type', choices=['Random', 'ReinforcementSimulate', 'ReinforcementPlay', 'Query'], required=True,
                         help='Different types of Agent')
     parser.add_argument('-r', '--record', type=str, help='Record the game transaction in this file')
     parser.add_argument('-v', '--verbose', action='store_true', help='Detailed information')
@@ -30,8 +32,10 @@ if __name__ == "__main__":
     for i in range(0, args.batch):
         if args.type == 'Random':
             a = RandomAgent(args)
-        elif args.type == 'Reinforcement':
-            a = RLAgent(args, i)
+        elif args.type == 'ReinforcementSimulate':
+            a = RLSimAgent(args, i)
+        elif args.type == 'ReinforcementPlay':
+            a = RLPlayer(args)
         elif args.type == 'Query':
             a = QAgent(args)
 
@@ -41,5 +45,5 @@ if __name__ == "__main__":
         time.sleep(3)
 
     if args.side == 'Doctor':
-        print(f"{doctor_wins/args.batch*100:6.2f} %")
+        print(f"{doctor_wins/args.batch*100:6.2f} %", file=sys.stderr)
 

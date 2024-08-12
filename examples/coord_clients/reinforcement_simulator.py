@@ -8,11 +8,6 @@ import torch
 from constant import *
 from reinforcement_network import *
 
-QUERY = 255
-SAVE = 254
-RETURN = 253
-CLEAR = 252
-
 TRIAL_UNIT = 60
 DELAY_UNIT = 20
 TEMPERATURE = 2.0
@@ -66,7 +61,7 @@ class Node():
         else:
             return (self.w / self.n) + explore
 
-class RLAgent(Agent):
+class RLSimAgent(Agent):
     def __init__(self, args, n):
         super().__init__(args)
         self.action = 255

@@ -4,7 +4,7 @@ import argparse
 
 # Define constants
 entry_size = 4096  # Each entry is 4096 bytes
-total_entries = 50075  # Total number of entries in the dataset
+total_entries = 50000  # Total number of entries in the dataset
 entries_to_keep = 50000  # Number of entries to keep after shuffling
 
 # Input and output file paths
