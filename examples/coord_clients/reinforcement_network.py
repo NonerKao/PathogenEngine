@@ -50,9 +50,10 @@ class PathogenNet(torch.nn.Module):
         ])
         
         # Policy Head
-        self.policy_conv = torch.nn.Conv2d(RES_INPUT_SIZE, 2, kernel_size=1)
-        self.policy_bn = torch.nn.BatchNorm2d(2)
-        self.policy_fc = torch.nn.Linear(2 * 7 * 7, TOTAL_POS)
+        policy_channels = 1
+        self.policy_conv = torch.nn.Conv2d(RES_INPUT_SIZE, policy_channels, kernel_size=1)
+        self.policy_bn = torch.nn.BatchNorm2d(policy_channels)
+        self.policy_fc = torch.nn.Linear(policy_channels * 7 * 7, TOTAL_POS)
 
         # Value Head
         self.value_conv = torch.nn.Conv2d(RES_INPUT_SIZE, 1, kernel_size=1)
@@ -61,10 +62,10 @@ class PathogenNet(torch.nn.Module):
         
         # Understanding Head
         # the prediction of error sub-move for all the positions
-        # XXX: 4 is experimental magic
-        self.understanding_conv = torch.nn.Conv2d(RES_INPUT_SIZE, 4, kernel_size=1)
-        self.understanding_bn = torch.nn.BatchNorm2d(4)
-        self.understanding_fc = torch.nn.Linear(4 * 7 * 7, TOTAL_POS)
+        valid_channels = 1
+        self.understanding_conv = torch.nn.Conv2d(RES_INPUT_SIZE, valid_channels, kernel_size=1)
+        self.understanding_bn = torch.nn.BatchNorm2d(valid_channels)
+        self.understanding_fc = torch.nn.Linear(valid_channels * 7 * 7, TOTAL_POS)
         
     def forward(self, x):
         # Padding the game board and the map to get ready for a Nx6x7x7 tensor

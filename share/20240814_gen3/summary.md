@@ -53,15 +53,7 @@ Doctor's winrate: 50.00%
 Plague's steps to win: 30.82 +/- 17.67
 Doctor's steps to win: 42.38 +/- 16.15
 
-play/records/d-#mnt#20240814_gen3#train#doctor.pth.4-p-#mnt#20240812_gen0#train#plague.pth
-Doctor's winrate: 40.00%
-Plague's steps to win: 25.33 +/- 9.18
-Doctor's steps to win: 37.00 +/- 12.28
-play/records/d-#mnt#20240814_gen3#train#doctor.pth.8-p-random
-Doctor's winrate: 35.00%
-Plague's steps to win: 36.23 +/- 23.73
-Doctor's steps to win: 45.14 +/- 16.77
-
+```
 play/records/d-#mnt#20240814_gen3#train#doctor.pth.8-p-#mnt#20240812_gen0#train#plague.pth
 Doctor's winrate: 55.00%
 Plague's steps to win: 31.44 +/- 11.13
@@ -102,3 +94,16 @@ play/records/d-#mnt#20240812_gen0#train#doctor.pth-p-#mnt#20240814_gen3#train#pl
 Doctor's winrate: 55.00%
 Plague's steps to win: 25.44 +/- 13.33
 Doctor's steps to win: 60.00 +/- 9.38
+play/records/d-#mnt#20240814_gen3#train#doctor.pth.4-p-#mnt#20240812_gen0#train#plague.pth
+```
+Doctor's winrate: 40.00%
+Plague's steps to win: 25.33 +/- 9.18
+Doctor's steps to win: 37.00 +/- 12.28
+play/records/d-#mnt#20240814_gen3#train#doctor.pth.8-p-random
+Doctor's winrate: 35.00%
+Plague's steps to win: 36.23 +/- 23.73
+Doctor's steps to win: 45.14 +/- 16.77
+
+# Play 2
+
+...

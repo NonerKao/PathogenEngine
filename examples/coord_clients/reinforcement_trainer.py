@@ -9,17 +9,16 @@ from torch.utils.tensorboard import SummaryWriter
 from reinforcement_network import *
 from sklearn.model_selection import KFold
 
-TRAINING_BATCH_UNIT = 200
-TRAINING_INNER_EPOCH = 5
-TRAINING_OUTER_EPOCH = 20
+TRAINING_BATCH_UNIT = 50
+TRAINING_INNER_EPOCH = 1
+TRAINING_OUTER_EPOCH = 2
 
-LEARNING_RATE = 0.0004
-KFOLD = 5
+LEARNING_RATE = 0.0001
+KFOLD = 4
 
-ALPHA = 0.10
-BETA = 0.70
-GAMMA = 0.10
-DELTA = 0.10
+ALPHA = 0.33
+BETA = 0.33
+GAMMA = 0.33
 
 def init_optimizer(model):
     # To apply the LR globally
@@ -152,8 +151,7 @@ if __name__ == "__main__":
                     policy_loss = policy_loss_func(policy_logits, torch.argmax(policy, dim=1))
                     valid_loss = valid_loss_func(valid_logits, valid)
                     value_loss = value_loss_func(value_pred, value)
-                    rule_loss = MSELoss()(policy_logits*(1-valid), torch.zeros(valid.shape))
-                    total_loss = ALPHA*policy_loss + BETA*valid_loss + GAMMA*value_loss + DELTA*rule_loss
+                    total_loss = ALPHA*policy_loss + BETA*valid_loss + GAMMA*value_loss
                     train_loss[0] += policy_loss.item() * state.size(0)
                     train_loss[1] += valid_loss.item() * state.size(0)
                     train_loss[2] += value_loss.item() * state.size(0)
