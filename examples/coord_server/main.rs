@@ -787,12 +787,24 @@ impl<T: Write> WriterExtra for T {
                     let mut ea = Action::new();
                     let s = ea.add_map_step(g, cc);
                     match s {
-                        Ok(_) => {}
+                        Ok("Ix00") => {
+                            coord_candidate.retain(|&e| e != cc);
+                            continue;
+                        }
                         Err(_) => {
                             coord_candidate.retain(|&e| e != cc);
                             continue;
                         }
+                        _ => {}
                     }
+                }
+                let ccl = coord_candidate.len();
+                if ccl == 0 {
+                    let mut ea = Action::new();
+                    let cc = *g.map.get(&g.turn).unwrap();
+                    let s = ea.add_map_step(g, cc);
+                    assert_eq!(Ok("Ix00"), s);
+                    coord_candidate.push(cc);
                 }
 
                 let len = coord_candidate.len() + 5;
@@ -1410,7 +1422,7 @@ mod tests {
         let mut fake_stream = Cursor::new(buf);
         assert_eq!(true, fake_stream.return_query(&g, &a));
         let buf_after = fake_stream.get_ref();
-        assert_eq!(3 as u8, buf_after[0]);
+        assert_eq!(2 as u8, buf_after[0]);
         // In this case, it will be either 112(ii), 117(ji) or 113(ij, skip).
         let _ = a.add_map_step(&g, "ii".to_map());
 
@@ -1503,7 +1515,7 @@ mod tests {
         let mut fake_stream = Cursor::new(buf);
         assert_eq!(true, fake_stream.return_query(&g, &a));
         let buf_after = fake_stream.get_ref();
-        assert_eq!(3 as u8, buf_after[0]);
+        assert_eq!(2 as u8, buf_after[0]);
         // In this case, it will be either 112(ii), 117(ji) or 113(ij, skip).
         let _ = a.add_map_step(&g, "ii".to_map());
 
@@ -1594,7 +1606,7 @@ mod tests {
         let t = TreeNode::new(&mut iter, None);
         let mut g = Game::init(Some(t));
 
-        const SAVE: usize = 1 + 1 + 2 + 4;
+        const SAVE: usize = 1 + 1 + 1 + 4;
         const SIM: usize = DATA_UNIT;
         const LEN: usize = DATA_UNIT + SAVE + (1 + DATA_UNIT) * 10 + SIM + SAVE + (1 + DATA_UNIT);
         let mut buf_origin: [u8; LEN] = [0; LEN];
@@ -1627,7 +1639,7 @@ mod tests {
 
         // Wx00: returned by an save request
         assert_eq!(buf_after[DATA_UNIT], 254);
-        assert_eq!(buf_after[DATA_UNIT + 1], 2);
+        assert_eq!(buf_after[DATA_UNIT + 1], 1);
         assert_eq!(buf_after[DATA_UNIT + SAVE - 4], 87);
         assert_eq!(buf_after[DATA_UNIT + SAVE - 3], 120);
         assert_eq!(buf_after[DATA_UNIT + SAVE - 2], 48);
@@ -1656,7 +1668,7 @@ mod tests {
         );
         assert_eq!(
             buf_after[DATA_UNIT + SAVE + (DATA_UNIT + 1) * 10 + SIM + 1],
-            2
+            1
         );
         assert_eq!(
             buf_after[DATA_UNIT + SAVE + (DATA_UNIT + 1) * 10 + SIM + SAVE - 4],
@@ -1713,7 +1725,7 @@ mod tests {
         let t = TreeNode::new(&mut iter, None);
         let mut g = Game::init(Some(t));
 
-        const SAVE1: usize = 1 + 1 + 2 + 4;
+        const SAVE1: usize = 1 + 1 + 1 + 4;
         const SAVE2: usize = 1 + 1 + 1 + 4;
         // CLEAR after 3 sub-moves
         // SAVE2 when it is to choose the character
@@ -1769,7 +1781,7 @@ mod tests {
 
         // Wx00: returned by the first save request
         assert_eq!(buf_after[DATA_UNIT], 254);
-        assert_eq!(buf_after[DATA_UNIT + 1], 2);
+        assert_eq!(buf_after[DATA_UNIT + 1], 1);
         base_offset = DATA_UNIT + SAVE1;
         assert_eq!(buf_after[base_offset - 4], 87);
         assert_eq!(buf_after[base_offset - 3], 120);
@@ -1884,7 +1896,7 @@ mod tests {
         //    Expect Ix0a for the win.
         // 5. Clear and play a dummy move to end this test.
 
-        const SAVE: usize = 1 + 1 + 9 + 4;
+        const SAVE: usize = 1 + 1 + 8 + 4;
         const LEN: usize = DATA_UNIT
             + SAVE
             + (1 + DATA_UNIT) * 9 + DATA_UNIT + (1 + DATA_UNIT) * 9 + DATA_UNIT
@@ -1992,7 +2004,7 @@ mod tests {
 
         // Wx00: returned by the first save request
         assert_eq!(buf_after[DATA_UNIT], 254);
-        assert_eq!(buf_after[DATA_UNIT + 1], 9);
+        assert_eq!(buf_after[DATA_UNIT + 1], 8);
         base_offset = DATA_UNIT + SAVE;
         assert_eq!(buf_after[base_offset - 4], 87);
         assert_eq!(buf_after[base_offset - 3], 120);
@@ -2015,7 +2027,7 @@ mod tests {
 
         // Wx00: returned by the first save request
         assert_eq!(buf_after[base_offset], 253);
-        assert_eq!(buf_after[base_offset + 1], 9);
+        assert_eq!(buf_after[base_offset + 1], 8);
         base_offset = base_offset + SAVE;
         assert_eq!(buf_after[base_offset - 4], 87);
         assert_eq!(buf_after[base_offset - 3], 120);
@@ -2045,7 +2057,7 @@ mod tests {
 
         // Wx00: returned by the first save request
         assert_eq!(buf_after[base_offset], 252);
-        assert_eq!(buf_after[base_offset + 1], 9);
+        assert_eq!(buf_after[base_offset + 1], 8);
         base_offset = base_offset + SAVE;
         assert_eq!(buf_after[base_offset - 4], 87);
         assert_eq!(buf_after[base_offset - 3], 120);
@@ -2083,13 +2095,13 @@ mod tests {
 
         // The scenario is like the follows:
 
-        const SAVE: usize = 1 + 1 + 6 + 4;
+        const SAVE: usize = 1 + 1 + 5 + 4;
         const QUERY1: usize = 1 + 1 + 2 + 4;
         const QUERY2: usize = 1 + 1 + 1 + 4;
-        const QUERY3: usize = 1 + 1 + 13 + 4;
+        const QUERY3: usize = 1 + 1 + 12 + 4;
         const QUERY4: usize = 1 + 1 + 4 + 4;
         const LEN: usize = DATA_UNIT
-            + SAVE + SAVE /* RETURN, expanding root's child: [106, 107, 111, 112, 113, 116] */
+            + SAVE + SAVE /* RETURN, expanding root's child: [106, 107, 111, 112, 113, 116], excluding 113 */
             + (1 + DATA_UNIT) /* 107 */
             + QUERY1 + SAVE /* RETURN, expanding 107's child: [10, 33] */
             + (1 + DATA_UNIT) /* 116 */
@@ -2099,7 +2111,7 @@ mod tests {
             + (1 + DATA_UNIT) /* 10 */
             + QUERY2 + SAVE /* RETURN, expanding 10's child: [8] */
             + (1 + DATA_UNIT) /* 113 */ + DATA_UNIT /* Ix07 */
-            + QUERY3 + SAVE /* RETURN, expanding 113's child: [108, 110, 111, 112, 114, 115, 116, 117, 118, 119, 121, 122, 123] */
+            + QUERY3 + SAVE /* RETURN, expanding 113's child: [108, 110, 111, 112, 114, 115, 116, 117, 118, 119, 121, 122, 123], excluding 108 */
             + (1 + DATA_UNIT) /* 116 */
             + QUERY2
             + (1 + DATA_UNIT) /* 10 */
@@ -2212,7 +2224,7 @@ mod tests {
         assert_eq!(buf_after[3], 51);
 
         assert_eq!(buf_after[assert_this_index], QUERY_CODE);
-        assert_eq!(buf_after[assert_this_index + 1], 13);
+        assert_eq!(buf_after[assert_this_index + 1], 12);
 
         // Ix07: simulated Doctor starts
         assert_eq!(buf_after[base_offset + 0], 73);
