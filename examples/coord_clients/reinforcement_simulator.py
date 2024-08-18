@@ -8,10 +8,10 @@ import torch
 from constant import *
 from reinforcement_network import *
 
-TRIAL_UNIT = 60
-DELAY_UNIT = 20
+TRIAL_UNIT = 80
+DELAY_UNIT = 0
 TEMPERATURE = 2.0
-SPICE = 3
+SPICE = 2
 
 def init_model(model_name):
     torch.set_default_dtype(torch.float32)
