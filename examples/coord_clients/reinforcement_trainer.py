@@ -9,16 +9,16 @@ from torch.utils.tensorboard import SummaryWriter
 from reinforcement_network import *
 from sklearn.model_selection import KFold
 
-TRAINING_BATCH_UNIT = 50
-TRAINING_INNER_EPOCH = 1
-TRAINING_OUTER_EPOCH = 2
+TRAINING_BATCH_UNIT = 400
+TRAINING_INNER_EPOCH = 4
+TRAINING_OUTER_EPOCH = 4
 
 LEARNING_RATE = 0.0001
-KFOLD = 4
+KFOLD = 8
 
-ALPHA = 0.33
-BETA = 0.33
-GAMMA = 0.33
+ALPHA = 0.30
+BETA = 0.30
+GAMMA = 0.40
 
 def init_optimizer(model):
     # To apply the LR globally
@@ -101,6 +101,7 @@ class SimulationDataset(Dataset):
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description='Driver for train/validate setup predictor for a Pathogen game')
     parser.add_argument('-d', '--dataset', type=str, help='the dataset', default='/dev/null')
+    parser.add_argument('-t', '--test-dataset', type=str, help='dataset for testing', default='/dev/null')
     parser.add_argument('-m', '--model', type=str, help='an existing model', default='model.pth')
     parser.add_argument('-n', '--exp_name', type=str, help='the name of the recorded expiriment', default='runs/temp')
 
@@ -113,6 +114,13 @@ if __name__ == "__main__":
 
     kfold = KFold(n_splits=KFOLD, shuffle=True)
     simulation_dataset = SimulationDataset(args.dataset, device)
+    test_dataset = SimulationDataset(args.test_dataset, device)
+    test_dataloader = DataLoader(
+        test_dataset,
+        batch_size=TRAINING_BATCH_UNIT,
+        shuffle=False,
+        generator=torch.Generator(device=device)
+    )
 
     # Since I am using sum reduction for the valid check, the weight is thus
     # implicitly larger than other ones. I think that makes sense.
@@ -169,7 +177,7 @@ if __name__ == "__main__":
                 writer.add_scalar('Loss/train_value', train_loss[2], i)
                 writer.add_scalar('Loss/train_total', train_loss[3], i)
 
-                misunderstanding = 0.0
+                val_misunderstanding = 0.0
                 val_loss = [0.0, 0.0, 0.0, 0.0]
                 model.eval()
                 with torch.no_grad():
@@ -183,15 +191,35 @@ if __name__ == "__main__":
                         val_loss[1] += valid_loss.item() * state.size(0)
                         val_loss[2] += value_loss.item() * state.size(0)
                         val_loss[3] += total_loss.item() * state.size(0)
-                        misunderstanding += torch.nn.functional.softmax(policy_logits) * (1 - valid)
+                        val_misunderstanding += torch.nn.functional.softmax(policy_logits) * (1 - valid)
                     val_loss = [x / len(val_dataloader.dataset) for x in val_loss]
                     writer.add_scalar('Loss/val_policy', val_loss[0], i)
                     writer.add_scalar('Loss/val_valid', val_loss[1], i)
                     writer.add_scalar('Loss/val_value', val_loss[2], i)
                     writer.add_scalar('Loss/val_total', val_loss[3], i)
-                    writer.add_scalar('Loss/misunderstanding', torch.sum(misunderstanding), i)
+                    writer.add_scalar('Loss/val_misunderstanding', torch.sum(val_misunderstanding), i)
                 i += 1
                 torch.save(model, args.model+'.'+str(i))
+
+        model.eval()
+        with torch.no_grad():
+            for state, policy, valid, value in test_dataloader:
+                policy_logits, valid_logits, value_pred = model(state)
+                policy_loss = policy_loss_func(policy_logits, policy)
+                valid_loss = valid_loss_func(valid_logits, valid)
+                value_loss = value_loss_func(value_pred, value)
+                total_loss = ALPHA*policy_loss + BETA*valid_loss + GAMMA*value_loss
+                test_loss[0] += policy_loss.item() * state.size(0)
+                test_loss[1] += testid_loss.item() * state.size(0)
+                test_loss[2] += testue_loss.item() * state.size(0)
+                test_loss[3] += total_loss.item() * state.size(0)
+                test_misunderstanding += torch.nn.functional.softmax(policy_logits) * (1 - valid)
+            test_loss = [x / len(test_dataloader.dataset) for x in test_loss]
+            writer.add_scalar('Loss/test_policy', test_loss[0], i)
+            writer.add_scalar('Loss/test_testid', test_loss[1], i)
+            writer.add_scalar('Loss/test_testue', test_loss[2], i)
+            writer.add_scalar('Loss/test_total', test_loss[3], i)
+            writer.add_scalar('Loss/test_misunderstanding', torch.sum(test_misunderstanding), i)
 
     writer.close()
     os.sys.exit(0)
