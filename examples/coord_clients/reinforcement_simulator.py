@@ -8,8 +8,6 @@ import torch
 from constant import *
 from reinforcement_network import *
 
-TRIAL_UNIT = 80
-DELAY_UNIT = 0
 TEMPERATURE = 2.0
 SPICE = 2
 
@@ -61,10 +59,22 @@ class Node():
         else:
             return (self.w / self.n) + explore
 
+class NullDataset:
+    def seek(self, *args):
+        pass
+
+    def write(self, *args):
+        pass
+
+    def close(self):
+        pass
+
 class RLSimAgent(Agent):
-    def __init__(self, args, n):
+    def __init__(self, args, s, n):
         super().__init__(args)
         self.action = 255
+        self.s = s
+        self.args = args
 
         ### MCTS stuff
         # Most of the time this is True.
@@ -74,17 +84,17 @@ class RLSimAgent(Agent):
         # when num_trials becomes 0, simulation goes from True to False;
         # when simulation goes from False to True, reset num_trials;
         # decrease this value each time a run of MCTS is finished
-        self.num_trials = TRIAL_UNIT
+        self.num_trials = args.trial_unit
         # I want it to "feel" the end game condition first.
         # the average steps of a game is around 30.
-        self.delay = DELAY_UNIT
+        self.delay = args.delay_unit
         # We are not like Go, where it is clear and definite who plays every action.
         self.is_me = True
         # The nodes
         self.root = None
         self.current_node = None
         # The record of the game
-        self.dataset = open(args.dataset+"_"+self.fraction+"_"+str(n)+".log", 'wb')
+        self.dataset = open(args.dataset+"_"+args.side+"_"+str(n)+".log", 'wb') if args.dataset != "/dev/null" else NullDataset()
         self.dataset_counter = 0
 
         # initialize the device
@@ -236,7 +246,7 @@ class RLSimAgent(Agent):
                     # root state because this one has no child currently.
                     self.root.parent = None
                     self.action = SAVE
-                    self.num_trials = TRIAL_UNIT
+                    self.num_trials = self.args.trial_unit
                     self.simulation = True
             else: # self.simulation
                 # [RL]

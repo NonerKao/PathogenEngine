@@ -23,6 +23,8 @@ if __name__ == "__main__":
     # Only for ML agents
     parser.add_argument('-m', '--model', type=str, help='A trained pytorch model that provides (sub-)move to current game state', default='model.pth')
     parser.add_argument('-d', '--dataset', type=str, help='Output dataset to this file', default='/dev/null')
+    parser.add_argument('--trial-unit', type=int, help='The simulation size', default=20)
+    parser.add_argument('--delay-unit', type=int, help='How many steps are skipped before simulation', default=0)
 
     args = parser.parse_args()
     if args.seed is not None:
