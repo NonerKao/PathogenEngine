@@ -1,9 +1,10 @@
 use clap::Parser;
 use ndarray::{Array, Array1};
 use std::collections::BTreeSet;
-use std::fs::File;
+use std::fs::{create_dir_all, read_dir, DirEntry, File};
 use std::io::{Read, Write};
 use std::net::{TcpListener, TcpStream};
+use std::path::Path;
 
 use pathogen_engine::core::action::Action;
 use pathogen_engine::core::action::ActionPhase;
@@ -26,17 +27,21 @@ const DATA_UNIT: usize = BOARD_DATA + MAP_DATA + TURN_DATA + FLOW_DATA + CODE_DA
 #[derive(Parser, Debug)]
 #[command(author, version, about, long_about = None)]
 struct Args {
-    /// SGF file to be loaded from
+    /// The directory to a bunch of SGF files to be loaded from
     #[arg(short, long)]
-    load: Option<String>,
+    load_dir: Option<String>,
 
-    /// SGF file to be saved to
+    /// The directory to a bunch of SGF files to be saved to
     #[arg(short, long)]
-    save: Option<String>,
+    save_dir: Option<String>,
 
     /// Random seed
     #[arg(long)]
     seed: Option<String>,
+
+    /// Batch number: How many games are we hosting?
+    #[arg(long, default_value_t = 1)]
+    batch: u32,
 }
 
 fn encode(g: &Game, a: &Action) -> Array1<u8> {
@@ -667,29 +672,52 @@ impl ReaderExtra for TcpStream {
 fn main() -> Result<(), std::io::Error> {
     let args = Args::parse();
 
-    let e = "(;FF[4]GM[41]SZ[6]GN[https://boardgamegeek.com/boardgame/369862/pathogen];C[Setup0]AW[df][da][db][ab][ba][ea][cc][fd][fc][af][ce][ee][cb][ef][bd][bc][fe];C[Setup0]AB[aa][ec][cd][bb][ae][be][ed][ad][ff][eb][fb][bf][ac][fa][dd][dc][cf][de][ca];C[Setup1]AB[fc];C[Setup1]AB[ed];C[Setup1]AB[ab];C[Setup1]AB[cf];C[Setup2]AW[cc];C[Setup2]AB[ec];C[Setup2]AW[ca];C[Setup2]AB[ce];C[Setup3]AW[jj])".to_string();
-    let mut iter = e.trim().chars().peekable();
-    let mut contents = String::new();
-    match args.load {
-        Some(filename) => {
-            // Ideally, this should be the pure "view mode", where we read the games(s).
-            // In reality, I need this to bridge the gap before all phases are treated equal.
-            let mut file = File::open(filename.as_str())?;
-            file.read_to_string(&mut contents)
-                .expect("Failed to read file");
-            iter = contents.trim().chars().peekable();
+    let (w, b) = network_setup()?;
+    let mut s: [TcpStream; 2] = [w, b];
+
+    match args.load_dir {
+        Some(ref dirname) => {
+            let mut num_replay: u32 = 0;
+            let mut total_play = 0;
+            'total: while total_play < args.batch {
+                for filename in read_dir(dirname)? {
+                    load_file_and_play(&filename?, &args, &mut s, num_replay)?;
+
+                    total_play = total_play + 1;
+                    if total_play >= args.batch {
+                        break 'total;
+                    }
+                }
+                num_replay = num_replay + 1;
+            }
         }
-        None => {}
+        None => {
+            // We are not ready for this route
+            // "".to_string().trim().chars().peekable()
+            panic!("Not ready for a fresh play.");
+        }
     }
+
+    Ok(())
+}
+
+fn load_file_and_play(
+    filename: &DirEntry,
+    args: &Args,
+    s: &mut [TcpStream; 2],
+    suffix: u32,
+) -> Result<(), std::io::Error> {
+    let mut contents = String::new();
+    let mut file = File::open(filename.path())?;
+    file.read_to_string(&mut contents)
+        .expect("Failed to read file");
+    let mut iter = contents.trim().chars().peekable();
 
     let t = TreeNode::new(&mut iter, None);
     let mut g = Game::init(Some(t));
     if !g.is_setup() {
         panic!("The game is either not ready or finished");
     }
-
-    let (w, b) = network_setup()?;
-    let mut s: [TcpStream; 2] = [w, b];
 
     let ea = Action::new();
     let result: String = loop {
@@ -698,8 +726,9 @@ fn main() -> Result<(), std::io::Error> {
             if !handle_client(&mut s[turn % 2], &mut g) {
                 s[turn % 2].update_agent(&g, &ea, &"Ix06");
                 s[1 - turn % 2].update_agent(&g, &ea, &"Ix06");
-                drop(s);
-                break format!("RE[{}+{}]", "O", turn);
+                // drop(s);
+                // break format!("RE[{}+{}]", "O", turn);
+                panic!("We lost the connections.");
             }
             if g.is_ended() {
                 s[turn % 2].update_agent(&g, &ea, &"Ix04");
@@ -712,21 +741,26 @@ fn main() -> Result<(), std::io::Error> {
     };
 
     let mut iter = result.trim().chars().peekable();
-    g.history.borrow().to_root().borrow().children[0]
-        .borrow_mut()
-        .properties
-        .push(Property::new(&mut iter));
-    to_file(&g)
-}
+    match &args.save_dir {
+        Some(dirname) => {
+            if !Path::new(dirname.as_str()).exists() {
+                create_dir_all(dirname.as_str())?;
+            }
 
-fn to_file(g: &Game) -> std::io::Result<()> {
-    let args = Args::parse();
-    let mut buffer = String::new();
-    g.history.borrow().to_root().borrow().to_string(&mut buffer);
-    match args.save {
-        Some(filename) => {
-            let mut file = File::create(filename.as_str())?;
-            write!(file, "{}", buffer)?;
+            let save_path = format!(
+                "{}/{}.{}",
+                dirname,
+                &filename.file_name().to_string_lossy().into_owned(),
+                suffix
+            );
+            g.history.borrow().to_root().borrow().children[0]
+                .borrow_mut()
+                .properties
+                .push(Property::new(&mut iter));
+            let mut buffer = String::new();
+            g.history.borrow().to_root().borrow().to_string(&mut buffer);
+            let mut save_file = File::create(save_path)?;
+            save_file.write_all(buffer.as_bytes())?;
         }
         None => {}
     }

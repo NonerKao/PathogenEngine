@@ -5,13 +5,14 @@ from utils import output
 from constant import *
 
 class QAgent(Agent):
-    def __init__(self, f):
+    def __init__(self, f, s):
         super().__init__(f)
         self.fixmap = list(range(36)) + list(range(100, 125))
         self.map = self.fixmap
         self.action = -1
         self.num_candidate = 0
         self.candidate = None
+        self.s = s
         while self.play():
             continue
         if self.record is not None:

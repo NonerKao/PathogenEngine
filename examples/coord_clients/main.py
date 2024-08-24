@@ -7,6 +7,7 @@ from reinforcement_player import RLPlayer
 from query_agent import QAgent
 import time
 import sys
+import socket
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description='Pathogen Agents for the coord server')
@@ -21,28 +22,32 @@ if __name__ == "__main__":
 
     # Only for ML agents
     parser.add_argument('-m', '--model', type=str, help='A trained pytorch model that provides (sub-)move to current game state', default='model.pth')
-    parser.add_argument('-d', '--dataset', type=str, help='Output dataset to this file', default='dataset')
+    parser.add_argument('-d', '--dataset', type=str, help='Output dataset to this file', default='/dev/null')
 
     args = parser.parse_args()
     if args.seed is not None:
         random.seed(args.seed)
         torch.manual_seed(hash(args.seed))
 
+    s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+    s.connect(('127.0.0.1', 6241 if args.side == "Doctor" else 3698))
+    s.setblocking(1)
+    s.settimeout(None)
+
     doctor_wins = 0
     for i in range(0, args.batch):
         if args.type == 'Random':
-            a = RandomAgent(args)
+            a = RandomAgent(args, s)
         elif args.type == 'ReinforcementSimulate':
-            a = RLSimAgent(args, i)
+            a = RLSimAgent(args, s, i)
         elif args.type == 'ReinforcementPlay':
             a = RLPlayer(args)
         elif args.type == 'Query':
-            a = QAgent(args)
+            a = QAgent(args, s)
 
         # collect the result
         if args.side == 'Doctor' and a.result == b'Ix04':
             doctor_wins = doctor_wins + 1
-        time.sleep(3)
 
     if args.side == 'Doctor':
         print(f"{doctor_wins/args.batch*100:6.2f} %", file=sys.stderr)

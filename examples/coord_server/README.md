@@ -4,7 +4,7 @@
 ## Server
 
 ```
-$ cargo run --example coord_server
+$ cargo run --example coord_server --load-dir <setup dir> [--batch <num>] [--save-dir <record dir>] 
 ```
 
 ## Client (The random client as an example)

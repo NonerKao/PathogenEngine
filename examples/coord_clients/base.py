@@ -1,21 +1,9 @@
-import socket
 from abc import ABC, abstractmethod
 from constant import *
 
 class Agent(ABC):
     def __init__(self, args):
-        self.fraction = args.side
         self.result = None
-        if self.fraction == "Doctor":
-            self.port = 6241
-        elif self.fraction == "Plague":
-            self.port = 3698
-        else:
-            raise ValueError("Unknown fraction!")
-        self.s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-        self.s.connect(('127.0.0.1', self.port))
-        self.s.setblocking(1)
-        self.s.settimeout(None)
         if args.record is not None:
             # regex pattern is like 4, (389, 1, 4)\+, for now
             self.record = open(args.record, 'wb')

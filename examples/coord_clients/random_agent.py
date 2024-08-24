@@ -4,12 +4,13 @@ from base import Agent
 from utils import output
 
 class RandomAgent(Agent):
-    def __init__(self, f):
+    def __init__(self, f, s):
         super().__init__(f)
         self.fixmap = list(range(36)) + list(range(100, 125))
         self.map = self.fixmap
         self.action = -1
         self.count = 0
+        self.s = s
         while self.play():
             continue
         if self.record is not None:
