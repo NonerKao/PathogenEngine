@@ -155,6 +155,42 @@ document.addEventListener("DOMContentLoaded", () => {
     }
 
     function applyStepBackward(step) {
+        let from = steps[current_id];
+        let to = steps[current_id-1];
+        const [from_on_map, [fcol, frow]] = convertPosition(from.pos);
+        const [to_on_map, [tcol, trow]] = convertPosition(to.pos);
+
+        if (from.char1 != to.char1) {
+            // switch player back
+            for (let index = current_id-1; index >= 0; index--) {
+                let [on_map, [col, row]] = convertPosition(steps[index].pos);
+                if (on_map && steps[index].char1 == from.char1) {
+                    drawMap(row, col, from.char1);
+                    break;
+                }
+            }
+        } else if (from.is_marker){
+            gridState[frow][fcol].marker = gridState[frow][fcol].marker - from.marker;
+            drawGrid(frow, fcol);
+        } else {
+            if (from_on_map != to_on_map) {
+                // from SetCharacter to Lockdown/SetMap, nothing to be done
+            } else if (from_on_map) {
+                // undo Lockdown
+                for (let index = current_id-1; index >= 0; index--) {
+                    let [on_map, [col, row]] = convertPosition(steps[index].pos);
+                    if (on_map && steps[index].char1 == 'P') {
+                        drawMap(row, col, 'P');
+                        break;
+                    }
+                }
+            } else {
+                gridState[frow][fcol].char1 = ' ';
+                drawGrid(frow, fcol);
+                gridState[trow][tcol].char1 = to.char1;
+                drawGrid(trow, tcol);
+            }
+        }
     }
 
     document.addEventListener("keydown", (event) => {
