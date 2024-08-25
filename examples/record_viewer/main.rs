@@ -88,7 +88,7 @@ async fn main() -> std::io::Result<()> {
         id: id,
         pos: setup1_0.borrow().properties[1].value[0].clone(),
         is_marker: true,
-        char1: ' ',
+        char1: 'P',
         marker: -1,
     });
     id = id + 1;
@@ -96,7 +96,7 @@ async fn main() -> std::io::Result<()> {
         id: id,
         pos: setup1_1.borrow().properties[1].value[0].clone(),
         is_marker: true,
-        char1: ' ',
+        char1: 'P',
         marker: -1,
     });
     id = id + 1;
@@ -104,7 +104,7 @@ async fn main() -> std::io::Result<()> {
         id: id,
         pos: setup1_2.borrow().properties[1].value[0].clone(),
         is_marker: true,
-        char1: ' ',
+        char1: 'P',
         marker: -1,
     });
     id = id + 1;
@@ -112,7 +112,7 @@ async fn main() -> std::io::Result<()> {
         id: id,
         pos: setup1_3.borrow().properties[1].value[0].clone(),
         is_marker: true,
-        char1: ' ',
+        char1: 'P',
         marker: -1,
     });
     id = id + 1;
