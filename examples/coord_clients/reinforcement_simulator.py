@@ -302,16 +302,18 @@ class RLSimAgent(Agent):
             policy, valid, value = self.model(self.state)
             probabilities = spice(torch.nn.functional.softmax(policy, dim=1).squeeze(0), TEMPERATURE)
 
+            ctp = self.candidates_to_prob()
+            probabilities2 = spice(torch.nn.functional.softmax(torch.from_numpy(np.copy(ctp)).float().unsqueeze(0).to(self.device), dim=1).squeeze(0), TEMPERATURE)
+
             # Then, record the probabilities and the valid head. Once the game is
             # over, we can add value back.
-            self.dataset.write(self.candidates_to_prob().tobytes()) # section 2: policy
+            self.dataset.write(ctp.tobytes()) # section 2: policy
             self.dataset.write(shsor(self.candidate).tobytes()) # section 3: valid
             # section 4, value, is not known until the end of the game
             self.dataset_counter = self.dataset_counter + 1
 
-            # print(probabilities.shape, probabilities)
             # print(list(self.candidate))
-            for action_index in probabilities:
+            for action_index in probabilities2:
                 index = int(action_index)
                 if index in self.candidate:
                     if index >= BOARD_POS:

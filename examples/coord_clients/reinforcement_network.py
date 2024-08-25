@@ -3,7 +3,7 @@ import torch
 from constant import *
 
 RES_SIZE = 12
-RES_INPUT_SIZE = 84 
+RES_INPUT_SIZE = 144 
 NATURE_CHANNEL_SIZE = (8 + 2 + 1 + 2 + 11)
 
 class PathogenResidualBlock(torch.nn.Module):
@@ -92,13 +92,6 @@ class PathogenNet(torch.nn.Module):
         for block in self.resblocks0:
             x = block(x)
 
-        # The output: policy head
-        policy = self.policy_conv(x)
-        policy = self.policy_bn(policy)
-        policy = torch.nn.functional.relu(policy)
-        policy = torch.flatten(policy, 1)
-        policy = self.policy_fc(policy)
-
         # The output: value head
         value = self.value_conv(x)
         value = self.value_bn(value)
@@ -113,5 +106,13 @@ class PathogenNet(torch.nn.Module):
         understanding = torch.nn.functional.relu(understanding)
         understanding = torch.flatten(understanding, 1)
         understanding = self.understanding_fc(understanding)
+
+        # The output: policy head
+        policy = self.policy_conv(x)
+        policy = self.policy_bn(policy)
+        policy = torch.nn.functional.relu(policy)
+        policy = torch.flatten(policy, 1)
+        policy = self.policy_fc(policy)
+        policy = policy*understanding
 
         return policy, understanding, value

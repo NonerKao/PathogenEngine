@@ -1,33 +1,24 @@
 #/bin/bash
 
-# This is used in container
-
-BATCH=100
-MNT=/mnt/20240818_gen4
+BATCH=200
+MNT=/mnt/20240824_gen7
 PE_ROOT=/home/alankao/PathogenEngine/examples
 
-THIS_ROOT=$MNT/simulation/$(hostname)_$(date --utc +%Y%m%d%H%M%S)
-mkdir -p $THIS_ROOT
-
-ITER=0;
-for I in $(ls $MNT/../setups | shuf); do
-	echo $ITER;
+function sim_single()
+{
+	THIS_ROOT=$MNT/simulation/$(hostname)_$(date --utc +%Y%m%d%H%M%S)
+	mkdir -p $THIS_ROOT
 	RUST_BACKTRACE=1 cargo run --release --example coord_server -- \
-		--load $MNT/../setups/$I \
-		--save $THIS_ROOT/$I
-	ITER=$(($ITER + 1));
-	sleep 1
-	if [ $ITER -ge $BATCH ]; then
-		exit 0
-	fi
-done &
-sleep 1
-python $PE_ROOT/coord_clients/main.py -t ReinforcementSimulate -s Doctor -m $MNT/../20240812_gen0/train/doctor.pth -b $BATCH --dataset "$THIS_ROOT/dataset" &
-python $PE_ROOT/coord_clients/main.py -t ReinforcementSimulate -s Plague -m $MNT/../20240812_gen0/train/plague.pth -b $BATCH --dataset "$THIS_ROOT/dataset"
+		--load-dir $THIS_ROOT/../setups \
+		--save-dir $THIS_ROOT \
+		--batch $BATCH &
+	sleep 3
+	python $PE_ROOT/coord_clients/main.py -t ReinforcementSimulate -s Plague -m $1 -b $BATCH --dataset "$THIS_ROOT/dataset" --trial-unit $2 --delay-unit $3 &
+	python $PE_ROOT/coord_clients/main.py -t ReinforcementSimulate -s Doctor -m $4 -b $BATCH --dataset "$THIS_ROOT/dataset" --trial-unit $5 --delay-unit $6
+	
+	wait
+	find $THIS_ROOT -type f -size 0 -name '*.log' -delete
+}
 
-wait
-find $THIS_ROOT -type f -size 0 -name '*.log' -delete
+sim_single /mnt/20240824_gen7/simulation/empty_$(date --utc +%Y%m%d%H%M%S).pth 0 200 /mnt/20240824_gen7/simulation/empty_$(date --utc +%Y%m%d%H%M%S).pth 0 200
 
-# Use this to check the dataset size easily
-# SUM=0; for S in $(find -name '*Doctor*.log' -exec bash -c 'echo $(($(ls -l {} | awk '"'{print \$5}'"')/4096))' \;); do SUM=$(($S+$SUM)); done; echo $SUM
-# SUM=0; for S in $(find -name '*Plague*.log' -exec bash -c 'echo $(($(ls -l {} | awk '"'{print \$5}'"')/4096))' \;); do SUM=$(($S+$SUM)); done; echo $SUM

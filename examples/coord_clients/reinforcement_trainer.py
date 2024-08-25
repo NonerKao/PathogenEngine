@@ -9,16 +9,16 @@ from torch.utils.tensorboard import SummaryWriter
 from reinforcement_network import *
 from sklearn.model_selection import KFold
 
-TRAINING_BATCH_UNIT = 400
-TRAINING_INNER_EPOCH = 4
-TRAINING_OUTER_EPOCH = 4
+TRAINING_BATCH_UNIT = 30
+TRAINING_INNER_EPOCH = 1
+TRAINING_OUTER_EPOCH = 2
 
 LEARNING_RATE = 0.0001
-KFOLD = 8
+KFOLD = 6
 
-ALPHA = 0.30
+ALPHA = 0.20
 BETA = 0.30
-GAMMA = 0.40
+GAMMA = 0.50
 
 def init_optimizer(model):
     # To apply the LR globally
@@ -198,28 +198,31 @@ if __name__ == "__main__":
                     writer.add_scalar('Loss/val_value', val_loss[2], i)
                     writer.add_scalar('Loss/val_total', val_loss[3], i)
                     writer.add_scalar('Loss/val_misunderstanding', torch.sum(val_misunderstanding), i)
+
+                test_misunderstanding = 0.0
+                test_loss = [0.0, 0.0, 0.0, 0.0]
+                model.eval()
+                with torch.no_grad():
+                    for state, policy, valid, value in test_dataloader:
+                        policy_logits, valid_logits, value_pred = model(state)
+                        policy_loss = policy_loss_func(policy_logits, policy)
+                        valid_loss = valid_loss_func(valid_logits, valid)
+                        value_loss = value_loss_func(value_pred, value)
+                        total_loss = ALPHA*policy_loss + BETA*valid_loss + GAMMA*value_loss
+                        test_loss[0] += policy_loss.item() * state.size(0)
+                        test_loss[1] += valid_loss.item() * state.size(0)
+                        test_loss[2] += value_loss.item() * state.size(0)
+                        test_loss[3] += total_loss.item() * state.size(0)
+                        test_misunderstanding += torch.nn.functional.softmax(policy_logits) * (1 - valid)
+                    test_loss = [x / len(test_dataloader.dataset) for x in test_loss]
+                    writer.add_scalar('Loss/test_policy', test_loss[0], i)
+                    writer.add_scalar('Loss/test_valid', test_loss[1], i)
+                    writer.add_scalar('Loss/test_value', test_loss[2], i)
+                    writer.add_scalar('Loss/test_total', test_loss[3], i)
+                    writer.add_scalar('Loss/test_misunderstanding', torch.sum(test_misunderstanding), i)
+
                 i += 1
                 torch.save(model, args.model+'.'+str(i))
-
-        model.eval()
-        with torch.no_grad():
-            for state, policy, valid, value in test_dataloader:
-                policy_logits, valid_logits, value_pred = model(state)
-                policy_loss = policy_loss_func(policy_logits, policy)
-                valid_loss = valid_loss_func(valid_logits, valid)
-                value_loss = value_loss_func(value_pred, value)
-                total_loss = ALPHA*policy_loss + BETA*valid_loss + GAMMA*value_loss
-                test_loss[0] += policy_loss.item() * state.size(0)
-                test_loss[1] += testid_loss.item() * state.size(0)
-                test_loss[2] += testue_loss.item() * state.size(0)
-                test_loss[3] += total_loss.item() * state.size(0)
-                test_misunderstanding += torch.nn.functional.softmax(policy_logits) * (1 - valid)
-            test_loss = [x / len(test_dataloader.dataset) for x in test_loss]
-            writer.add_scalar('Loss/test_policy', test_loss[0], i)
-            writer.add_scalar('Loss/test_testid', test_loss[1], i)
-            writer.add_scalar('Loss/test_testue', test_loss[2], i)
-            writer.add_scalar('Loss/test_total', test_loss[3], i)
-            writer.add_scalar('Loss/test_misunderstanding', torch.sum(test_misunderstanding), i)
 
     writer.close()
     os.sys.exit(0)
