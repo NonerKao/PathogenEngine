@@ -1,7 +1,6 @@
 import random
 import torch
 import argparse
-from random_agent import RandomAgent
 from reinforcement_simulator import RLSimAgent
 from reinforcement_player import RLPlayer
 from query_agent import QAgent
@@ -25,6 +24,7 @@ if __name__ == "__main__":
     parser.add_argument('-d', '--dataset', type=str, help='Output dataset to this file', default='/dev/null')
     parser.add_argument('--trial-unit', type=int, help='The simulation size', default=20)
     parser.add_argument('--delay-unit', type=int, help='How many steps are skipped before simulation', default=0)
+    parser.add_argument('--device', type=str, help='Simulation on what device', default='cpu')
 
     args = parser.parse_args()
     if args.seed is not None:
@@ -39,7 +39,7 @@ if __name__ == "__main__":
     doctor_wins = 0
     for i in range(0, args.batch):
         if args.type == 'Random':
-            a = RandomAgent(args, s)
+            a = QAgent(args, s)
         elif args.type == 'ReinforcementSimulate':
             a = RLSimAgent(args, s, i)
         elif args.type == 'ReinforcementPlay':

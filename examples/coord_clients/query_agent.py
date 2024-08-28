@@ -31,7 +31,7 @@ class QAgent(Agent):
             # Shouldn't be used after an action commited and before the opponant's next move
             self.action = 255
             return
-        elif data[0:4] in (b'Ix01', b'Ix03'):
+        elif data[0:4] in (b'Ix01', b'Ix03', b'Ix0b'):
             # ~~self.map = self.fixmap.copy()~~
             # get candidate move from query
             self.action = 255

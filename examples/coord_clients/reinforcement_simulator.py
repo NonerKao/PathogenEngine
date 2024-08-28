@@ -1,5 +1,5 @@
 import random
-import os 
+import os
 import sys
 from base import Agent
 from utils import output
@@ -7,20 +7,21 @@ import numpy as np
 import torch
 from constant import *
 from reinforcement_network import *
+from collections import Counter
 
 TEMPERATURE = 2.0
 SPICE = 2
 
-def init_model(model_name):
+def init_model(args):
     torch.set_default_dtype(torch.float32)
-    if os.path.exists(model_name):
+    if os.path.exists(args.model):
         # Load the model state
-        model = torch.load(model_name)
+        model = torch.load(args.model, map_location=torch.device(args.device))
     else:
         # Start with a newly initialized model
         model = PathogenNet()
         print("Warning: Starting with a new model.")
-        torch.save(model, model_name)
+        torch.save(model, args.model)
     return model
 
 class Node():
@@ -33,6 +34,7 @@ class Node():
         self.parent = parent
         self.child_nodes = {}
         self.is_me = is_me
+        self.temporary = False
 
     def update(self, w):
         coef = 1.0 if self.is_me else -1.0
@@ -69,6 +71,25 @@ class NullDataset:
     def close(self):
         pass
 
+class CounterKey:
+    def __init__(self, counter):
+        self.counter = counter
+
+    def __hash__(self):
+        return hash(tuple(sorted(self.counter.items())))
+
+    def __eq__(self, other):
+        return isinstance(other, CounterKey) and self.counter == other.counter
+
+    def __repr__(self):
+        return f"CounterKey({self.counter})"
+
+    def __str__(self):
+        return f"CounterKey({self.counter})"
+
+    def __iter__(self):
+        return iter(self.counter.items())
+
 class RLSimAgent(Agent):
     def __init__(self, args, s, n):
         super().__init__(args)
@@ -78,7 +99,7 @@ class RLSimAgent(Agent):
 
         ### MCTS stuff
         # Most of the time this is True.
-        # Only when we finish a bunch of MCTS simulations, 
+        # Only when we finish a bunch of MCTS simulations,
         # we make a real play by revert this flag.
         self.simulation = False
         # when num_trials becomes 0, simulation goes from True to False;
@@ -104,7 +125,7 @@ class RLSimAgent(Agent):
             print('Warning: Use CPU')
 
         # We will only use this model for inference/simulation, at this phase
-        self.model = init_model(args.model)
+        self.model = init_model(args)
         self.model.eval()
 
         while self.play():
@@ -128,10 +149,9 @@ class RLSimAgent(Agent):
     def update(self, result):
         coef = 1.0 if self.current_node.is_me else -1.0
         w = 0
-        if result == 1:
+        if result == 0:
             state = np.frombuffer(self.current_node.state[4:], dtype=np.uint8)
             state = torch.from_numpy(np.copy(state)).float().unsqueeze(0).to(self.device)
-            # state = torch.tensor(state).float().unsqueeze(0)
             _, _, w = self.model(state)
         else:
             w = result
@@ -141,26 +161,61 @@ class RLSimAgent(Agent):
         return
 
     def candidates_to_prob(self):
-        onehot_array = np.zeros(TOTAL_POS, dtype=np.float32)
-
         # sum up all the trials
         sum = 0
+        # count each moves
+        array = np.zeros(TOTAL_POS, dtype=np.float32)
         for i in self.current_node.child_nodes:
-            sum = sum + self.current_node.child_nodes[i].n
+            # Since we have fast-forwarded most of the SetMarkers,
+            # some nodes are marked with `temporary`.
+            n = self.current_node.child_nodes[i].n
+            if self.current_node.child_nodes[i].temporary:
+                continue
+            # Still count all of them
+            if isinstance(i, CounterKey):
+                for action, count in i:
+                    sum = sum + count*n
+                    index = action if action < BOARD_POS else action - MAP_POS_OFFSET
+                    array[index] = array[index] + count*n
+            else:
+                index = i if i < BOARD_POS else i - MAP_POS_OFFSET
+                array[index] = array[index] + n
+                sum = sum + n
 
-        # calculate the array
-        for i in self.current_node.child_nodes:
-            index = i
-            if i >= BOARD_POS:
-                index = i - MAP_POS_OFFSET
-            onehot_array[index] = self.current_node.child_nodes[i].n/sum
-
-        return onehot_array
+        return array/sum
 
     def analyze(self, data):
         if ord('E') == data[0]:
             print("This doesn't make any sense. Check it!")
             sys.exit(255)
+        elif data[0:4] in (b'Ix0b'):
+            # Let's fast forward all the SetMarkers in this tree search
+            self.send_special(QUERY)
+            self.action = random.choice(self.candidate)
+
+            # Mark the node as temporary
+            self.current_node.temporary = True
+
+            # Form the corresponding index, as a CounterKey(Counter) object
+            prev = self.current_node.action
+            new_index = Counter()
+            if isinstance(prev, Counter):
+                new_index.update(prev)
+            else:
+                new_index.update([prev])
+            new_index.update([self.action])
+
+            # if exist, use it; if not, create it
+            try:
+                self.current_node = self.current_node.parent.child_nodes[CounterKey(new_index)]
+            except KeyError:
+                self.current_node.parent.child_nodes[CounterKey(new_index)] = Node(None, self.current_node.parent, None)
+                self.current_node = self.current_node.parent.child_nodes[CounterKey(new_index)]
+            finally:
+                self.current_node.action = new_index
+                assert not self.current_node == False, "Fail to get a corresponding node"
+
+            return
         elif data[0:4] in (b'Ix00', b'Ix02', b'Ix04', b'Ix05', b'Ix06'):
             # This won't be really sent back to the server because the code
             # indicates that we have nothing to do now. This client still set a
@@ -236,18 +291,18 @@ class RLSimAgent(Agent):
                     self.root.state = data
                     self.current_node = self.root
 
-                if self.current_node.child_nodes and len(self.current_node.child_nodes) <= 1:
+                # if self.current_node.child_nodes and len(self.current_node.child_nodes) <= 1:
                     # no point to SAVE such a root
-                    self.action = QUERY
-                else:
-                    # Ideally most of the time this is trying simulated moves, so if 
+                    # self.action = QUERY
+                # else:
+                    # Ideally most of the time this is trying simulated moves, so if
                     # it is not in a simulation, just enable it.
                     # We can see this SAVE as a special variant of a RETURN to the
                     # root state because this one has no child currently.
-                    self.root.parent = None
-                    self.action = SAVE
-                    self.num_trials = self.args.trial_unit
-                    self.simulation = True
+                self.root.parent = None
+                self.action = SAVE
+                self.num_trials = self.args.trial_unit
+                self.simulation = True
             else: # self.simulation
                 # [RL]
                 # Do a simulation then. What nodes are we exploring? Does it have
@@ -261,7 +316,7 @@ class RLSimAgent(Agent):
                     # Now the simulation is done.
                     self.simulation = False
                     self.action = CLEAR
-                    self.update(1)
+                    self.update(0)
                 else:
                     self.action = QUERY
 
@@ -270,11 +325,12 @@ class RLSimAgent(Agent):
                 for action in self.candidate:
                     self.current_node.child_nodes[action] = Node(None, self.current_node, None)
                 # why would we backtracking for this single option?
-                if len(self.candidate) > 1:
-                    self.num_trials = self.num_trials - 1
-                    self.action = RETURN
-                    self.send_special(self.action)
-                    self.update(1)
+                # because it can help us update every node's inferenced weight
+                # if len(self.candidate) > 1:
+                self.num_trials = self.num_trials - 1
+                self.action = RETURN
+                self.send_special(self.action)
+                self.update(0)
         elif data[0:4] in (b'Ix09', b'Ix0a'):
             self.num_trials = self.num_trials - 1
             if self.num_trials <= 0:
@@ -282,7 +338,7 @@ class RLSimAgent(Agent):
                 self.simulation = False
             else:
                 self.action = RETURN
-            self.update(-1 if data[0:4] == b'Ix09' else 0)
+            self.update(-1 if data[0:4] == b'Ix09' else 1)
             self.send_special(self.action)
         else:
             print("What is this?")
@@ -312,7 +368,6 @@ class RLSimAgent(Agent):
             # section 4, value, is not known until the end of the game
             self.dataset_counter = self.dataset_counter + 1
 
-            # print(list(self.candidate))
             for action_index in probabilities2:
                 index = int(action_index)
                 if index in self.candidate:
@@ -340,13 +395,15 @@ class RLSimAgent(Agent):
             output(data)
             sys.exit(255)
         elif len(self.candidate) == 1:
+            # while other shortcuts have been removed, this one is preserved because it
+            # has no other side effects and a time saver, compared to the else block below.
             self.action = self.candidate[0]
             self.current_node = self.current_node.child_nodes[self.action]
         else:
             # [RL]
             # Run the child node who has the maximum PUCT
             max_action_puct = float('-inf');
-            assert self.current_node.child_nodes.keys() != list(self.candidate), "Why???"
+            assert len(self.current_node.child_nodes.keys()) == len(list(self.candidate)), "Why???"
             for candidate in self.candidate:
                 puct = self.current_node.child_nodes[candidate].puct(self.current_node.n)
                 if max_action_puct < puct:
