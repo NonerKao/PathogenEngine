@@ -58,9 +58,6 @@ async fn main() -> std::io::Result<()> {
     let mut iter = contents.trim().chars().peekable();
     let t = TreeNode::new(&mut iter, None);
     let g = Game::init(Some(t));
-    if !g.is_ended() {
-        panic!("The game is not yet finished");
-    }
 
     let setup0_h = g.history.borrow().to_root().borrow().children[0]
         .borrow()
@@ -182,7 +179,13 @@ async fn main() -> std::io::Result<()> {
                 pos: s.clone(),
                 is_marker: is_marker,
                 char1: side,
-                marker: if !is_marker { 0 } else if side == 'D' { 1 } else { -1 },
+                marker: if !is_marker {
+                    0
+                } else if side == 'D' {
+                    1
+                } else {
+                    -1
+                },
             });
 
             id = id + 1;
