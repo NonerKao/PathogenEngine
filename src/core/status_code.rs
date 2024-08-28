@@ -65,6 +65,7 @@ pub fn str_to_full_msg(s: &'static str) -> &'static str {
         // Wx00: always success side channel commands instead of move status
         256 => return "Query for valid moves",
         // Ix01 and beyond: Currently used only in coord_server
+        11 => return "MARKERS",
         10 => return "SIM_MYSELF_WIN",
         9 => return "SIM_OPPONENT_WIN",
         8 => return "SIM_MYSELF",

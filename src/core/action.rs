@@ -442,7 +442,10 @@ impl Action {
             self.action_phase = ActionPhase::Done;
             return Ok("Ix02");
         } else {
-            return Ok("Ix01");
+            // Setting markers.
+            // For a convenient change to RL simulation phase, separate this
+            // from normal sub-move endning.
+            return Ok("Ix0b");
         }
     }
 
@@ -541,7 +544,7 @@ impl Action {
         if self.is_done(g) {
             return Ok("Ix02");
         }
-        return Ok("Ix01");
+        return Ok("Ix0b");
     }
 
     fn doctor_is_free(&self, g: &Game, c: Coord) -> bool {
@@ -586,7 +589,7 @@ impl Action {
             return Ok("Ix02");
         }
 
-        return Ok("Ix01");
+        return Ok("Ix0b");
     }
 
     fn is_done(&self, g: &Game) -> bool {
@@ -1144,7 +1147,7 @@ mod tests {
         g.stuff
             .insert("bc".to_env(), (Camp::Doctor, Stuff::Marker(5)));
         let r6 = a.add_board_single_step(&g, "ec".to_env());
-        assert_eq!(Ok("Ix01"), r6);
+        assert_eq!(Ok("Ix0b"), r6);
         assert_eq!(2, a.marker_slot.len());
         let r7 = a.add_single_marker(&g, "bf".to_env());
         assert_eq!(Ok("Ix02"), r7);
@@ -1169,12 +1172,12 @@ mod tests {
         g.stuff
             .insert("bf".to_env(), (Camp::Plague, Stuff::Marker(5)));
         let r6 = a.add_board_single_step(&g, "ec".to_env());
-        assert_eq!(Ok("Ix01"), r6);
+        assert_eq!(Ok("Ix0b"), r6);
         assert_eq!(3, a.marker_slot.len());
         let r7 = a.add_single_marker(&g, "bc".to_env());
-        assert_eq!(Ok("Ix01"), r7);
+        assert_eq!(Ok("Ix0b"), r7);
         let r8 = a.add_single_marker(&g, "bf".to_env());
-        assert_eq!(Ok("Ix01"), r8);
+        assert_eq!(Ok("Ix0b"), r8);
         let _ = a.add_single_marker(&g, "bf".to_env());
         let _ = a.add_single_marker(&g, "bf".to_env());
         let r9 = a.add_single_marker(&g, "bc".to_env());
@@ -1202,12 +1205,12 @@ mod tests {
         g.stuff
             .insert("bf".to_env(), (Camp::Plague, Stuff::Marker(3)));
         let r6 = a.add_board_single_step(&g, "ec".to_env());
-        assert_eq!(Ok("Ix01"), r6);
+        assert_eq!(Ok("Ix0b"), r6);
         assert_eq!(3, a.marker_slot.len());
         let r7 = a.add_single_marker(&g, "bc".to_env());
-        assert_eq!(Ok("Ix01"), r7);
+        assert_eq!(Ok("Ix0b"), r7);
         let r8 = a.add_single_marker(&g, "bf".to_env());
-        assert_eq!(Ok("Ix01"), r8);
+        assert_eq!(Ok("Ix0b"), r8);
         let _ = a.add_single_marker(&g, "bf".to_env());
         let r9 = a.add_single_marker(&g, "bc".to_env());
         assert_eq!(Err("Ex24"), r9);
@@ -1233,12 +1236,12 @@ mod tests {
         g.stuff
             .insert("bf".to_env(), (Camp::Plague, Stuff::Marker(5)));
         let r6 = a.add_board_single_step(&g, "ec".to_env());
-        assert_eq!(Ok("Ix01"), r6);
+        assert_eq!(Ok("Ix0b"), r6);
         assert_eq!(3, a.marker_slot.len());
         let r7 = a.add_single_marker(&g, "bd".to_env());
         assert_eq!(Err("Ex24"), r7);
         let r8 = a.add_single_marker(&g, "bf".to_env());
-        assert_eq!(Ok("Ix01"), r8);
+        assert_eq!(Ok("Ix0b"), r8);
         let _ = a.add_single_marker(&g, "bf".to_env());
         let _ = a.add_single_marker(&g, "bf".to_env());
         let _ = a.add_single_marker(&g, "bf".to_env());
@@ -1262,14 +1265,14 @@ mod tests {
         let r3 = a.add_single_marker(&g, "ad".to_env());
         assert_eq!(Err("Ex22"), r3);
         let r4 = a.add_single_marker(&g, "dd".to_env());
-        assert_eq!(Ok("Ix01"), r4);
+        assert_eq!(Ok("Ix0b"), r4);
         // imbalance check: (1, 0) -> (2, 0)
         let r5 = a.add_single_marker(&g, "dd".to_env());
         assert_eq!(Err("Ex0C"), r5);
         let r6 = a.add_single_marker(&g, "cd".to_env());
-        assert_eq!(Ok("Ix01"), r6);
+        assert_eq!(Ok("Ix0b"), r6);
         let r7 = a.add_single_marker(&g, "dd".to_env());
-        assert_eq!(Ok("Ix01"), r7);
+        assert_eq!(Ok("Ix0b"), r7);
         // imbalance check: (2, 1) -> (3, 1)
         let r8 = a.add_single_marker(&g, "dd".to_env());
         assert_eq!(Err("Ex0C"), r8);
@@ -1298,14 +1301,14 @@ mod tests {
         let r3 = a.add_single_marker(&g, "ad".to_env());
         assert_eq!(Err("Ex22"), r3);
         let r4 = a.add_single_marker(&g, "dd".to_env());
-        assert_eq!(Ok("Ix01"), r4);
+        assert_eq!(Ok("Ix0b"), r4);
         // marker_slot check: "dd" no longer has a marker_slot
         let r5 = a.add_single_marker(&g, "dd".to_env());
         assert_eq!(Err("Ex22"), r5);
         let r6 = a.add_single_marker(&g, "cd".to_env());
-        assert_eq!(Ok("Ix01"), r6);
+        assert_eq!(Ok("Ix0b"), r6);
         let r7 = a.add_single_marker(&g, "cd".to_env());
-        assert_eq!(Ok("Ix01"), r7);
+        assert_eq!(Ok("Ix0b"), r7);
         let r8 = a.add_single_marker(&g, "cd".to_env());
         assert_eq!(Ok("Ix02"), r8);
     }
@@ -1326,11 +1329,11 @@ mod tests {
         let _ = a.add_board_single_step(&g, "df".to_env());
         let _ = a.add_board_single_step(&g, "cf".to_env());
         let r3 = a.add_single_marker(&g, "ed".to_env());
-        assert_eq!(Ok("Ix01"), r3);
+        assert_eq!(Ok("Ix0b"), r3);
         let r4 = a.add_single_marker(&g, "eb".to_env());
-        assert_eq!(Ok("Ix01"), r4);
+        assert_eq!(Ok("Ix0b"), r4);
         let r5 = a.add_single_marker(&g, "ef".to_env());
-        assert_eq!(Ok("Ix01"), r5);
+        assert_eq!(Ok("Ix0b"), r5);
         let r6 = a.add_single_marker(&g, "df".to_env());
         assert_eq!(Ok("Ix02"), r6);
         // happy path for a four-slot situation
@@ -1358,12 +1361,12 @@ mod tests {
         let _ = a.add_board_single_step(&g, "df".to_env());
         let _ = a.add_board_single_step(&g, "cf".to_env());
         let r3 = a.add_single_marker(&g, "ed".to_env());
-        assert_eq!(Ok("Ix01"), r3);
+        assert_eq!(Ok("Ix0b"), r3);
         // marker_slot check: "ed", "ef" and "df" no longer have a marker_slot
         let r4 = a.add_single_marker(&g, "eb".to_env());
-        assert_eq!(Ok("Ix01"), r4);
+        assert_eq!(Ok("Ix0b"), r4);
         let r5 = a.add_single_marker(&g, "eb".to_env());
-        assert_eq!(Ok("Ix01"), r5);
+        assert_eq!(Ok("Ix0b"), r5);
         let r6 = a.add_single_marker(&g, "eb".to_env());
         assert_eq!(Ok("Ix02"), r6);
     }
@@ -1393,9 +1396,9 @@ mod tests {
         let _ = a.add_board_single_step(&g, "cf".to_env());
         // marker_slot check: "ed", "eb" and "df" no longer have a marker_slot
         let r3 = a.add_single_marker(&g, "ed".to_env());
-        assert_eq!(Ok("Ix01"), r3);
+        assert_eq!(Ok("Ix0b"), r3);
         let r4 = a.add_single_marker(&g, "eb".to_env());
-        assert_eq!(Ok("Ix01"), r4);
+        assert_eq!(Ok("Ix0b"), r4);
         let r5 = a.add_single_marker(&g, "ef".to_env());
         assert_eq!(Ok("Ix02"), r5);
     }
@@ -1416,16 +1419,16 @@ mod tests {
         let _ = a.add_board_single_step(&g, "df".to_env());
         let _ = a.add_board_single_step(&g, "cf".to_env());
         let r1 = a.add_single_marker(&g, "ed".to_env());
-        assert_eq!(Ok("Ix01"), r1);
+        assert_eq!(Ok("Ix0b"), r1);
         let r2 = a.add_single_marker(&g, "ed".to_env());
         assert_eq!(Err("Ex0C"), r2);
         // imbalance check: (1, 0, 0, 0) -> (2, 0, 0, 0)
         let r3 = a.add_single_marker(&g, "ed".to_env());
         assert_eq!(Err("Ex0C"), r3);
         let r4 = a.add_single_marker(&g, "eb".to_env());
-        assert_eq!(Ok("Ix01"), r4);
+        assert_eq!(Ok("Ix0b"), r4);
         let r5 = a.add_single_marker(&g, "ef".to_env());
-        assert_eq!(Ok("Ix01"), r5);
+        assert_eq!(Ok("Ix0b"), r5);
         let r6 = a.add_single_marker(&g, "eb".to_env());
         // imbalance check: (1, 1, 1, 0) -> (1, 2, 1, 0)
         assert_eq!(Err("Ex0C"), r6);
@@ -1447,20 +1450,20 @@ mod tests {
         let _ = a.add_board_single_step(&g, "ed".to_env());
         let _ = a.add_board_single_step(&g, "ef".to_env());
         let r0 = a.add_board_single_step(&g, "df".to_env());
-        assert_eq!(Ok("Ix01"), r0);
+        assert_eq!(Ok("Ix0b"), r0);
         let r1 = a.add_single_marker(&g, "ed".to_env());
-        assert_eq!(Ok("Ix01"), r1);
+        assert_eq!(Ok("Ix0b"), r1);
         let r2 = a.add_single_marker(&g, "ed".to_env());
         assert_eq!(Err("Ex0C"), r2);
         // imbalance check: (1, 0, 0) -> (2, 0, 0)
         let r3 = a.add_single_marker(&g, "ed".to_env());
         assert_eq!(Err("Ex0C"), r3);
         let r4 = a.add_single_marker(&g, "ef".to_env());
-        assert_eq!(Ok("Ix01"), r4);
+        assert_eq!(Ok("Ix0b"), r4);
         let r5 = a.add_single_marker(&g, "ef".to_env());
         assert_eq!(Err("Ex0C"), r5);
         let r6 = a.add_single_marker(&g, "eb".to_env());
-        assert_eq!(Ok("Ix01"), r6);
+        assert_eq!(Ok("Ix0b"), r6);
     }
 
     #[test]
