@@ -192,7 +192,8 @@ class RLSimAgent(Agent):
             # Let's fast forward all the SetMarkers in this tree search
             self.send_special(QUERY)
             self.action = random.choice(self.candidate)
-
+            if self.delay > 0:
+                return
             # Mark the node as temporary
             self.current_node.temporary = True
 
@@ -338,6 +339,10 @@ class RLSimAgent(Agent):
                 self.simulation = False
             else:
                 self.action = RETURN
+            # Otherwise, there will be no state for this final leaf node
+            self.current_node.state = data
+            # Otherwise, there will be no sign for this final leaf node
+            self.current_node.is_me = True
             self.update(-1 if data[0:4] == b'Ix09' else 1)
             self.send_special(self.action)
         else:
