@@ -12,22 +12,24 @@ def parse_sgf_files(directory):
 
     # Regex pattern to extract the color and steps
     pattern = re.compile(r'.*\[(B|W)\+(\d+)\].*')
+    pattern2 = re.compile(r'\.sgf(\.\d+)?$')
 
     # Walk through the directory and process each matching file
     for root, _, files in os.walk(directory):
         for file in files:
-            with open(os.path.join(root, file), 'r') as f:
-                for line in f:
-                    match = pattern.match(line)
-                    if match:
-                        total_lines += 1
-                        color = match.group(1)
-                        steps = int(match.group(2))
-                        if color == 'W':
-                            w_wins += 1
-                            w_steps.append(steps)
-                        elif color == 'B':
-                            b_steps.append(steps)
+            if pattern2.search(file):
+                with open(os.path.join(root, file), 'r') as f:
+                    for line in f:
+                        match = pattern.match(line)
+                        if match:
+                            total_lines += 1
+                            color = match.group(1)
+                            steps = int(match.group(2))
+                            if color == 'W':
+                                w_wins += 1
+                                w_steps.append(steps)
+                            elif color == 'B':
+                                b_steps.append(steps)
 
     # Calculate W's winrate
     w_winrate = w_wins / total_lines if total_lines > 0 else 0
