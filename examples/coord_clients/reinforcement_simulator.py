@@ -27,12 +27,13 @@ def init_model(args):
     return model
 
 class Node():
-    def __init__(self, state, parent, is_me):
+    def __init__(self, state, parent, is_me, policy_prob=1.0):
         self.action = None
         self.state = state
         self.policy = None
         self.w = 0
         self.n = 0
+        self.p = policy_prob
         self.parent = parent
         self.child_nodes = {}
         self.is_me = is_me
@@ -57,7 +58,7 @@ class Node():
         return
 
     def puct(self, t):
-        explore = np.sqrt(t)/(1 + self.n)
+        explore = self.p*np.sqrt(t)/(1 + self.n)
         if self.n == 0:
             return explore
         else:
@@ -344,8 +345,12 @@ class RLSimAgent(Agent):
 
             self.send_special(self.action)
             if self.simulation and not self.current_node.child_nodes:
+                self.state = np.frombuffer(self.current_node.state[4:], dtype=np.uint8)
+                self.state = torch.from_numpy(np.copy(self.state)).float().unsqueeze(0).to(self.device)
+                policy, _, _ = self.model(self.state)
+                probabilities = torch.nn.functional.softmax(policy, dim=1).squeeze(0)
                 for action in self.candidate:
-                    self.current_node.child_nodes[action] = Node(None, self.current_node, None)
+                    self.current_node.child_nodes[action] = Node(None, self.current_node, None, probabilities[action if action < BOARD_POS else action - MAP_POS_OFFSET])
                 # why would we backtracking for this single option?
                 # because it can help us update every node's inferenced weight
                 # if len(self.candidate) > 1:
