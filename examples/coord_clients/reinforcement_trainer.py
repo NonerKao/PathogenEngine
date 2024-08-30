@@ -9,16 +9,16 @@ from torch.utils.tensorboard import SummaryWriter
 from reinforcement_network import *
 from sklearn.model_selection import KFold
 
-TRAINING_BATCH_UNIT = 30
-TRAINING_INNER_EPOCH = 1
-TRAINING_OUTER_EPOCH = 2
+TRAINING_BATCH_UNIT = 15
+TRAINING_INNER_EPOCH = 2
+TRAINING_OUTER_EPOCH = 3
 
 LEARNING_RATE = 0.0001
-KFOLD = 6
+KFOLD = 10
 
-ALPHA = 0.20
-BETA = 0.30
-GAMMA = 0.50
+ALPHA = 0.33
+BETA = 0.33
+GAMMA = 0.33
 
 def init_optimizer(model):
     # To apply the LR globally
@@ -125,7 +125,7 @@ if __name__ == "__main__":
     # Since I am using sum reduction for the valid check, the weight is thus
     # implicitly larger than other ones. I think that makes sense.
     policy_loss_func = torch.nn.CrossEntropyLoss()
-    valid_loss_func = torch.nn.BCEWithLogitsLoss(reduction='sum')
+    valid_loss_func = torch.nn.BCEWithLogitsLoss(reduction='mean')
     value_loss_func = torch.nn.MSELoss()
 
     # cross-validation

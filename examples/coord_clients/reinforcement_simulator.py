@@ -14,7 +14,9 @@ SPICE = 2
 
 def init_model(args):
     torch.set_default_dtype(torch.float32)
-    if os.path.exists(args.model):
+    if args.model == '/dev/null':
+        model = NullModel()
+    elif os.path.exists(args.model):
         # Load the model state
         model = torch.load(args.model, map_location=torch.device(args.device))
     else:
@@ -60,6 +62,25 @@ class Node():
             return explore
         else:
             return (self.w / self.n) + explore
+
+class NullModel:
+    def __init__(self):
+        pass
+
+    def eval(self, *args):
+        pass
+
+    def train(self, *args):
+        pass
+
+    def __call__(self, input_tensor):
+        # Assuming input_tensor shape is [N, 10]
+        N = input_tensor.size(0)
+        self.p = torch.zero(N, TOTAL_POS)
+        self.valid = torch.zero(N, TOTAL_POS)
+        self.v = torch.zero(N, 1)
+
+        return self.p, self.valid, self.v
 
 class NullDataset:
     def seek(self, *args):
