@@ -1501,7 +1501,7 @@ mod tests {
         let buf_after5 = fake_stream.get_ref();
         assert_eq!(1 as u8, buf_after5[0]);
         // it will be 16(ce)
-        assert_eq!(Ok("Ix01"), a.add_board_single_step(&g, "ce".to_env()));
+        assert_eq!(Ok("Ix0b"), a.add_board_single_step(&g, "ce".to_env()));
 
         // SetMarker
         const LEN6: usize = 1 + 2 + 4;
@@ -1515,10 +1515,10 @@ mod tests {
         g.stuff
             .insert("aa".to_env(), (Camp::Plague, Stuff::Marker(1)));
         assert_eq!(Err("Ex24"), a.add_single_marker(&g, "ca".to_env()));
-        assert_eq!(Ok("Ix01"), a.add_single_marker(&g, "aa".to_env()));
-        assert_eq!(Ok("Ix01"), a.add_single_marker(&g, "aa".to_env()));
-        assert_eq!(Ok("Ix01"), a.add_single_marker(&g, "ca".to_env()));
-        assert_eq!(Ok("Ix01"), a.add_single_marker(&g, "ca".to_env()));
+        assert_eq!(Ok("Ix0b"), a.add_single_marker(&g, "aa".to_env()));
+        assert_eq!(Ok("Ix0b"), a.add_single_marker(&g, "aa".to_env()));
+        assert_eq!(Ok("Ix0b"), a.add_single_marker(&g, "ca".to_env()));
+        assert_eq!(Ok("Ix0b"), a.add_single_marker(&g, "ca".to_env()));
         assert_eq!(Ok("Ix02"), a.add_single_marker(&g, "aa".to_env()));
     }
 
@@ -1596,7 +1596,7 @@ mod tests {
         let buf_after5 = fake_stream.get_ref();
         assert_eq!(1 as u8, buf_after5[0]);
         // it will be 16(ce)
-        assert_eq!(Ok("Ix01"), a.add_board_single_step(&g, "ce".to_env()));
+        assert_eq!(Ok("Ix0b"), a.add_board_single_step(&g, "ce".to_env()));
 
         // SetMarker
         const LEN6: usize = 1 + 2 + 4;
@@ -1610,10 +1610,10 @@ mod tests {
         g.stuff
             .insert("aa".to_env(), (Camp::Plague, Stuff::Marker(1)));
         assert_eq!(Err("Ex24"), a.add_single_marker(&g, "ca".to_env()));
-        assert_eq!(Ok("Ix01"), a.add_single_marker(&g, "aa".to_env()));
-        assert_eq!(Ok("Ix01"), a.add_single_marker(&g, "aa".to_env()));
-        assert_eq!(Ok("Ix01"), a.add_single_marker(&g, "ca".to_env()));
-        assert_eq!(Ok("Ix01"), a.add_single_marker(&g, "ca".to_env()));
+        assert_eq!(Ok("Ix0b"), a.add_single_marker(&g, "aa".to_env()));
+        assert_eq!(Ok("Ix0b"), a.add_single_marker(&g, "aa".to_env()));
+        assert_eq!(Ok("Ix0b"), a.add_single_marker(&g, "ca".to_env()));
+        assert_eq!(Ok("Ix0b"), a.add_single_marker(&g, "ca".to_env()));
         assert_eq!(Ok("Ix02"), a.add_single_marker(&g, "aa".to_env()));
 
         g.reset(true);
