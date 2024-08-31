@@ -6,6 +6,22 @@ RES_SIZE = 12
 RES_INPUT_SIZE = 144 
 NATURE_CHANNEL_SIZE = (8 + 2 + 1 + 2 + 11)
 
+# partition an entry into the input and the three heads of output
+def partition(x):
+    start = 0
+    end = D_STATE
+    state = torch.from_numpy(np.frombuffer(x[start:end], dtype=np.float32).copy()).to(torch.device("cpu")).unsqueeze(0)
+    start = start + D_STATE
+    end = end + D_POLICY
+    policy = torch.from_numpy(np.frombuffer(x[start:end], dtype=np.float32).copy()).to(torch.device("cpu")).unsqueeze(0)
+    start = start + D_POLICY
+    end = end + D_VALID
+    valid = torch.from_numpy(np.frombuffer(x[start:end], dtype=np.float32).copy()).to(torch.device("cpu")).unsqueeze(0)
+    start = start + D_VALID
+    end = end + D_VALUE
+    value = torch.from_numpy(np.frombuffer(x[start:end], dtype=np.float32).copy()).to(torch.device("cpu")).unsqueeze(0)
+    return state, policy, valid, value
+
 class PathogenResidualBlock(torch.nn.Module):
     def __init__(self, in_channels):
         super(PathogenResidualBlock, self).__init__()
