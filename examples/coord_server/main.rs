@@ -9,6 +9,8 @@ use std::io::{Read, Write};
 use std::net::{TcpListener, TcpStream};
 use std::path::Path;
 use std::rc::Rc;
+use std::thread;
+use std::time::Duration;
 
 use pathogen_engine::core::action::Action;
 use pathogen_engine::core::action::ActionPhase;
@@ -544,7 +546,7 @@ fn handle_client<T: Read + ReaderExtra + Write + WriterExtra>(
     // determine the status code without maintaining the impossible
     // state machine.
     let oc = g.turn;
-    loop {
+    'simulation: loop {
         // A state machine for RL support mode
         // This way, when an "Ix02"/"Ix00" is encounted,
         // this agent keeps occupying the server by staying
@@ -576,76 +578,94 @@ fn handle_client<T: Read + ReaderExtra + Write + WriterExtra>(
         if stream.update_agent(g, &ea, &es) == false {
             return false;
         }
-        match stream.peek(&mut buffer) {
-            Ok(0) => {
-                println!("Client disconnected.");
-                return false;
-            }
-            Ok(_) => {
-                let mut am = ActionMonitor::new();
 
-                // Check tree.rs:to_action() function for the state machine
-                // the suffix "_loop" is meant to be a reminder that these
-                // are themselves states that accept unlimited failed trials,
-                // well, mostly only for accumodating trial-and-error random agent.
-                // XXX: but actually we can improve this...... all the pieces are
-                //      ready now.
-                loop {
-                    if !match am.action.action_phase {
-                        ActionPhase::SetMap => {
-                            set_map_loop(stream, g, &mut am.action, &mut buffer, &mut saved_action)
-                        }
-                        ActionPhase::Lockdown => set_lockdown_loop(
-                            stream,
-                            g,
-                            &mut am.action,
-                            &mut buffer,
-                            &mut saved_action,
-                        ),
-                        ActionPhase::SetCharacter => set_character_loop(
-                            stream,
-                            g,
-                            &mut am.action,
-                            &mut buffer,
-                            &mut saved_action,
-                        ),
-                        ActionPhase::BoardMove => set_board_move_loop(
-                            stream,
-                            g,
-                            &mut am.action,
-                            &mut buffer,
-                            &mut saved_action,
-                        ),
-                        ActionPhase::SetMarkers => set_marker_loop(
-                            stream,
-                            g,
-                            &mut am.action,
-                            &mut buffer,
-                            &mut saved_action,
-                        ),
-                        ActionPhase::Done => {
-                            break;
-                        }
-                    } {
+        let retry_limit = 3;
+        let retry_delay = Duration::from_millis(100);
+        for attempt in 0..retry_limit {
+            match stream.peek(&mut buffer) {
+                Ok(0) => {
+                    println!(
+                        "!!! No data available, retrying... (attempt {}/{})",
+                        attempt + 1,
+                        retry_limit
+                    );
+                    thread::sleep(retry_delay);
+                    if attempt >= retry_limit {
                         return false;
                     }
                 }
+                Ok(_) => {
+                    let mut am = ActionMonitor::new();
 
-                // commit the action to the game
-                next(g, &am.action);
+                    // Check tree.rs:to_action() function for the state machine
+                    // the suffix "_loop" is meant to be a reminder that these
+                    // are themselves states that accept unlimited failed trials,
+                    // well, mostly only for accumodating trial-and-error random agent.
+                    // XXX: but actually we can improve this...... all the pieces are
+                    //      ready now.
+                    'action: loop {
+                        if !match am.action.action_phase {
+                            ActionPhase::SetMap => set_map_loop(
+                                stream,
+                                g,
+                                &mut am.action,
+                                &mut buffer,
+                                &mut saved_action,
+                            ),
+                            ActionPhase::Lockdown => set_lockdown_loop(
+                                stream,
+                                g,
+                                &mut am.action,
+                                &mut buffer,
+                                &mut saved_action,
+                            ),
+                            ActionPhase::SetCharacter => set_character_loop(
+                                stream,
+                                g,
+                                &mut am.action,
+                                &mut buffer,
+                                &mut saved_action,
+                            ),
+                            ActionPhase::BoardMove => set_board_move_loop(
+                                stream,
+                                g,
+                                &mut am.action,
+                                &mut buffer,
+                                &mut saved_action,
+                            ),
+                            ActionPhase::SetMarkers => set_marker_loop(
+                                stream,
+                                g,
+                                &mut am.action,
+                                &mut buffer,
+                                &mut saved_action,
+                            ),
+                            ActionPhase::Done => {
+                                break 'action;
+                            }
+                        } {
+                            return false;
+                        }
+                    }
 
-                if !g.savepoint {
-                    break;
+                    // commit the action to the game
+                    next(g, &am.action);
+
+                    if !g.savepoint {
+                        break 'simulation;
+                    } else {
+                        continue 'simulation;
+                    }
+
+                    // If it is simulated now, do repeat this loop.
+                    // Apparently it will be odd if the game has just finished by this
+                    // current action, we need to tell the agent that it should stop
+                    // the simulation.
                 }
-
-                // If it is simulated now, do repeat this loop.
-                // Apparently it will be odd if the game has just finished by this
-                // current action, we need to tell the agent that it should stop
-                // the simulation.
-            }
-            Err(e) => {
-                println!("Error occurred: {:?}", e);
-                return false;
+                Err(e) => {
+                    println!("Error occurred: {:?}", e);
+                    return false;
+                }
             }
         }
     }
@@ -746,11 +766,8 @@ fn load_file_and_play(
 
                 // Use `random_move` to continue the play
                 let mut ram = Action::new();
-                if ram.random_move(&mut g) {
-                    next(&mut g, &ram);
-                } else {
-                    g.next();
-                }
+                _ = ram.random_move(&mut g);
+                next(&mut g, &ram);
             }
             if g.is_ended() {
                 s[turn % 2].update_agent(&g, &ea, &"Ix04");

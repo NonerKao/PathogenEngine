@@ -82,16 +82,22 @@ impl Action {
             coord_candidate.push(Coord::new(MAP_OFFSET.x, j));
         }
 
+        let prev_c = *g.map.get(&g.turn).unwrap();
+        coord_candidate.retain(|&e| e != prev_c);
+
         // ActionPhase::SetMap
         loop {
+            if coord_candidate.len() == 0 {
+                assert_eq!(Ok("Ix00"), self.add_map_step(g, prev_c));
+                return false;
+            }
             let r = rng.gen_range(0..coord_candidate.len());
             let c = coord_candidate[r];
             let s = self.add_map_step(g, c);
             match s {
                 Ok(x) => {
                     if x == "Ix00" {
-                        // Special case: skip(Ix00)
-                        return false;
+                        panic!("Not possible because the skip has been removed by default.");
                     } else {
                         break;
                     }
