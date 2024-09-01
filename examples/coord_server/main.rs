@@ -507,25 +507,35 @@ fn set_map_loop<T: Read + ReaderExtra + Write + WriterExtra>(
 }
 
 fn get_action<T: Read>(stream: &mut T, buffer: &mut [u8]) -> bool {
-    match stream.read(buffer) {
-        Ok(0) => {
-            return false;
-        }
-        Err(x) => {
-            #[cfg(debug_assertions)]
-            {
-                println!("{}", x);
+    let retry_limit = 3;
+    let retry_delay = Duration::from_millis(100);
+    for attempt in 0..retry_limit {
+        match stream.read(buffer) {
+            Ok(0) => {
+                println!(
+                    "!!! No data available, retrying... (attempt {}/{})",
+                    attempt + 1,
+                    retry_limit
+                );
+                thread::sleep(retry_delay);
             }
-            return false;
-        }
-        _ => {
-            #[cfg(debug_assertions)]
-            {
-                println!("{:?}", buffer[0]);
+            Err(x) => {
+                #[cfg(debug_assertions)]
+                {
+                    println!("{}", x);
+                }
+                return false;
             }
-            return true;
+            _ => {
+                #[cfg(debug_assertions)]
+                {
+                    println!("{:?}", buffer[0]);
+                }
+                return true;
+            }
         }
     }
+    return false;
 }
 
 // With true, it means all communications are happy;
@@ -590,9 +600,6 @@ fn handle_client<T: Read + ReaderExtra + Write + WriterExtra>(
                         retry_limit
                     );
                     thread::sleep(retry_delay);
-                    if attempt >= retry_limit {
-                        return false;
-                    }
                 }
                 Ok(_) => {
                     let mut am = ActionMonitor::new();
@@ -668,6 +675,7 @@ fn handle_client<T: Read + ReaderExtra + Write + WriterExtra>(
                 }
             }
         }
+        return false;
     }
     return true;
 }
