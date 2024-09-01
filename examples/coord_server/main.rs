@@ -1,10 +1,14 @@
 use clap::Parser;
 use ndarray::{Array, Array1};
+use rand::rngs::StdRng;
+use rand::SeedableRng;
+use std::cell::RefCell;
 use std::collections::BTreeSet;
 use std::fs::{create_dir_all, read_dir, DirEntry, File};
 use std::io::{Read, Write};
 use std::net::{TcpListener, TcpStream};
 use std::path::Path;
+use std::rc::Rc;
 
 use pathogen_engine::core::action::Action;
 use pathogen_engine::core::action::ActionPhase;
@@ -713,8 +717,18 @@ fn load_file_and_play(
         .expect("Failed to read file");
     let mut iter = contents.trim().chars().peekable();
 
+    let mut seed: [u8; 32] = [0; 32];
+    if let Some(s) = &args.seed {
+        let ss = format!("=!={:?}==={}", s.as_bytes(), suffix);
+        let bytes = ss.as_bytes();
+        seed[..bytes.len()].copy_from_slice(bytes);
+    }
+    let rng = StdRng::from_seed(seed);
+    let shared_rng = Rc::new(RefCell::new(rng));
+
     let t = TreeNode::new(&mut iter, None);
-    let mut g = Game::init(Some(t));
+    let mut g = Game::init_with_rng(Some(t), shared_rng.clone());
+
     if !g.is_setup() {
         panic!("The game is either not ready or finished");
     }
@@ -724,11 +738,19 @@ fn load_file_and_play(
         if let Phase::Main(x) = g.phase {
             let turn: usize = x.try_into().unwrap();
             if !handle_client(&mut s[turn % 2], &mut g) {
-                s[turn % 2].update_agent(&g, &ea, &"Ix06");
-                s[1 - turn % 2].update_agent(&g, &ea, &"Ix06");
+                // s[turn % 2].update_agent(&g, &ea, &"Ix06");
+                // s[1 - turn % 2].update_agent(&g, &ea, &"Ix06");
                 // drop(s);
                 // break format!("RE[{}+{}]", "O", turn);
-                panic!("We lost the connections.");
+                // panic!("We lost the connections.");
+
+                // Use `random_move` to continue the play
+                let mut ram = Action::new();
+                if ram.random_move(&mut g) {
+                    next(&mut g, &ram);
+                } else {
+                    g.next();
+                }
             }
             if g.is_ended() {
                 s[turn % 2].update_agent(&g, &ea, &"Ix04");
@@ -794,7 +816,8 @@ impl<T: Write> WriterExtra for T {
         assert!(response.len() == DATA_UNIT);
         match self.write(&response) {
             Err(_) => {
-                println!("Client disconnected.");
+                // println!("Client disconnected.");
+                // We now expect the random_move to take care of this
                 return false;
             }
             _ => {
