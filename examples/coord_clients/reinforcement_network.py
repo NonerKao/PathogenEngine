@@ -3,7 +3,7 @@ import torch
 from constant import *
 
 RES_SIZE = 12
-RES_INPUT_SIZE = 144 
+RES_INPUT_SIZE = 288
 NATURE_CHANNEL_SIZE = (8 + 2 + 1 + 2 + 11)
 
 # partition an entry into the input and the three heads of output
