@@ -1,9 +1,7 @@
 #!/bin/bash
 
-TRIAL_ROOT=/mnt/20240822_gen6
-
 pushd examples/coord_clients
-python reinforcement_trainer.py -d $TRIAL_ROOT/simulation/plague.train.bin \
-	-t $TRIAL_ROOT/simulation/plague.eval.bin \
-	-m $TRIAL_ROOT/train/plague-trial2.pth -n $TRIAL_ROOT/train/runs/gen6-trial2
+python reinforcement_trainer.py -d $CURR_ROOT/simulation2/plague.train.bin \
+	-t $CURR_ROOT/simulation2/plague.eval.bin \
+	-m $CURR_ROOT/train2/plague-$1.pth -n $CURR_ROOT/train2/runs/$1
 popd

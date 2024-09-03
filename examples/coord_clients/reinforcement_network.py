@@ -2,8 +2,8 @@ import numpy as np
 import torch
 from constant import *
 
-RES_SIZE = 12
-RES_INPUT_SIZE = 288
+RES_SIZE = 16
+RES_INPUT_SIZE = 128
 NATURE_CHANNEL_SIZE = (8 + 2 + 1 + 2 + 11)
 
 # partition an entry into the input and the three heads of output
@@ -79,9 +79,9 @@ class PathogenNet(torch.nn.Module):
         # Understanding Head
         # the prediction of error sub-move for all the positions
         valid_channels = 1
-        self.understanding_conv = torch.nn.Conv2d(RES_INPUT_SIZE, valid_channels, kernel_size=1)
-        self.understanding_bn = torch.nn.BatchNorm2d(valid_channels)
-        self.understanding_fc = torch.nn.Linear(valid_channels * 7 * 7, TOTAL_POS)
+        self.valid_conv = torch.nn.Conv2d(RES_INPUT_SIZE, valid_channels, kernel_size=1)
+        self.valid_bn = torch.nn.BatchNorm2d(valid_channels)
+        self.valid_fc = torch.nn.Linear(valid_channels * 7 * 7, TOTAL_POS)
         
     def forward(self, x):
         # Padding the game board and the map to get ready for a Nx6x7x7 tensor
@@ -116,12 +116,12 @@ class PathogenNet(torch.nn.Module):
         value = self.value_fc(value)
         value = torch.nn.functional.tanh(value)
 
-        # The output: understanding head
-        understanding = self.understanding_conv(x)
-        understanding = self.understanding_bn(understanding)
-        understanding = torch.nn.functional.relu(understanding)
-        understanding = torch.flatten(understanding, 1)
-        understanding = self.understanding_fc(understanding)
+        # The output: valid head
+        valid = self.valid_conv(x)
+        valid = self.valid_bn(valid)
+        valid = torch.nn.functional.relu(valid)
+        valid = torch.flatten(valid, 1)
+        valid = self.valid_fc(valid)
 
         # The output: policy head
         policy = self.policy_conv(x)
@@ -129,6 +129,5 @@ class PathogenNet(torch.nn.Module):
         policy = torch.nn.functional.relu(policy)
         policy = torch.flatten(policy, 1)
         policy = self.policy_fc(policy)
-        policy = policy*understanding
 
-        return policy, understanding, value
+        return policy, valid, value
