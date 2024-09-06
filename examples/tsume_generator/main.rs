@@ -6,7 +6,7 @@ use rand::SeedableRng;
 use std::cell::RefCell;
 use std::collections::BTreeSet;
 use std::fs::OpenOptions;
-use std::fs::{create_dir_all, read_dir, DirEntry, File};
+use std::fs::{read_dir, DirEntry, File};
 use std::io::{Read, Write};
 use std::rc::Rc;
 
@@ -14,7 +14,7 @@ use pathogen_engine::core::action::Action;
 use pathogen_engine::core::action::ActionPhase;
 use pathogen_engine::core::action::Candidate;
 use pathogen_engine::core::grid_coord::{Coord, MAP_OFFSET};
-use pathogen_engine::core::tree::{Property, TreeNode};
+use pathogen_engine::core::tree::TreeNode;
 use pathogen_engine::core::*;
 
 const BOARD_DATA: usize = 288; /*8x6x6*/
@@ -49,22 +49,17 @@ struct Args {
     /// Random seed
     #[arg(long)]
     seed: Option<String>,
-
-    /// Batch number: How many games are we exploiting?
-    #[arg(long, default_value_t = 1)]
-    batch: u32,
 }
 
-fn write_entry(args: &Args) -> Result<(), std::io::Error> {
+fn write_entry(args: &Args, buffer: &[u8]) -> Result<(), std::io::Error> {
     // write to the da
-    let buffer: [u8; 4] = [0; 4];
     match &args.dataset {
-        Some(dataset) => {
+        Some(ds) => {
             let mut save_file = OpenOptions::new()
                 .append(true) // Set the option to append data to the file
                 .create(true) // Create the file if it doesn't exist
-                .open(dataset)?; // Open the file
-            save_file.write_all(&buffer)?;
+                .open(ds)?; // Open the file
+            save_file.write_all(buffer)?;
         }
         None => {}
     }
@@ -73,7 +68,7 @@ fn write_entry(args: &Args) -> Result<(), std::io::Error> {
 
 // Derived from coord_server's return_query
 fn get_valid_moves(g: &Game, a: &Action) -> Array1<f32> {
-    let mut valid = Array::from_shape_fn((TOTAL_POS as usize), |(_)| 0.0 as f32);
+    let mut valid = Array::from_shape_fn(TOTAL_POS as usize, |_| 0.0 as f32);
     match a.action_phase {
         ActionPhase::SetMap => {
             let mut coord_candidate: Vec<Coord> = Vec::new();
@@ -266,7 +261,6 @@ fn encode(g: &Game, a: &Action, vec: &mut Vec<f32>, coord: Coord) {
         0.0 as f32
     });
 
-    let mut candidate: Vec<Coord> = Vec::new();
     if a.action_phase > ActionPhase::SetMap {
         let c = match a.map {
             None => {
@@ -367,10 +361,10 @@ fn encode(g: &Game, a: &Action, vec: &mut Vec<f32>, coord: Coord) {
 
     // value: always 1, because with the original final move,
     // this player is winning.
-    let mut value = Array::from_shape_fn(1 as usize, |_| 1.0 as f32);
+    let value = Array::from_shape_fn(1 as usize, |_| 1.0 as f32);
 
     // dummy
-    let mut dummy = Array::from_shape_fn(
+    let dummy = Array::from_shape_fn(
         DATASET_UNIT - (DATA_UNIT - CODE_DATA) - 2 * TOTAL_POS - 1 as usize,
         |_| 0.0 as f32,
     );
@@ -399,52 +393,14 @@ fn encode(g: &Game, a: &Action, vec: &mut Vec<f32>, coord: Coord) {
     (*vec).extend(vtemp);
 }
 
-const MIN_MAP_CODE: u8 = 100;
 const MAX_ENV_CODE: u8 = 36;
-const QUERY_CODE: u8 = 255;
-const SAVE_CODE: u8 = 254;
-const RETURN_CODE: u8 = 253;
-const CLEAR_CODE: u8 = 252;
-const MIN_SPECIAL_CODE: u8 = CLEAR_CODE;
-
-trait ActionCoord {
-    fn to_coord(&self) -> Coord;
-}
-
-impl ActionCoord for u8 {
-    fn to_coord(&self) -> Coord {
-        if *self >= MIN_MAP_CODE {
-            let cv = *self - MIN_MAP_CODE;
-            let cvx = cv / MAP_SIZE as u8;
-            let cvy = cv % MAP_SIZE as u8;
-            Coord::new(cvx as i32 - 2, cvy as i32 - 2)
-        } else {
-            let cv = *self;
-            let cvx = cv / SIZE as u8;
-            let cvy = cv % SIZE as u8;
-            Coord::new(cvx as i32, cvy as i32)
-        }
-    }
-}
 
 trait EncodeCoord {
-    fn to_map_encode(&self) -> u8;
-    fn to_env_encode(&self) -> u8;
     fn map_to_valid_encode(&self) -> usize;
     fn env_to_valid_encode(&self) -> usize;
 }
 
 impl EncodeCoord for Coord {
-    fn to_map_encode(&self) -> u8 {
-        let ms: i32 = (MAP_SIZE as i32).try_into().unwrap();
-        let base: i32 = (MIN_MAP_CODE as i32).try_into().unwrap();
-        (base + ((self.x + 2) * ms + (self.y + 2)))
-            .try_into()
-            .unwrap()
-    }
-    fn to_env_encode(&self) -> u8 {
-        ((self.x) * SIZE + (self.y)).try_into().unwrap()
-    }
     fn map_to_valid_encode(&self) -> usize {
         let ms: i32 = (MAP_SIZE as i32).try_into().unwrap();
         let base: i32 = (MAX_ENV_CODE as i32).try_into().unwrap();
@@ -457,47 +413,15 @@ impl EncodeCoord for Coord {
     }
 }
 
-struct ActionMonitor {
-    action: Action,
-}
-
-impl ActionMonitor {
-    fn new() -> ActionMonitor {
-        let action = Action::new();
-        ActionMonitor { action }
-    }
-}
-
-impl Drop for ActionMonitor {
-    fn drop(&mut self) {
-        if self.action.action_phase != ActionPhase::Done {
-            println!("{:?}", self.action);
-        }
-    }
-}
-
-fn next(g: &mut Game, a: &Action) {
-    g.append_history_with_new_tree(&a.to_sgf_string(g));
-    g.commit_action(&a);
-    g.next();
-}
-
 fn main() -> Result<(), std::io::Error> {
     let args = Args::parse();
 
     match args.load_dir {
         Some(ref dirname) => {
             let mut num_replay: u32 = 0;
-            let mut total_play = 0;
-            'total: while total_play < args.batch {
-                for filename in read_dir(dirname)? {
-                    mine_tsume(&filename?, &args, num_replay)?;
+            for filename in read_dir(dirname)? {
+                mine_tsume(&filename?, &args, num_replay)?;
 
-                    total_play = total_play + 1;
-                    if total_play >= args.batch {
-                        break 'total;
-                    }
-                }
                 num_replay = num_replay + 1;
             }
         }
@@ -534,26 +458,22 @@ fn mine_tsume(filename: &DirEntry, args: &Args, suffix: u32) -> Result<(), std::
         panic!("The game hasn't finished.");
     }
 
-    Ok(())
+    let t2 = g.history.clone();
+    g.undo();
+    let mut vec: Vec<f32> = Vec::new();
+    if let Ok(_) = t2.borrow().to_action_do_func(&g, encode, &mut vec) {
+        let bytes: &[u8] = cast_slice(&vec);
+        write_entry(args, bytes)?;
+    } else {
+        panic!("The action state machine goes wrong");
+    }
 
-    /*let ea = Action::new();
-    let result: String = loop {
-        if let Phase::Main(x) = g.phase {
-            let turn: usize = x.try_into().unwrap();
-            if g.is_ended() {
-                if max_dataset_entries <= num_dataset_entries {
-                }
-            }
-        } else {
-            panic!("Not in the main game!");
-        }
-    };*/
+    Ok(())
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use std::io::Cursor;
 
     #[test]
     fn test_something() {
@@ -638,6 +558,7 @@ mod tests {
             assert_eq!(Coord::new(2 as i32, 3 as i32), a.character.unwrap());
             assert_eq!(4 * DATASET_UNIT, vec.len());
             let offset = BOARD_DATA + MAP_DATA + TURN_DATA;
+            assert_eq!(vec[DATASET_UNIT * 0 + offset + 0 * 5 * 5 + 2 * 5 + 2], 0.0);
             assert_eq!(vec[DATASET_UNIT * 1 + offset + 0 * 5 * 5 + 2 * 5 + 2], 1.0);
             assert_eq!(vec[DATASET_UNIT * 1 + offset + 1 * 5 * 5 + 2 * 5 + 2], 0.0);
             assert_eq!(
@@ -658,7 +579,6 @@ mod tests {
                 vec[DATASET_UNIT * 3 + offset + FLOW_MAP_DATA + 1 * 6 * 6 + 3 * 6 + 3],
                 1.0
             );
-            let bytes: &[u8] = cast_slice(&vec);
         } else {
             panic!("??");
         };
