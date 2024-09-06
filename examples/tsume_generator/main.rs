@@ -8,11 +8,7 @@ use std::collections::BTreeSet;
 use std::fs::OpenOptions;
 use std::fs::{create_dir_all, read_dir, DirEntry, File};
 use std::io::{Read, Write};
-use std::net::{TcpListener, TcpStream};
-use std::path::Path;
 use std::rc::Rc;
-use std::thread;
-use std::time::Duration;
 
 use pathogen_engine::core::action::Action;
 use pathogen_engine::core::action::ActionPhase;
@@ -75,7 +71,112 @@ fn write_entry(args: &Args) -> Result<(), std::io::Error> {
     Ok(())
 }
 
-fn encode(g: &Game, a: &Action, vec: &mut Vec<f32>) {
+// Derived from coord_server's return_query
+fn get_valid_moves(g: &Game, a: &Action) -> Array1<f32> {
+    let mut valid = Array::from_shape_fn((TOTAL_POS as usize), |(_)| 0.0 as f32);
+    match a.action_phase {
+        ActionPhase::SetMap => {
+            let mut coord_candidate: Vec<Coord> = Vec::new();
+            for i in -MAP_OFFSET.x + 1..MAP_OFFSET.x {
+                for j in -MAP_OFFSET.y..=MAP_OFFSET.y {
+                    coord_candidate.push(Coord::new(i, j));
+                }
+            }
+            for j in -MAP_OFFSET.y + 1..MAP_OFFSET.y {
+                coord_candidate.push(Coord::new(-MAP_OFFSET.x, j));
+                coord_candidate.push(Coord::new(MAP_OFFSET.x, j));
+            }
+            let candidate = coord_candidate.clone();
+
+            for &cc in candidate.iter() {
+                let mut ea = Action::new();
+                let s = ea.add_map_step(g, cc);
+                match s {
+                    Ok("Ix00") => {
+                        coord_candidate.retain(|&e| e != cc);
+                        continue;
+                    }
+                    Err(_) => {
+                        coord_candidate.retain(|&e| e != cc);
+                        continue;
+                    }
+                    _ => {}
+                }
+            }
+            let ccl = coord_candidate.len();
+            if ccl == 0 {
+                let mut ea = Action::new();
+                let cc = *g.map.get(&g.turn).unwrap();
+                let s = ea.add_map_step(g, cc);
+                assert_eq!(Ok("Ix00"), s);
+                coord_candidate.push(cc);
+            }
+
+            for cc in coord_candidate.iter() {
+                valid[[cc.map_to_valid_encode()]] = 1.0;
+            }
+            valid
+        }
+        ActionPhase::Lockdown => {
+            let h = <Vec<Candidate> as Clone>::clone(&a.candidate)
+                .into_iter()
+                .map(|c| c.lockdown)
+                .collect::<BTreeSet<_>>();
+
+            let cp = *g.map.get(&Camp::Plague).unwrap();
+            for ld in h.iter() {
+                valid[[cp.lockdown(*ld).map_to_valid_encode()]] = 1.0;
+            }
+            valid
+        }
+        ActionPhase::SetCharacter => {
+            let h = <Vec<Candidate> as Clone>::clone(&a.candidate)
+                .into_iter()
+                .map(|c| c.character)
+                .collect::<BTreeSet<_>>();
+
+            for c in h.iter() {
+                valid[[c.env_to_valid_encode()]] = 1.0;
+            }
+            valid
+        }
+        ActionPhase::BoardMove => {
+            let trajectory_index = a.trajectory.len();
+            let h = <Vec<Candidate> as Clone>::clone(&a.candidate)
+                .into_iter()
+                .map(|c| c.trajectory[trajectory_index])
+                .collect::<BTreeSet<_>>();
+
+            for c in h.iter() {
+                valid[[c.env_to_valid_encode()]] = 1.0;
+            }
+            valid
+        }
+        ActionPhase::SetMarkers => {
+            let mut marker_candidate: Vec<Coord> = Vec::new();
+            for ms in a.marker_slot.iter() {
+                let mut dummy_action = a.clone();
+                match dummy_action.add_single_marker_trial(g, ms.0, true) {
+                    Ok(_) => {
+                        marker_candidate.push(ms.0);
+                    }
+                    _ => {}
+                }
+            }
+            for c in marker_candidate.iter() {
+                valid[[c.env_to_valid_encode()]] = 1.0;
+            }
+            // although we don't really plan to add SetMarkers moves into
+            // our tsume set...
+            valid
+        }
+        _ => {
+            panic!("Not an anticipated action phase");
+        }
+    }
+}
+
+fn encode(g: &Game, a: &Action, vec: &mut Vec<f32>, coord: Coord) {
     // 1. BOARD_DATA
     // Check the README/HACKING for why it is 8
     let mut e = Array::from_shape_fn((8 as usize, SIZE as usize, SIZE as usize), |(_, _, _)| {
@@ -165,6 +266,7 @@ fn encode(g: &Game, a: &Action, vec: &mut Vec<f32>) {
         0.0 as f32
     });
 
+    let mut candidate: Vec<Coord> = Vec::new();
     if a.action_phase > ActionPhase::SetMap {
         let c = match a.map {
             None => {
@@ -179,7 +281,7 @@ fn encode(g: &Game, a: &Action, vec: &mut Vec<f32>) {
             (c.y + MAP_OFFSET.y) as usize,
         ]] = 1.0;
     }
-    if a.action_phase > ActionPhase::Lockdown {
+    let is_map = if a.action_phase > ActionPhase::Lockdown {
         // Thanks to the fact that Coord::lockdown() doesn't require the
         // operation a doctor-limited one, we can always duplicate the
         // opponent's map position here.
@@ -190,7 +292,10 @@ fn encode(g: &Game, a: &Action, vec: &mut Vec<f32>) {
             (c.x + MAP_OFFSET.x) as usize,
             (c.y + MAP_OFFSET.y) as usize,
         ]] = 1.0;
-    }
+        false
+    } else {
+        true
+    };
     if a.action_phase > ActionPhase::SetCharacter {
         // a.trajectory contains at most 6 coordinates.
         // 1 for the character's position before the action,
@@ -250,20 +355,24 @@ fn encode(g: &Game, a: &Action, vec: &mut Vec<f32>) {
 
     // XXX: finish these three heads.
     // policy
-    let mut policy = Array::from_shape_fn((TOTAL_POS as usize), |(_)| 0.0 as f32);
-    let c = a.map.unwrap();
+    let mut policy = Array::from_shape_fn(TOTAL_POS as usize, |_| 0.0 as f32);
+    if is_map {
+        policy[[coord.map_to_valid_encode()]] = 1.0;
+    } else {
+        policy[[coord.env_to_valid_encode()]] = 1.0;
+    }
 
     // valid
-    let mut valid = Array::from_shape_fn((TOTAL_POS as usize), |(_)| 0.0 as f32);
+    let valid = get_valid_moves(g, a);
 
     // value: always 1, because with the original final move,
     // this player is winning.
-    let mut value = Array::from_shape_fn((1 as usize), |(_)| 1.0 as f32);
+    let mut value = Array::from_shape_fn(1 as usize, |_| 1.0 as f32);
 
     // dummy
     let mut dummy = Array::from_shape_fn(
-        (DATASET_UNIT - (DATA_UNIT - CODE_DATA) - 2 * TOTAL_POS - 1 as usize),
-        |(_)| 0.0 as f32,
+        DATASET_UNIT - (DATA_UNIT - CODE_DATA) - 2 * TOTAL_POS - 1 as usize,
+        |_| 0.0 as f32,
     );
 
     // wrap it up
@@ -321,6 +430,8 @@ impl ActionCoord for u8 {
 trait EncodeCoord {
     fn to_map_encode(&self) -> u8;
     fn to_env_encode(&self) -> u8;
+    fn map_to_valid_encode(&self) -> usize;
+    fn env_to_valid_encode(&self) -> usize;
 }
 
 impl EncodeCoord for Coord {
@@ -332,6 +443,16 @@ impl EncodeCoord for Coord {
             .unwrap()
     }
     fn to_env_encode(&self) -> u8 {
+        ((self.x) * SIZE + (self.y)).try_into().unwrap()
+    }
+    fn map_to_valid_encode(&self) -> usize {
+        let ms: i32 = (MAP_SIZE as i32).try_into().unwrap();
+        let base: i32 = (MAX_ENV_CODE as i32).try_into().unwrap();
+        (base + ((self.x + 2) * ms + (self.y + 2)))
+            .try_into()
+            .unwrap()
+    }
+    fn env_to_valid_encode(&self) -> usize {
         ((self.x) * SIZE + (self.y)).try_into().unwrap()
     }
 }
@@ -517,24 +638,24 @@ mod tests {
             assert_eq!(Coord::new(2 as i32, 3 as i32), a.character.unwrap());
             assert_eq!(4 * DATASET_UNIT, vec.len());
             let offset = BOARD_DATA + MAP_DATA + TURN_DATA;
-            assert_eq!(vec[DATASET_UNIT * 0 + offset + 0 * 5 * 5 + 2 * 5 + 2], 1.0);
-            assert_eq!(vec[DATASET_UNIT * 0 + offset + 1 * 5 * 5 + 2 * 5 + 2], 0.0);
+            assert_eq!(vec[DATASET_UNIT * 1 + offset + 0 * 5 * 5 + 2 * 5 + 2], 1.0);
+            assert_eq!(vec[DATASET_UNIT * 1 + offset + 1 * 5 * 5 + 2 * 5 + 2], 0.0);
             assert_eq!(
                 vec[DATASET_UNIT * 0 + offset + FLOW_MAP_DATA + 0 * 6 * 6 + 3 * 6 + 1],
                 0.0
             );
-            assert_eq!(vec[DATASET_UNIT * 1 + offset + 0 * 5 * 5 + 2 * 5 + 2], 1.0);
-            assert_eq!(vec[DATASET_UNIT * 1 + offset + 1 * 5 * 5 + 2 * 5 + 2], 0.0);
+            assert_eq!(vec[DATASET_UNIT * 2 + offset + 0 * 5 * 5 + 2 * 5 + 2], 1.0);
+            assert_eq!(vec[DATASET_UNIT * 2 + offset + 1 * 5 * 5 + 2 * 5 + 2], 0.0);
             assert_eq!(
-                vec[DATASET_UNIT * 1 + offset + FLOW_MAP_DATA + 0 * 6 * 6 + 3 * 6 + 1],
+                vec[DATASET_UNIT * 2 + offset + FLOW_MAP_DATA + 0 * 6 * 6 + 3 * 6 + 1],
                 1.0
             );
             assert_eq!(
-                vec[DATASET_UNIT * 1 + offset + FLOW_MAP_DATA + 1 * 6 * 6 + 3 * 6 + 3],
+                vec[DATASET_UNIT * 2 + offset + FLOW_MAP_DATA + 1 * 6 * 6 + 3 * 6 + 3],
                 0.0
             );
             assert_eq!(
-                vec[DATASET_UNIT * 2 + offset + FLOW_MAP_DATA + 1 * 6 * 6 + 3 * 6 + 3],
+                vec[DATASET_UNIT * 3 + offset + FLOW_MAP_DATA + 1 * 6 * 6 + 3 * 6 + 3],
                 1.0
             );
             let bytes: &[u8] = cast_slice(&vec);

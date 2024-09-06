@@ -181,7 +181,7 @@ impl TreeNode {
     }
 
     pub fn to_action(&self, g: &Game) -> Result<Action, &'static str> {
-        fn nil_func(g: &Game, a: &Action, vec: &mut Vec<f32>) {}
+        fn nil_func(_g: &Game, _a: &Action, _vec: &mut Vec<f32>, _coord: Coord) {}
         let mut vec = Vec::new();
         self.to_action_do_func(g, nil_func, &mut vec)
     }
@@ -194,12 +194,13 @@ impl TreeNode {
         vec: &mut Vec<f32>,
     ) -> Result<Action, &'static str>
     where
-        F: Fn(&Game, &Action, &mut Vec<f32>),
+        F: Fn(&Game, &Action, &mut Vec<f32>, Coord),
     {
         let mut a = Action::new();
         let mut vi = 0;
         let c = self.properties[0].value[vi].as_str().to_map();
         vi = vi + 1;
+        func(g, &a, vec, c);
         match a.add_map_step(g, c) {
             Err(e) => {
                 return Err(e);
@@ -209,20 +210,23 @@ impl TreeNode {
             }
             _ => {}
         }
-        func(g, &a, vec);
 
         if c == Coord::new(0, 0) && g.turn == Camp::Doctor {
-            a.add_lockdown_by_coord(g, self.properties[0].value[vi].as_str().to_map())?;
+            let c = self.properties[0].value[vi].as_str().to_map();
+            func(g, &a, vec, c);
+            a.add_lockdown_by_coord(g, c)?;
             vi = vi + 1;
-            func(g, &a, vec);
         }
-        a.add_character(g, self.properties[0].value[vi].as_str().to_env())?;
-        func(g, &a, vec);
+
+        let c = self.properties[0].value[vi].as_str().to_env();
+        func(g, &a, vec, c);
+        a.add_character(g, c)?;
         vi = vi + 1;
         for _ in 0..a.steps {
-            a.add_board_single_step(g, self.properties[0].value[vi].as_str().to_env())?;
+            let c = self.properties[0].value[vi].as_str().to_env();
+            func(g, &a, vec, c);
+            a.add_board_single_step(g, c)?;
             vi = vi + 1;
-            func(g, &a, vec);
         }
         for _ in vi..self.properties[0].value.len() {
             a.add_single_marker(g, self.properties[0].value[vi].as_str().to_env())?;
