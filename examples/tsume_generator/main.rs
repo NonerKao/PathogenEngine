@@ -3,12 +3,14 @@ use clap::Parser;
 use ndarray::{Array, Array1};
 use rand::rngs::StdRng;
 use rand::SeedableRng;
+use regex::Regex;
 use std::cell::RefCell;
 use std::collections::BTreeSet;
 use std::fs::OpenOptions;
 use std::fs::{read_dir, DirEntry, File};
 use std::io::{Read, Write};
 use std::rc::Rc;
+ use std::path::Path;
 
 use pathogen_engine::core::action::Action;
 use pathogen_engine::core::action::ActionPhase;
@@ -61,7 +63,12 @@ fn write_entry(args: &Args, buffer: &[u8]) -> Result<(), std::io::Error> {
                 .open(ds)?; // Open the file
             save_file.write_all(buffer)?;
         }
-        None => {}
+        None => {
+            return Err(std::io::Error::new(
+                std::io::ErrorKind::NotFound,
+                "File not found",
+            ));
+        }
     }
     Ok(())
 }
@@ -415,13 +422,25 @@ impl EncodeCoord for Coord {
 
 fn main() -> Result<(), std::io::Error> {
     let args = Args::parse();
+    let re = Regex::new(r".*\.sgf\..*").unwrap();
 
     match args.load_dir {
         Some(ref dirname) => {
             let mut num_replay: u32 = 0;
             for filename in read_dir(dirname)? {
-                mine_tsume(&filename?, &args, num_replay)?;
-
+                if let Ok(entry) = filename {
+                    let entry_fn = entry.file_name();
+                    let ret = entry_fn.to_string_lossy().into_owned();
+                    let full_path = Path::new(dirname).join(&ret);
+            println!("Processing file: {}", full_path.display());
+                    let full_path_str = full_path.display().to_string();
+                    if !re.is_match(&full_path_str) {
+                        continue;
+                    }
+                    mine_tsume(full_path_str, &args, num_replay)?;
+                } else {
+                    continue;
+                };
                 num_replay = num_replay + 1;
             }
         }
@@ -435,9 +454,10 @@ fn main() -> Result<(), std::io::Error> {
     Ok(())
 }
 
-fn mine_tsume(filename: &DirEntry, args: &Args, suffix: u32) -> Result<(), std::io::Error> {
+fn mine_tsume(filename: String, args: &Args, suffix: u32) -> Result<(), std::io::Error> {
     let mut contents = String::new();
-    let mut file = File::open(filename.path())?;
+    println!("{}", filename);
+    let mut file = File::open(filename /*.path()*/)?;
     file.read_to_string(&mut contents)
         .expect("Failed to read file");
     let mut iter = contents.trim().chars().peekable();
