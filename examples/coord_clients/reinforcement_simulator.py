@@ -390,7 +390,8 @@ class RLSimAgent(Agent):
             probabilities = spice(torch.nn.functional.softmax(policy, dim=1).squeeze(0), TEMPERATURE)
 
             ctp = self.candidates_to_prob()
-            probabilities2 = spice(torch.nn.functional.softmax(torch.from_numpy(np.copy(ctp)).float().unsqueeze(0).to(self.device), dim=1).squeeze(0), TEMPERATURE)
+            # Maybe we just shouldn't rely on this one? not sure... at least this is not what the book does.
+            # probabilities2 = spice(torch.nn.functional.softmax(torch.from_numpy(np.copy(ctp)).float().unsqueeze(0).to(self.device), dim=1).squeeze(0), TEMPERATURE)
 
             # Then, record the probabilities and the valid head. Once the game is
             # over, we can add value back.
@@ -399,7 +400,7 @@ class RLSimAgent(Agent):
             # section 4, value, is not known until the end of the game
             self.dataset_counter = self.dataset_counter + 1
 
-            for action_index in probabilities2:
+            for action_index in probabilities:
                 index = int(action_index)
                 if index in self.candidate:
                     if index >= BOARD_POS:
