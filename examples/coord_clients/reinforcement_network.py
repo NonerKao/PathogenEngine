@@ -2,8 +2,8 @@ import numpy as np
 import torch
 from constant import *
 
-RES_SIZE = 16
-RES_INPUT_SIZE = 128
+RES_SIZE = 8
+RES_INPUT_SIZE = 108
 NATURE_CHANNEL_SIZE = (8 + 2 + 1 + 2 + 11)
 
 # partition an entry into the input and the three heads of output

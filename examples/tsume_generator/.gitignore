@@ -1,2 +1,4 @@
 *.sgf
+*.sgf.*
 log*
+*.bin

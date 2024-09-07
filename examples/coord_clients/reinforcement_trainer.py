@@ -10,16 +10,16 @@ from reinforcement_network import *
 from sklearn.model_selection import KFold
 
 TRAINING_BATCH_UNIT = 15
-TRAINING_INNER_EPOCH = 2
-TRAINING_OUTER_EPOCH = 3
+TRAINING_INNER_EPOCH = 1
+TRAINING_OUTER_EPOCH = 6
 
 LEARNING_RATE = 0.0005
 KFOLD = 10
 
-ALPHA = 0.1
-BETA = 0.35
-GAMMA = 0.2
-DELTA = 0.35
+ALPHA = 0.50
+BETA = 0.0
+GAMMA = 0.50
+DELTA = 0.0
 
 def init_optimizer(model):
     # To apply the LR globally
