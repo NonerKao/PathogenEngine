@@ -443,10 +443,6 @@ impl Game {
         false
     }
 
-    // XXX: Need to add some restriction that each qudrant can
-    //      have one colony at most
-    // XXX: Do we still need that? the capacity mechanism should
-    //      have solved this?
     pub fn add_marker(&mut self, c: &Coord, camp: &Camp) {
         match self.stuff.get(c) {
             None => {

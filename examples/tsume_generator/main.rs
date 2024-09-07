@@ -479,6 +479,9 @@ fn mine_tsume(filename: String, args: &Args, suffix: u32) -> Result<(), std::io:
     }
 
     let t2 = g.history.clone();
+
+    // This is to unlock the ability to undo a Colony.
+    g.savepoint = true;
     g.undo();
     let mut vec: Vec<f32> = Vec::new();
     if let Ok(_) = t2.borrow().to_action_do_func(&g, encode, &mut vec) {
