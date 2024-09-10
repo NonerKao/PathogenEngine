@@ -519,8 +519,8 @@ fn get_action<T: Read>(stream: &mut T, buffer: &mut [u8]) -> bool {
                 );
                 thread::sleep(retry_delay);
             }
+            #[cfg(debug_assertions)]
             Err(x) => {
-                #[cfg(debug_assertions)]
                 {
                     println!("{}", x);
                 }

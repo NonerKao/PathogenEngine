@@ -69,4 +69,7 @@ Same as Trial 5, but
 ### Play (Trial 4 (13), 5 (4), 6 (3))
 
 * Remove the policy weight in PUCT
-* baseline: 
+* baseline: 60.00 %
+* Trial 4: 48.00 %
+* Trial 5: 55.67 %
+* Trial 6: 49.00 %
