@@ -7,10 +7,10 @@ use regex::Regex;
 use std::cell::RefCell;
 use std::collections::BTreeSet;
 use std::fs::OpenOptions;
-use std::fs::{read_dir, DirEntry, File};
+use std::fs::{read_dir, File};
 use std::io::{Read, Write};
+use std::path::Path;
 use std::rc::Rc;
- use std::path::Path;
 
 use pathogen_engine::core::action::Action;
 use pathogen_engine::core::action::ActionPhase;
@@ -427,21 +427,28 @@ fn main() -> Result<(), std::io::Error> {
     match args.load_dir {
         Some(ref dirname) => {
             let mut num_replay: u32 = 0;
-            for filename in read_dir(dirname)? {
-                if let Ok(entry) = filename {
-                    let entry_fn = entry.file_name();
-                    let ret = entry_fn.to_string_lossy().into_owned();
-                    let full_path = Path::new(dirname).join(&ret);
-            println!("Processing file: {}", full_path.display());
-                    let full_path_str = full_path.display().to_string();
-                    if !re.is_match(&full_path_str) {
-                        continue;
-                    }
-                    mine_tsume(full_path_str, &args, num_replay)?;
-                } else {
+            for entry in read_dir(dirname)? {
+                let sub_dirname = entry?.path();
+
+                // Skip non-directory files
+                if !sub_dirname.is_dir() {
                     continue;
-                };
-                num_replay = num_replay + 1;
+                }
+                for filename in read_dir(sub_dirname.clone())? {
+                    if let Ok(entry) = filename {
+                        let entry_fn = entry.file_name();
+                        let ret = entry_fn.to_string_lossy().into_owned();
+                        let full_path = Path::new(&sub_dirname).join(&ret);
+                        let full_path_str = full_path.display().to_string();
+                        if !re.is_match(&full_path_str) {
+                            continue;
+                        }
+                        mine_tsume(full_path_str, &args, num_replay)?;
+                    } else {
+                        continue;
+                    };
+                    num_replay = num_replay + 1;
+                }
             }
         }
         None => {

@@ -143,8 +143,6 @@ class RLSimAgent(Agent):
         # initialize the device
         self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
         torch.set_default_device(self.device)
-        if not torch.cuda.is_available():
-            print('Warning: Use CPU')
 
         # We will only use this model for inference/simulation, at this phase
         self.model = init_model(args)
