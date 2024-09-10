@@ -54,7 +54,6 @@ struct Args {
 }
 
 fn write_entry(args: &Args, buffer: &[u8]) -> Result<(), std::io::Error> {
-    // write to the da
     match &args.dataset {
         Some(ds) => {
             let mut save_file = OpenOptions::new()
@@ -178,7 +177,7 @@ fn get_valid_moves(g: &Game, a: &Action) -> Array1<f32> {
     }
 }
 
-fn encode(g: &Game, a: &Action, vec: &mut Vec<f32>, coord: Coord) {
+fn encode_common(g: &Game, a: &Action, vec: &mut Vec<f32>) -> bool {
     // 1. BOARD_DATA
     // Check the README/HACKING for why it is 8
     let mut e = Array::from_shape_fn((8 as usize, SIZE as usize, SIZE as usize), |(_, _, _)| {
@@ -354,6 +353,78 @@ fn encode(g: &Game, a: &Action, vec: &mut Vec<f32>, coord: Coord) {
         assert_eq!(2, count);
     }
 
+    let vtemp = e
+        .into_shape((BOARD_DATA,))
+        .unwrap()
+        .into_iter()
+        .chain(m.into_shape((MAP_DATA,)).unwrap().into_iter())
+        .chain(t.into_shape((TURN_DATA,)).unwrap().into_iter())
+        .chain(fm.into_shape((FLOW_MAP_DATA,)).unwrap().into_iter())
+        .chain(fe.into_shape((FLOW_ENV_DATA,)).unwrap().into_iter())
+        .collect::<Vec<f32>>();
+    (*vec).extend(vtemp);
+
+    is_map
+}
+
+fn encode_lose(g: &Game, a: &Action, vec: &mut Vec<f32>, coord: Coord) {
+    let is_map = encode_common(g, a, vec);
+
+    // valid
+    let valid = get_valid_moves(g, a);
+    let num_non_zero = valid.iter().filter(|&&x| x != 0.0).count();
+
+    // policy
+    let mut policy = valid.clone();
+    if num_non_zero > 1 {
+        // please don't go this one otherwise you will lose.
+        // but if this is the only option, well, die...
+        if is_map {
+            policy[[coord.map_to_valid_encode()]] = 0.0;
+        } else {
+            policy[[coord.env_to_valid_encode()]] = 0.0;
+        }
+    }
+
+    // value
+    // -0.5 is a speculation, that "you are losing!!!"
+    // but if this is the only option, well, die...
+    let value = Array::from_shape_fn(
+        1 as usize,
+        |_| if num_non_zero > 1 { -0.5 } else { -1.0 } as f32,
+    );
+
+    // dummy
+    let dummy = Array::from_shape_fn(
+        DATASET_UNIT - (DATA_UNIT - CODE_DATA) - 2 * TOTAL_POS - 1 as usize,
+        |_| 0.0 as f32,
+    );
+
+    // wrap it up
+    let vtemp = policy
+        .into_shape((TOTAL_POS,))
+        .unwrap()
+        .into_iter()
+        .chain(valid.into_shape((TOTAL_POS,)).unwrap().into_iter())
+        .chain(value.into_shape((1,)).unwrap().into_iter())
+        .chain(
+            dummy
+                .into_shape((DATASET_UNIT - (DATA_UNIT - CODE_DATA) - 2 * TOTAL_POS - 1,))
+                .unwrap()
+                .into_iter(),
+        )
+        .collect::<Vec<f32>>();
+
+    assert_eq!(vtemp.len(), DATASET_UNIT - (DATA_UNIT - CODE_DATA));
+    (*vec).extend(vtemp);
+}
+
+fn encode_win(g: &Game, a: &Action, vec: &mut Vec<f32>, coord: Coord) {
+    let is_map = encode_common(g, a, vec);
+
+    // valid
+    let valid = get_valid_moves(g, a);
+
     // XXX: finish these three heads.
     // policy
     let mut policy = Array::from_shape_fn(TOTAL_POS as usize, |_| 0.0 as f32);
@@ -362,9 +433,6 @@ fn encode(g: &Game, a: &Action, vec: &mut Vec<f32>, coord: Coord) {
     } else {
         policy[[coord.env_to_valid_encode()]] = 1.0;
     }
-
-    // valid
-    let valid = get_valid_moves(g, a);
 
     // value: always 1, because with the original final move,
     // this player is winning.
@@ -377,15 +445,10 @@ fn encode(g: &Game, a: &Action, vec: &mut Vec<f32>, coord: Coord) {
     );
 
     // wrap it up
-    let vtemp = e
-        .into_shape((BOARD_DATA,))
+    let vtemp = policy
+        .into_shape((TOTAL_POS,))
         .unwrap()
         .into_iter()
-        .chain(m.into_shape((MAP_DATA,)).unwrap().into_iter())
-        .chain(t.into_shape((TURN_DATA,)).unwrap().into_iter())
-        .chain(fm.into_shape((FLOW_MAP_DATA,)).unwrap().into_iter())
-        .chain(fe.into_shape((FLOW_ENV_DATA,)).unwrap().into_iter())
-        .chain(policy.into_shape((TOTAL_POS,)).unwrap().into_iter())
         .chain(valid.into_shape((TOTAL_POS,)).unwrap().into_iter())
         .chain(value.into_shape((1,)).unwrap().into_iter())
         .chain(
@@ -396,7 +459,7 @@ fn encode(g: &Game, a: &Action, vec: &mut Vec<f32>, coord: Coord) {
         )
         .collect::<Vec<f32>>();
 
-    assert_eq!(vtemp.len(), DATASET_UNIT);
+    assert_eq!(vtemp.len(), DATASET_UNIT - (DATA_UNIT - CODE_DATA));
     (*vec).extend(vtemp);
 }
 
@@ -486,13 +549,23 @@ fn mine_tsume(filename: String, args: &Args, suffix: u32) -> Result<(), std::io:
     }
 
     let t2 = g.history.clone();
+    let t3 = g.history.as_ref().borrow().parent.as_ref().unwrap().clone();
 
     // This is to unlock the ability to undo a Colony.
     g.savepoint = true;
     g.undo();
     let mut vec: Vec<f32> = Vec::new();
-    if let Ok(_) = t2.borrow().to_action_do_func(&g, encode, &mut vec) {
+    if let Ok(_) = t2.borrow().to_action_do_func(&g, encode_win, &mut vec) {
         let bytes: &[u8] = cast_slice(&vec);
+        write_entry(args, bytes)?;
+    } else {
+        panic!("The action state machine goes wrong");
+    }
+
+    g.undo();
+    let mut vec2: Vec<f32> = Vec::new();
+    if let Ok(_) = t3.borrow().to_action_do_func(&g, encode_lose, &mut vec2) {
+        let bytes: &[u8] = cast_slice(&vec2);
         write_entry(args, bytes)?;
     } else {
         panic!("The action state machine goes wrong");
@@ -506,7 +579,7 @@ mod tests {
     use super::*;
 
     #[test]
-    fn test_something() {
+    fn test_win() {
         let s0 = "(
 ;FF[4]GM[41]SZ[6]GN[https://boardgamegeek.com/boardgame/369862/pathogen]RE[B+55]
 ;C[Setup0]AW[ea][af][ce][cc][ad][dc][df][be][de][fa][cb][ba][fb][ed][cf][fd][eb][ab]
@@ -583,7 +656,7 @@ mod tests {
         let t2 = g.history.clone();
         g.undo();
         let mut vec: Vec<f32> = Vec::new();
-        if let Ok(a) = t2.borrow().to_action_do_func(&g, encode, &mut vec) {
+        if let Ok(a) = t2.borrow().to_action_do_func(&g, encode_win, &mut vec) {
             assert_eq!(Coord::new(0 as i32, 0 as i32), a.map.unwrap());
             assert_eq!(Coord::new(2 as i32, 3 as i32), a.character.unwrap());
             assert_eq!(4 * DATASET_UNIT, vec.len());
@@ -609,6 +682,124 @@ mod tests {
                 vec[DATASET_UNIT * 3 + offset + FLOW_MAP_DATA + 1 * 6 * 6 + 3 * 6 + 3],
                 1.0
             );
+        } else {
+            panic!("??");
+        };
+    }
+
+    #[test]
+    fn test_lose1() {
+        let s0 = "(
+;FF[4]GM[41]SZ[6]GN[https://boardgamegeek.com/boardgame/369862/pathogen]RE[B+55]
+;C[Setup0]AW[ea][af][ce][cc][ad][dc][df][be][de][fa][cb][ba][fb][ed][cf][fd][eb][ab]
+;C[Setup0]AB[bb][ef][fc][bd][ac][cd][ae][dd][fe][ec][db][ee][aa][ff][bc][bf][ca][da]
+;C[Setup1]AB[fd]
+;C[Setup1]AB[ae]
+;C[Setup1]AB[cc]
+;C[Setup1]AB[eb]
+;C[Setup2]AW[ff]
+;C[Setup2]AB[bc]
+;C[Setup2]AW[cb]
+;C[Setup2]AB[dc]
+;C[Setup3]AW[ji]
+;B[kj][bc][ec][ee][bc][ec][bc][ec]
+;W[ih][ff][fe][ee][ec][bc][ec][ec][ff][ff][ff]
+;B[gi][dc][de][ce][be][dc][de][ce][de]
+;W[hi][cb][eb][cb][cb][cb][cb][cb]
+;B[gh][ee][ae][ac][ae][ee][ae][ee]
+;W[ih][bc][ec][fc][bc][bc][bc][ec][ec]
+;B[jj][ac][bc][bd][bf][ac][bc][bd][ac]
+;W[ji][eb][ea][eb][eb][eb][eb][eb]
+;B[kh][be][ce][cc][ce][be][be][ce]
+;W[hh][fc][ec][bc][ac][fc][ec][bc][bc][ec]
+;B[jg][cc][cb][eb][fb][cb][cc][eb][cc]
+;W[ih][ea][ba][be][ea][ea][ea][ea][ea]
+;B[hi][fb][eb][ed][eb][fb][eb][fb]
+;W[ij][be][ce][cf][ce][ce][ce][be][be]
+;B[hg][bf][bd][bc][ac][aa][bf][bd][bc][bd]
+;W[ih][ac][ae][ee][ae][ae][ae][ac][ac]
+;B[jj][aa][ac][bc][bd][ac][aa][bc][ac]
+;W[ii][jj][cf][ce][be][cf][ce][ce][cf][ce]
+;B[ij][bd][bf][bd][bd][bd]
+;W[hi][ee][ae][ac][ee][ee][ee][ae][ae]
+;B[hg][ed][eb][ea][ed][eb][eb][ed]
+;W[ih][ac][ae][ee][ac][ac][ac][ac][ac]
+;B[ij][ea][eb][ed][eb][ea][ea][eb]
+;W[ji][be][ce][cc][ce][ce][ce][be][be]
+;B[jg][ed][eb][ea][ed][eb][ed][eb]
+;W[ih][cc][ce][be][cc][cc][cc][cc][cc]
+;B[jj][ea][eb][ed][fd][ed][eb][ea][ed]
+;W[ii][hj][ee][fe][fc][ee][ee][ee][ee][ee]
+;B[ih][fd][fb][fd][fd][fd][fd]
+;W[hi][fc][fe][ee][fe][fe][fe][fe][fe]
+;B[ii][bf][ef][bf][bf][bf][bf]
+;W[jh][be][ba][ea][ba][ba][ba][ba][ba]
+;B[hh][fb][eb][cb][fb][fb][fb]
+;W[ih][ea][fa][ea][ea][ea][ea]
+;B[ii][cb][cc][cb][cb][cb][cb]
+;W[jh][ee][ec][fc][ec]
+;B[ki][cc][dc][de][cc][dc][cc][dc]
+;W[hj][fc][ec][bc][ac][ae][fc][ac][fc][fc][bc]
+;B[gi][ef][bf][bd][ef][ef][ef][ef]
+;W[hi][ae][ee][ae][ae][ae]
+;B[ii][bd][cd]
+;W[ih][ee][ec]
+;B[hi][cd][bd][bf][cd][cd][cd][cd]
+;W[hj][fa][fb][fa][fa][fa][fa][fa]
+;B[gi][de][dc][cc][dc][de][dc][de]
+;W[ii][ig][ec][ee][ef]
+;B[hh][cc][cb][ab][cc][cb][cc][cb]
+;W[hi][fb][fd][fb][fb][fb][fb][fb]
+;B[ki][ab][cb][eb][fb][cb][ab][ab][cb]
+;W[jh][ef][ee][ae][ef][ef][ef][ef][ef]
+;B[hj][fb][eb][ed][ad][af][fb][ad][fb][ad]
+;W[ij][ae][ee]
+;B[jg][bf][bd][bc][bb][db][bc][bb][bb][bc]
+;W[jh][ee][ef];B[ii][db][dd][cd][db][dd][db][dd])"
+            .to_string();
+        let _final_step = "";
+        let mut iter = s0.trim().chars().peekable();
+        let t = TreeNode::new(&mut iter, None);
+        let mut g = Game::init(Some(t));
+
+        let t2 = g.history.as_ref().borrow().parent.as_ref().unwrap().clone();
+        g.undo();
+        g.undo();
+        let mut vec: Vec<f32> = Vec::new();
+        if let Ok(a) = t2.borrow().to_action_do_func(&g, encode_lose, &mut vec) {
+            assert_eq!(Coord::new(1 as i32, -1 as i32), a.map.unwrap());
+            assert_eq!(Coord::new(4 as i32, 5 as i32), a.character.unwrap());
+            assert_eq!(3 * DATASET_UNIT, vec.len());
+            let mut offset = BOARD_DATA + MAP_DATA + TURN_DATA;
+            assert_eq!(vec[DATASET_UNIT * 0 + offset + 0 * 5 * 5 + 3 * 5 + 1], 0.0);
+            assert_eq!(vec[DATASET_UNIT * 1 + offset + 0 * 5 * 5 + 3 * 5 + 1], 1.0);
+            assert_eq!(vec[DATASET_UNIT * 1 + offset + 1 * 5 * 5 + 3 * 5 + 1], 0.0);
+            assert_eq!(
+                vec[DATASET_UNIT * 0 + offset + FLOW_MAP_DATA + 0 * 6 * 6 + 4 * 6 + 4],
+                0.0
+            );
+            assert_eq!(vec[DATASET_UNIT * 2 + offset + 0 * 5 * 5 + 3 * 5 + 1], 1.0);
+            assert_eq!(vec[DATASET_UNIT * 2 + offset + 1 * 5 * 5 + 3 * 5 + 1], 0.0);
+            assert_eq!(
+                vec[DATASET_UNIT * 2 + offset + FLOW_MAP_DATA + 0 * 6 * 6 + 4 * 6 + 4],
+                1.0
+            );
+            assert_eq!(
+                vec[DATASET_UNIT * 2 + offset + FLOW_MAP_DATA + 1 * 6 * 6 + 4 * 6 + 5],
+                0.0
+            );
+
+            // check policy
+            offset = offset + FLOW_DATA;
+            /*assert_eq!(
+                vec[DATASET_UNIT * 2 + offset + FLOW_MAP_DATA + 1 * 6 * 6 + 4 * 6 + 5],
+                0.0
+            );*/
+            // check value
+            offset = offset + 2 * TOTAL_POS;
+            assert_eq!(vec[DATASET_UNIT * 0 + offset + 0], -0.5);
+            assert_eq!(vec[DATASET_UNIT * 1 + offset + 0], -1.0);
+            assert_eq!(vec[DATASET_UNIT * 2 + offset + 0], -1.0);
         } else {
             panic!("??");
         };
