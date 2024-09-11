@@ -367,32 +367,25 @@ fn encode_common(g: &Game, a: &Action, vec: &mut Vec<f32>) -> bool {
     is_map
 }
 
-fn encode_lose(g: &Game, a: &Action, vec: &mut Vec<f32>, coord: Coord) {
-    let is_map = encode_common(g, a, vec);
+fn encode_lose(g: &Game, a: &Action, vec: &mut Vec<f32>, _coord: Coord) {
+    let mut vcommon: Vec<f32> = Vec::new();
+    let _is_map = encode_common(g, a, &mut vcommon);
 
     // valid
     let valid = get_valid_moves(g, a);
     let num_non_zero = valid.iter().filter(|&&x| x != 0.0).count();
 
     // policy
-    let mut policy = valid.clone();
+    let policy = valid.clone();
     if num_non_zero > 1 {
-        // please don't go this one otherwise you will lose.
-        // but if this is the only option, well, die...
-        if is_map {
-            policy[[coord.map_to_valid_encode()]] = 0.0;
-        } else {
-            policy[[coord.env_to_valid_encode()]] = 0.0;
-        }
+        // originally I assign -0.5 value in the next block,
+        // but it is a rough estimation. We should be able to
+        // be fine without it.
+        return;
     }
 
     // value
-    // -0.5 is a speculation, that "you are losing!!!"
-    // but if this is the only option, well, die...
-    let value = Array::from_shape_fn(
-        1 as usize,
-        |_| if num_non_zero > 1 { -0.5 } else { -1.0 } as f32,
-    );
+    let value = Array::from_shape_fn(1 as usize, |_| -1.0 as f32);
 
     // dummy
     let dummy = Array::from_shape_fn(
@@ -416,7 +409,8 @@ fn encode_lose(g: &Game, a: &Action, vec: &mut Vec<f32>, coord: Coord) {
         .collect::<Vec<f32>>();
 
     assert_eq!(vtemp.len(), DATASET_UNIT - (DATA_UNIT - CODE_DATA));
-    (*vec).extend(vtemp);
+    vcommon.extend(vtemp);
+    (*vec).extend(vcommon);
 }
 
 fn encode_win(g: &Game, a: &Action, vec: &mut Vec<f32>, coord: Coord) {
@@ -769,37 +763,27 @@ mod tests {
         if let Ok(a) = t2.borrow().to_action_do_func(&g, encode_lose, &mut vec) {
             assert_eq!(Coord::new(1 as i32, -1 as i32), a.map.unwrap());
             assert_eq!(Coord::new(4 as i32, 5 as i32), a.character.unwrap());
-            assert_eq!(3 * DATASET_UNIT, vec.len());
+            assert_eq!(2 * DATASET_UNIT, vec.len());
             let mut offset = BOARD_DATA + MAP_DATA + TURN_DATA;
-            assert_eq!(vec[DATASET_UNIT * 0 + offset + 0 * 5 * 5 + 3 * 5 + 1], 0.0);
+            assert_eq!(vec[DATASET_UNIT * 0 + offset + 0 * 5 * 5 + 3 * 5 + 1], 1.0);
+            assert_eq!(vec[DATASET_UNIT * 0 + offset + 1 * 5 * 5 + 3 * 5 + 1], 0.0);
             assert_eq!(vec[DATASET_UNIT * 1 + offset + 0 * 5 * 5 + 3 * 5 + 1], 1.0);
             assert_eq!(vec[DATASET_UNIT * 1 + offset + 1 * 5 * 5 + 3 * 5 + 1], 0.0);
             assert_eq!(
-                vec[DATASET_UNIT * 0 + offset + FLOW_MAP_DATA + 0 * 6 * 6 + 4 * 6 + 4],
-                0.0
-            );
-            assert_eq!(vec[DATASET_UNIT * 2 + offset + 0 * 5 * 5 + 3 * 5 + 1], 1.0);
-            assert_eq!(vec[DATASET_UNIT * 2 + offset + 1 * 5 * 5 + 3 * 5 + 1], 0.0);
-            assert_eq!(
-                vec[DATASET_UNIT * 2 + offset + FLOW_MAP_DATA + 0 * 6 * 6 + 4 * 6 + 4],
+                vec[DATASET_UNIT * 1 + offset + FLOW_MAP_DATA + 0 * 6 * 6 + 4 * 6 + 4],
                 1.0
             );
             assert_eq!(
-                vec[DATASET_UNIT * 2 + offset + FLOW_MAP_DATA + 1 * 6 * 6 + 4 * 6 + 5],
+                vec[DATASET_UNIT * 1 + offset + FLOW_MAP_DATA + 1 * 6 * 6 + 4 * 6 + 5],
                 0.0
             );
 
             // check policy
             offset = offset + FLOW_DATA;
-            /*assert_eq!(
-                vec[DATASET_UNIT * 2 + offset + FLOW_MAP_DATA + 1 * 6 * 6 + 4 * 6 + 5],
-                0.0
-            );*/
             // check value
             offset = offset + 2 * TOTAL_POS;
-            assert_eq!(vec[DATASET_UNIT * 0 + offset + 0], -0.5);
+            assert_eq!(vec[DATASET_UNIT * 0 + offset + 0], -1.0);
             assert_eq!(vec[DATASET_UNIT * 1 + offset + 0], -1.0);
-            assert_eq!(vec[DATASET_UNIT * 2 + offset + 0], -1.0);
         } else {
             panic!("??");
         };
