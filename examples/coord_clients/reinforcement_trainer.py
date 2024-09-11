@@ -14,12 +14,11 @@ TRAINING_INNER_EPOCH = 1
 TRAINING_OUTER_EPOCH = 6
 
 LEARNING_RATE = 0.0005
-KFOLD = 10
+KFOLD = 4
 
-ALPHA = 0.25
-BETA = 0.25
-GAMMA = 0.25
-DELTA = 0.25
+ALPHA = 0.33
+BETA = 0.33
+GAMMA = 0.33
 
 def init_optimizer(model):
     # To apply the LR globally
@@ -128,7 +127,6 @@ if __name__ == "__main__":
     policy_loss_func = torch.nn.CrossEntropyLoss()
     valid_loss_func = torch.nn.BCEWithLogitsLoss(reduction='mean')
     value_loss_func = torch.nn.MSELoss()
-    misunderstanding_loss_func = torch.nn.L1Loss(reduction='sum')
 
     # cross-validation
     i = 0
@@ -154,21 +152,18 @@ if __name__ == "__main__":
             )
 
             for i_epoch in range(TRAINING_INNER_EPOCH):
-                train_loss = [0.0, 0.0, 0.0, 0.0, 0.0]
+                train_loss = [0.0, 0.0, 0.0, 0.0]
                 model.train()
                 for state, policy, valid, value in train_dataloader:
                     policy_logits, valid_logits, value_pred = model(state)
                     policy_loss = policy_loss_func(policy_logits, torch.argmax(policy, dim=1))
                     valid_loss = valid_loss_func(valid_logits, valid)
                     value_loss = value_loss_func(value_pred, value)
-                    misunderstanding = torch.nn.functional.softmax(policy_logits) * (1 - valid)
-                    misunderstanding_loss = misunderstanding_loss_func(misunderstanding, torch.zeros(misunderstanding.shape))
-                    total_loss = ALPHA*policy_loss + BETA*valid_loss + GAMMA*value_loss + DELTA*misunderstanding_loss
+                    total_loss = ALPHA*policy_loss + BETA*valid_loss + GAMMA*value_loss
                     train_loss[0] += policy_loss.item() * state.size(0)
                     train_loss[1] += valid_loss.item() * state.size(0)
                     train_loss[2] += value_loss.item() * state.size(0)
-                    train_loss[3] += misunderstanding_loss.item() * state.size(0)
-                    train_loss[4] += total_loss.item() * state.size(0)
+                    train_loss[3] += total_loss.item() * state.size(0)
                     print(f'({o_epoch}, {fold}, {i_epoch})/({TRAINING_OUTER_EPOCH}, {KFOLD}, {TRAINING_INNER_EPOCH})')
                     sys.stdout.write("\033[F")
                     sys.stdout.flush()
@@ -180,53 +175,44 @@ if __name__ == "__main__":
                 writer.add_scalar('Loss/train_policy', train_loss[0], i)
                 writer.add_scalar('Loss/train_valid', train_loss[1], i)
                 writer.add_scalar('Loss/train_value', train_loss[2], i)
-                writer.add_scalar('Loss/train_misunderstanding', train_loss[3], i)
-                writer.add_scalar('Loss/train_total', train_loss[4], i)
+                writer.add_scalar('Loss/train_total', train_loss[3], i)
 
-                val_loss = [0.0, 0.0, 0.0, 0.0, 0.0]
+                val_loss = [0.0, 0.0, 0.0, 0.0]
                 model.eval()
                 with torch.no_grad():
                     for state, policy, valid, value in val_dataloader:
                         policy_logits, valid_logits, value_pred = model(state)
-                        policy_loss = policy_loss_func(policy_logits, policy)
+                        policy_loss = policy_loss_func(policy_logits, torch.argmax(policy, dim=1))
                         valid_loss = valid_loss_func(valid_logits, valid)
                         value_loss = value_loss_func(value_pred, value)
-                        misunderstanding = torch.nn.functional.softmax(policy_logits) * (1 - valid)
-                        misunderstanding_loss = misunderstanding_loss_func(misunderstanding, torch.zeros(misunderstanding.shape))
-                        total_loss = ALPHA*policy_loss + BETA*valid_loss + GAMMA*value_loss + DELTA*misunderstanding_loss
+                        total_loss = ALPHA*policy_loss + BETA*valid_loss + GAMMA*value_loss
                         val_loss[0] += policy_loss.item() * state.size(0)
                         val_loss[1] += valid_loss.item() * state.size(0)
                         val_loss[2] += value_loss.item() * state.size(0)
-                        val_loss[3] += misunderstanding_loss.item() * state.size(0)
-                        val_loss[4] += total_loss.item() * state.size(0)
+                        val_loss[3] += total_loss.item() * state.size(0)
                     val_loss = [x / len(val_dataloader.dataset) for x in val_loss]
                     writer.add_scalar('Loss/val_policy', val_loss[0], i)
                     writer.add_scalar('Loss/val_valid', val_loss[1], i)
                     writer.add_scalar('Loss/val_value', val_loss[2], i)
-                    writer.add_scalar('Loss/val_misunderstanding', val_loss[3], i)
-                    writer.add_scalar('Loss/val_total', val_loss[4], i)
+                    writer.add_scalar('Loss/val_total', val_loss[3], i)
 
-                test_loss = [0.0, 0.0, 0.0, 0.0, 0.0]
+                test_loss = [0.0, 0.0, 0.0, 0.0]
                 model.eval()
                 with torch.no_grad():
                     for state, policy, valid, value in test_dataloader:
                         policy_logits, valid_logits, value_pred = model(state)
-                        policy_loss = policy_loss_func(policy_logits, policy)
+                        policy_loss = policy_loss_func(policy_logits, torch.argmax(policy, dim=1))
                         valid_loss = valid_loss_func(valid_logits, valid)
                         value_loss = value_loss_func(value_pred, value)
-                        misunderstanding = torch.nn.functional.softmax(policy_logits) * (1 - valid)
-                        misunderstanding_loss = misunderstanding_loss_func(misunderstanding, torch.zeros(misunderstanding.shape))
-                        total_loss = ALPHA*policy_loss + BETA*valid_loss + GAMMA*value_loss + DELTA*misunderstanding_loss
+                        total_loss = ALPHA*policy_loss + BETA*valid_loss + GAMMA*value_loss
                         test_loss[0] += policy_loss.item() * state.size(0)
                         test_loss[1] += valid_loss.item() * state.size(0)
                         test_loss[2] += value_loss.item() * state.size(0)
                         test_loss[3] += total_loss.item() * state.size(0)
-                        test_loss[4] += total_loss.item() * state.size(0)
                     test_loss = [x / len(test_dataloader.dataset) for x in test_loss]
                     writer.add_scalar('Loss/test_policy', test_loss[0], i)
                     writer.add_scalar('Loss/test_valid', test_loss[1], i)
                     writer.add_scalar('Loss/test_value', test_loss[2], i)
-                    writer.add_scalar('Loss/test_misunderstanding', test_loss[3], i)
                     writer.add_scalar('Loss/test_total', test_loss[3], i)
 
                 i += 1

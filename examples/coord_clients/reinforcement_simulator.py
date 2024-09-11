@@ -180,9 +180,7 @@ class RLSimAgent(Agent):
         self.current_node = self.root
         return
 
-    def candidates_to_prob(self):
-        # sum up all the trials
-        sum = 0
+    def candidates_to_policy(self):
         # count each moves
         array = np.zeros(TOTAL_POS, dtype=np.float32)
         for i in self.current_node.child_nodes:
@@ -194,15 +192,14 @@ class RLSimAgent(Agent):
             # Still count all of them
             if isinstance(i, CounterKey):
                 for action, count in i:
-                    sum = sum + count*n
                     index = action if action < BOARD_POS else action - MAP_POS_OFFSET
                     array[index] = array[index] + count*n
             else:
                 index = i if i < BOARD_POS else i - MAP_POS_OFFSET
                 array[index] = array[index] + n
-                sum = sum + n
 
-        return array/sum
+        # We don't return a distribution but logits
+        return array
 
     def analyze(self, data):
         if ord('E') == data[0]:
@@ -388,7 +385,7 @@ class RLSimAgent(Agent):
             policy, valid, value = self.model(self.state)
             probabilities = spice(torch.nn.functional.softmax(policy, dim=1).squeeze(0), TEMPERATURE)
 
-            ctp = self.candidates_to_prob()
+            ctp = self.candidates_to_policy()
             # Maybe we just shouldn't rely on this one? not sure... at least this is not what the book does.
             # probabilities2 = spice(torch.nn.functional.softmax(torch.from_numpy(np.copy(ctp)).float().unsqueeze(0).to(self.device), dim=1).squeeze(0), TEMPERATURE)
 
