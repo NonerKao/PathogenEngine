@@ -2,7 +2,6 @@ import random
 import torch
 import argparse
 from reinforcement_simulator import RLSimAgent
-from reinforcement_player import RLPlayer
 from query_agent import QAgent
 import time
 import sys
@@ -42,8 +41,6 @@ if __name__ == "__main__":
             a = QAgent(args, s)
         elif args.type == 'ReinforcementSimulate':
             a = RLSimAgent(args, s, i)
-        elif args.type == 'ReinforcementPlay':
-            a = RLPlayer(args)
         elif args.type == 'Query':
             a = QAgent(args, s)
 

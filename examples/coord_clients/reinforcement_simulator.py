@@ -340,16 +340,10 @@ class RLSimAgent(Agent):
 
             self.send_special(self.action)
             if self.simulation and not self.current_node.child_nodes:
-                # self.state = np.frombuffer(self.current_node.state[4:], dtype=np.uint8)
-                # self.state = torch.from_numpy(np.copy(self.state)).float().unsqueeze(0).to(self.device)
-                # policy, _, _ = self.model(self.state)
-                #probabilities = torch.nn.functional.softmax(policy, dim=1).squeeze(0)
                 for action in self.candidate:
                     self.current_node.child_nodes[action] = Node(None, self.current_node, None)
-                    # self.current_node.child_nodes[action] = Node(None, self.current_node, None, probabilities[action if action < BOARD_POS else action - MAP_POS_OFFSET])
                 # why would we backtracking for this single option?
                 # because it can help us update every node's inferenced weight
-                # if len(self.candidate) > 1:
                 self.num_trials = self.num_trials - 1
                 self.action = RETURN
                 self.send_special(self.action)
@@ -383,11 +377,18 @@ class RLSimAgent(Agent):
             self.state = torch.from_numpy(np.copy(self.state)).float().unsqueeze(0).to(self.device)
             self.dataset.write(self.state.cpu().numpy().tobytes()) # section 1: state
             policy, valid, value = self.model(self.state)
-            probabilities = spice(torch.nn.functional.softmax(policy, dim=1).squeeze(0), TEMPERATURE)
-
             ctp = self.candidates_to_policy()
-            # Maybe we just shouldn't rely on this one? not sure... at least this is not what the book does.
-            # probabilities2 = spice(torch.nn.functional.softmax(torch.from_numpy(np.copy(ctp)).float().unsqueeze(0).to(self.device), dim=1).squeeze(0), TEMPERATURE)
+
+            # Should we make the probability distribution based on the inferenced `policy`?
+            # Or should we go with the distribution we just collected from the MCTS trials?
+            # Well... I will go with this
+            # * During simulation: the former, for better exploit/explore balance
+            # * During play: the latter, for the distribution is the known best (if not too bias)
+            if isinstance(self.dataset, NullDataset):
+                # we don't collect dataset when we play
+                probabilities = spice(torch.nn.functional.softmax(torch.from_numpy(np.copy(ctp)).float().unsqueeze(0).to(self.device), dim=1).squeeze(0), TEMPERATURE)
+            else:
+                probabilities = spice(torch.nn.functional.softmax(policy, dim=1).squeeze(0), TEMPERATURE)
 
             # Then, record the probabilities and the valid head. Once the game is
             # over, we can add value back.
