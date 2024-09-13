@@ -75,13 +75,9 @@ class NullModel:
         pass
 
     def __call__(self, input_tensor):
-        # Assuming input_tensor shape is [N, 10]
         N = input_tensor.size(0)
-        self.p = torch.zero(N, TOTAL_POS)
-        self.valid = torch.zero(N, TOTAL_POS)
-        self.v = torch.zero(N, 1)
 
-        return self.p, self.valid, self.v
+        return torch.zeros(N, TOTAL_POS), torch.zeros(N, TOTAL_POS), torch.zeros(N, 1)
 
 class NullDataset:
     def seek(self, *args):
