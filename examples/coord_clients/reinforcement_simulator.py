@@ -137,8 +137,10 @@ class RLSimAgent(Agent):
         self.dataset_counter = 0
 
         # initialize the device
-        self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+        # self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+        self.device = torch.device("cpu")
         torch.set_default_device(self.device)
+        torch.set_grad_enabled(False)
 
         # We will only use this model for inference/simulation, at this phase
         self.model = init_model(args)

@@ -82,7 +82,18 @@ Doctor's steps to win: 30.86 +/- 11.41
 ### Play 2: versus
 
 #### trial1.24 (p) vs. gen16/trial2.24
+```
+Doctor's winrate: 53.00%
+Plague's steps to win: 23.77 +/- 11.16
+Doctor's steps to win: 31.55 +/- 12.49
+```
+
 #### gen16/trial2.24 (p) vs. trial1.24
+```
+Doctor's winrate: 47.00%
+Plague's steps to win: 25.45 +/- 14.13
+Doctor's steps to win: 32.09 +/- 12.22
+```
 
 ## Trial 3: continue gen16/train/plague-trial2.pth.24 with all tsume entries
 
