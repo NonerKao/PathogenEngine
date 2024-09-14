@@ -1,10 +1,10 @@
 #/bin/bash
 
-BATCH=1000
-TSUME_SET=20
+BATCH=2000
+TSUME_SET=5
 BATCH_RATIO=1
 PE_ROOT=/home/alankao/Documents/MetaSelf/SideProjects/PathogenEngine/examples
-SIM_ROOT=$PE_ROOT/../share/20240910_gen15/simulation/tsume
+SIM_ROOT=$(realpath $(dirname $0))/tsume2
 SETUP_ROOT=$SIM_ROOT/setups
 
 function sim_r2r()
@@ -23,20 +23,18 @@ function sim_r2r()
 }
 
 function prepare_setup(){
-	if [ -d $1 ]; then
+	if [ -d $SETUP_ROOT ]; then
             return
         fi
-	mkdir -p $1
-	pushd $PE_ROOT
+	mkdir -p $SETUP_ROOT
 	for _ in $(seq 1 $(($BATCH/$BATCH_RATIO))); do id=$(uuidgen);
 		RUST_BACKTRACE=1 cargo run --release --example setup_generator -- \
-			--mode sgf --seed "$(echo $id | sed -e 's/-//g')" --save "$1/$id.sgf";
+			--mode sgf --seed "$(echo $id | sed -e 's/-//g')" --save "$SETUP_ROOT/$id.sgf";
 	done
-	popd
 }
 
-prepare_setup $SETUP_ROOT 2>/dev/null
+prepare_setup
 for i in $(seq 1 $TSUME_SET); do
 	sim_r2r
 done
-cargo run --release --example tsume_generator -- -l $SIM_ROOT --dataset extra_tsume.raw.bin
+cargo run --release --example tsume_generator -- -l $SIM_ROOT --dataset new_tsume.raw.bin
