@@ -10,7 +10,7 @@ use std::net::{TcpListener, TcpStream};
 use std::path::Path;
 use std::rc::Rc;
 use std::thread;
-use std::time::Duration;
+use std::time::{Duration, Instant};
 
 use pathogen_engine::core::action::Action;
 use pathogen_engine::core::action::ActionPhase;
@@ -245,6 +245,8 @@ const SAVE_CODE: u8 = 254;
 const RETURN_CODE: u8 = 253;
 const CLEAR_CODE: u8 = 252;
 const MIN_SPECIAL_CODE: u8 = CLEAR_CODE;
+
+const SET_ACTION_CLIENT: u8 = 200;
 
 trait ActionCoord {
     fn to_coord(&self) -> Coord;
@@ -701,11 +703,79 @@ impl ReaderExtra for TcpStream {
     }
 }
 
+#[derive(PartialEq, Eq)]
+enum ClientKind {
+    CoordClient,
+    ActionClient,
+}
+
+struct Client {
+    ts: TcpStream,
+    kind: ClientKind,
+}
+
+fn listen_clients(clients: &mut [Client; 2]) -> std::io::Result<()> {
+    // Set both streams to non-blocking
+    for client in clients.iter_mut() {
+        client.ts.set_nonblocking(true)?;
+    }
+
+    let timeout = Duration::new(5, 0);
+    let start = Instant::now();
+
+    // A buffer to hold one byte
+    let mut buf = [0u8; 1];
+
+    while Instant::now().duration_since(start) < timeout {
+        for client in clients.iter_mut() {
+            match client.ts.read(&mut buf) {
+                Ok(1) => {
+                    // One byte received, handle it (you can adjust your logic here)
+                    println!("received: {:?}", buf[0]);
+                    if buf[0] == SET_ACTION_CLIENT {
+                        client.kind = ClientKind::ActionClient;
+                    }
+                }
+                Ok(_) => {
+                    // No data available, proceed with nothing
+                }
+                Err(ref e) if e.kind() == std::io::ErrorKind::WouldBlock => {
+                    // No data yet, continue
+                    continue;
+                }
+                Err(e) => {
+                    // Some other error occurred
+                    return Err(e);
+                }
+            }
+        }
+
+        // Optionally sleep to avoid busy-waiting
+        std::thread::sleep(Duration::from_millis(100));
+    }
+
+    // Handle the case when no data was received within 5 seconds
+    for client in clients.iter_mut() {
+        client.ts.set_nonblocking(false)?;
+    }
+    Ok(())
+}
+
 fn main() -> Result<(), std::io::Error> {
     let args = Args::parse();
 
     let (w, b) = network_setup()?;
-    let mut s: [TcpStream; 2] = [w, b];
+    let mut s: [Client; 2] = [
+        Client {
+            ts: w,
+            kind: ClientKind::CoordClient,
+        },
+        Client {
+            ts: b,
+            kind: ClientKind::CoordClient,
+        },
+    ];
+    listen_clients(&mut s)?;
 
     match args.load_dir {
         Some(ref dirname) => {
@@ -736,7 +806,7 @@ fn main() -> Result<(), std::io::Error> {
 fn load_file_and_play(
     filename: &DirEntry,
     args: &Args,
-    s: &mut [TcpStream; 2],
+    s: &mut [Client; 2],
     suffix: u32,
 ) -> Result<(), std::io::Error> {
     let mut contents = String::new();
@@ -765,7 +835,7 @@ fn load_file_and_play(
     let result: String = loop {
         if let Phase::Main(x) = g.phase {
             let turn: usize = x.try_into().unwrap();
-            if !handle_client(&mut s[turn % 2], &mut g) {
+            if !handle_client(&mut s[turn % 2].ts, &mut g) {
                 // s[turn % 2].update_agent(&g, &ea, &"Ix06");
                 // s[1 - turn % 2].update_agent(&g, &ea, &"Ix06");
                 // drop(s);
@@ -778,8 +848,8 @@ fn load_file_and_play(
                 next(&mut g, &ram);
             }
             if g.is_ended() {
-                s[turn % 2].update_agent(&g, &ea, &"Ix04");
-                s[1 - turn % 2].update_agent(&g, &ea, &"Ix05");
+                s[turn % 2].ts.update_agent(&g, &ea, &"Ix04");
+                s[1 - turn % 2].ts.update_agent(&g, &ea, &"Ix05");
                 break format!("RE[{}+{}]", if turn % 2 == 0 { "W" } else { "B" }, turn);
             }
         } else {
