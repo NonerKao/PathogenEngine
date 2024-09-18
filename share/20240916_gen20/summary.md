@@ -127,3 +127,37 @@ Doctor's winrate: 55.00%
 Plague's steps to win: 27.27 +/- 11.04
 Doctor's steps to win: 31.64 +/- 12.29
 ```
+
+## Trial 5: from 3.24
+
+I want to know what will happen if I apply a set of tsume on this model again. Only for training, and keep using the same eval set.
+Sounds fun!!!
+
+* Training set: 169020 (gen16 extra_tsume.eval 57000 + gen17~gen20 110000)
+
+### Play 4
+
+#### baseline
+```
+Doctor's winrate: 53.00%
+Plague's steps to win: 22.45 +/- 10.85
+Doctor's steps to win: 34.11 +/- 12.71
+```
+
+#### 5.24 vs. 3.24
+```
+Doctor's winrate: 56.00%
+Plague's steps to win: 27.05 +/- 11.81
+Doctor's steps to win: 27.46 +/- 11.73
+```
+
+#### 5.24 vs. 5.24
+```
+Doctor's winrate: 61.00%
+Plague's steps to win: 21.72 +/- 11.66
+Doctor's steps to win: 28.75 +/- 11.38
+```
+
+## Trial 6: from scratch, datasets using trial 5 settings
+
+... pass.

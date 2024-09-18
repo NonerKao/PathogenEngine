@@ -1,11 +1,10 @@
 #/bin/bash
 
-BATCH=500
-BATCH_RATIO=4
+BATCH=900
+BATCH_RATIO=3
 PE_ROOT=/home/alankao/PathogenEngine/examples
-SIM_ROOT=$CURR_ROOT/simulation
-SETUP_ROOT=$SIM_ROOT/setups-sim7
-MODEL=$PREV_ROOT/train2/plague-trial3.pth.22
+SIM_ROOT=$(dirname $0)
+SETUP_ROOT=$SIM_ROOT/setups-sim1
 
 function sim_p2d()
 {
@@ -36,5 +35,14 @@ function prepare_setup(){
 	popd
 }
 
-prepare_setup $SETUP_ROOT
-sim_p2d $MODEL 14 16 /dev/null 0 200
+if [ $1 == "1" ]; then
+	prepare_setup $SETUP_ROOT 2>/dev/null
+	echo "Trial 14, Delay 0;"
+	sim_p2d /mnt/20240914_gen19/train/game-trial2.pth.24 14 0 /mnt/20240914_gen19/train/game-trial2.pth.24 14 0 
+elif [ $1 == "2" ]; then
+	echo "Trial 16, Delay 0;"
+	sim_p2d /mnt/20240914_gen19/train/game-trial2.pth.24 16 0 /mnt/20240914_gen19/train/game-trial2.pth.24 16 0 
+elif [ $1 == "3" ]; then
+	echo "Trial 15, Delay 0;"
+	sim_p2d /mnt/20240914_gen19/train/game-trial2.pth.24 15 0 /mnt/20240914_gen19/train/game-trial2.pth.24 15 0 
+fi
