@@ -712,6 +712,7 @@ enum ClientKind {
 struct Client {
     ts: TcpStream,
     kind: ClientKind,
+    is_setup: bool,
 }
 
 fn listen_clients(clients: &mut [Client; 2]) -> std::io::Result<()> {
@@ -765,17 +766,19 @@ fn main() -> Result<(), std::io::Error> {
     let args = Args::parse();
 
     let (w, b) = network_setup()?;
-    let mut s: [Client; 2] = [
+    let mut c: [Client; 2] = [
         Client {
             ts: w,
             kind: ClientKind::CoordClient,
+            is_setup: false,
         },
         Client {
             ts: b,
             kind: ClientKind::CoordClient,
+            is_setup: false,
         },
     ];
-    listen_clients(&mut s)?;
+    listen_clients(&mut c)?;
 
     match args.load_dir {
         Some(ref dirname) => {
@@ -783,7 +786,7 @@ fn main() -> Result<(), std::io::Error> {
             let mut total_play = 0;
             'total: while total_play < args.batch {
                 for filename in read_dir(dirname)? {
-                    load_file_and_play(&filename?, &args, &mut s, num_replay)?;
+                    load_file_and_play(&filename?, &args, &mut c, num_replay)?;
 
                     total_play = total_play + 1;
                     if total_play >= args.batch {
@@ -806,7 +809,7 @@ fn main() -> Result<(), std::io::Error> {
 fn load_file_and_play(
     filename: &DirEntry,
     args: &Args,
-    s: &mut [Client; 2],
+    c: &mut [Client; 2],
     suffix: u32,
 ) -> Result<(), std::io::Error> {
     let mut contents = String::new();
@@ -835,21 +838,21 @@ fn load_file_and_play(
     let result: String = loop {
         if let Phase::Main(x) = g.phase {
             let turn: usize = x.try_into().unwrap();
-            if !handle_client(&mut s[turn % 2].ts, &mut g) {
-                // s[turn % 2].update_agent(&g, &ea, &"Ix06");
-                // s[1 - turn % 2].update_agent(&g, &ea, &"Ix06");
-                // drop(s);
-                // break format!("RE[{}+{}]", "O", turn);
-                // panic!("We lost the connections.");
-
+            if c[turn % 2].kind == ClientKind::ActionClient && !c[turn % 2].is_setup {
+                // XXX: send sgf
+                c[turn % 2].ts.write("Ix0c".as_bytes());
+                send_sgf(&mut c[turn % 2].ts, &g);
+                c[turn % 2].is_setup = true;
+            }
+            if !handle_client(&mut c[turn % 2].ts, &mut g) {
                 // Use `random_move` to continue the play
                 let mut ram = Action::new();
                 _ = ram.random_move(&mut g);
                 next(&mut g, &ram);
             }
             if g.is_ended() {
-                s[turn % 2].ts.update_agent(&g, &ea, &"Ix04");
-                s[1 - turn % 2].ts.update_agent(&g, &ea, &"Ix05");
+                c[turn % 2].ts.update_agent(&g, &ea, &"Ix04");
+                c[1 - turn % 2].ts.update_agent(&g, &ea, &"Ix05");
                 break format!("RE[{}+{}]", if turn % 2 == 0 { "W" } else { "B" }, turn);
             }
         } else {
@@ -1063,6 +1066,22 @@ impl<T: Write> WriterExtra for T {
         }
     }
 }
+
+fn send_sgf<T: Read + ReaderExtra + Write + WriterExtra>(stream: &mut T, g: &Game) -> bool {
+    let root = g.history.borrow().to_root();
+    let mut buffer = String::new();
+    root.borrow().traverse(&tree::print_node, &mut buffer);
+    const MAX_SGF_LEN: usize = 400;
+    let mut buf_send: [u8; MAX_SGF_LEN] = [0; MAX_SGF_LEN];
+    buf_send[0..buffer.len()].copy_from_slice(buffer.as_bytes());
+    if let Err(e) = stream.write(&buf_send) {
+        println!("Write failed: {}", e);
+        return false;
+    }
+
+    return true;
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -2527,5 +2546,39 @@ mod tests {
         assert_eq!(buf_after[base_offset + 1], 120);
         assert_eq!(buf_after[base_offset + 2], 48);
         assert_eq!(buf_after[base_offset + 3], 50);
+    }
+
+    #[test]
+    fn test_send_sgf1() {
+        // From a previously recorded file.
+        let s0 = "(
+                ;C[Setup0]AW[cf][bd][ba][fd][ea][ac][df][ed][fb][ee][af][be][dc][bb][ad][aa][cc][de][fa]
+                ;C[Setup0]AB[ff][ec][eb][ca][dd][fe][db][cb][cd][ab][bf][ef][ce][da][fc][bc][ae]
+                ;C[Setup1]AB[ae]
+                ;C[Setup1]AB[ba]
+                ;C[Setup1]AB[ff]
+                ;C[Setup1]AB[dc]
+                ;C[Setup2]AW[ce]
+                ;C[Setup2]AB[fe]
+                ;C[Setup2]AW[cc]
+                ;C[Setup2]AB[aa]
+                ;C[Setup3]AW[ih]
+                )"
+        .to_string();
+        let mut iter = s0.trim().chars().peekable();
+        let t = TreeNode::new(&mut iter, None);
+        let g = Game::init(Some(t));
+
+        const LEN: usize = 400;
+        let mut buf_origin: [u8; LEN] = [0; LEN];
+        let buf = &mut buf_origin[..];
+        let mut fake_stream = Cursor::new(buf);
+        assert!(send_sgf(&mut fake_stream, &g) == true);
+        let buf_after = fake_stream.get_ref();
+        let buf_trimmed: Vec<u8> = buf_after.iter().cloned().take_while(|&x| x != 0).collect();
+
+        let binding = s0.to_string();
+        let sgf: String = binding.chars().filter(|c| !c.is_whitespace()).collect();
+        assert_eq!(buf_trimmed, sgf.bytes().collect::<Vec<_>>());
     }
 }

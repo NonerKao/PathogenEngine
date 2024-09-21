@@ -1,7 +1,40 @@
 use std::env;
-use std::io::{self, Write, Read};
+use std::io::{self, Read, Write};
 use std::net::TcpStream;
-use std::str::FromStr;
+
+use pathogen_engine::core::action::Action;
+use pathogen_engine::core::tree::TreeNode;
+use pathogen_engine::core::*;
+
+const MAX_SGF_LEN: usize = 400;
+fn read_exact_bytes(stream: &mut TcpStream, n: usize, buffer: &mut [u8]) -> io::Result<()> {
+    let mut total_read = 0; // Track the total number of bytes read
+
+    while total_read < n {
+        match stream.read(&mut buffer[total_read..]) {
+            Ok(0) => {
+                // Connection was closed, but we haven't read all the expected bytes
+                return Err(io::Error::new(
+                    io::ErrorKind::UnexpectedEof,
+                    "Connection closed early",
+                ));
+            }
+            Ok(bytes_read) => {
+                total_read += bytes_read;
+            }
+            Err(ref e) if e.kind() == io::ErrorKind::WouldBlock => {
+                // Non-blocking socket, no data available yet, continue
+                continue;
+            }
+            Err(e) => {
+                // Other errors
+                return Err(e);
+            }
+        }
+    }
+
+    Ok(())
+}
 
 fn main() -> io::Result<()> {
     // Accepting host and port from command line arguments
@@ -10,7 +43,7 @@ fn main() -> io::Result<()> {
         eprintln!("Usage: {} <host> <port>", args[0]);
         return Ok(());
     }
-    
+
     let host = &args[1];
     let port = &args[2];
     let address = format!("{}:{}", host, port);
@@ -24,17 +57,34 @@ fn main() -> io::Result<()> {
     println!("Sent byte 0xc8 to the server.");
 
     // Receive up to 40 bytes from the server
-    let mut buffer = [0u8; 40];
-    let bytes_read = stream.read(&mut buffer)?;
-    if bytes_read > 0 {
-        let received_str = String::from_utf8_lossy(&buffer[..bytes_read]);
-        println!("Received: {}", received_str);
-    } else {
-        println!("No data received from the server.");
-    }
+    let mut status = vec![0u8; 4];
 
-    // Enter interaction mode
     loop {
+        read_exact_bytes(&mut stream, 4, &mut status)?;
+        let mut sgf_buf: [u8; MAX_SGF_LEN] = [0; MAX_SGF_LEN];
+        if status == "Ix0c".as_bytes() {
+            // Get sgf
+            read_exact_bytes(&mut stream, MAX_SGF_LEN, &mut sgf_buf)?;
+            println!("{:?}", sgf_buf);
+        } else if status == "Ix0e".as_bytes() {
+            // No more games to play
+        } else {
+            panic!("unexpected status: {:?}", status);
+        }
+
+        let sgf = match std::str::from_utf8(&sgf_buf[..]) {
+            Ok(s) => {
+                // Remove trailing null bytes (optional, depending on your needs)
+                s.trim_end_matches('\0').to_string()
+            }
+            Err(_) => {
+                panic!("The byte array contains invalid UTF-8 data.");
+            }
+        };
+        let mut iter = sgf.trim().chars().peekable();
+        let t = TreeNode::new(&mut iter, None);
+        let g = Game::init(Some(t));
+
         // Get input from the user in 4-byte format like 0xXX
         println!("Enter a hexadecimal value (e.g., 0xA1) or 'exit' to quit:");
         let mut input = String::new();
@@ -58,4 +108,3 @@ fn main() -> io::Result<()> {
 
     Ok(())
 }
-
