@@ -16,10 +16,6 @@ TRAINING_OUTER_EPOCH = 6
 LEARNING_RATE = 0.0005
 KFOLD = 4
 
-ALPHA = 0.33
-BETA = 0.33
-GAMMA = 0.33
-
 def init_optimizer(model):
     # To apply the LR globally
     # optimizer = torch.optim.Adam(model.parameters(), lr=LEARNING_RATE)
@@ -152,68 +148,41 @@ if __name__ == "__main__":
             )
 
             for i_epoch in range(TRAINING_INNER_EPOCH):
-                train_loss = [0.0, 0.0, 0.0, 0.0]
+                train_loss = [0.0]
                 model.train()
                 for state, policy, valid, value in train_dataloader:
-                    policy_logits, valid_logits, value_pred = model(state)
-                    policy_loss = policy_loss_func(policy_logits, torch.argmax(policy, dim=1))
-                    valid_loss = valid_loss_func(valid_logits, valid)
+                    value_pred = model(state)
                     value_loss = value_loss_func(value_pred, value)
-                    total_loss = ALPHA*policy_loss + BETA*valid_loss + GAMMA*value_loss
-                    train_loss[0] += policy_loss.item() * state.size(0)
-                    train_loss[1] += valid_loss.item() * state.size(0)
-                    train_loss[2] += value_loss.item() * state.size(0)
-                    train_loss[3] += total_loss.item() * state.size(0)
+                    train_loss[0] += value_loss.item() * state.size(0)
                     print(f'({o_epoch}, {fold}, {i_epoch})/({TRAINING_OUTER_EPOCH}, {KFOLD}, {TRAINING_INNER_EPOCH})')
                     sys.stdout.write("\033[F")
                     sys.stdout.flush()
                     optimizer.zero_grad()
-                    total_loss.backward()
+                    value_loss.backward()
                     optimizer.step()
 
                 train_loss = [x / len(train_dataloader.dataset) for x in train_loss]
-                writer.add_scalar('Loss/train_policy', train_loss[0], i)
-                writer.add_scalar('Loss/train_valid', train_loss[1], i)
-                writer.add_scalar('Loss/train_value', train_loss[2], i)
-                writer.add_scalar('Loss/train_total', train_loss[3], i)
+                writer.add_scalar('Loss/train_value', train_loss[0], i)
 
-                val_loss = [0.0, 0.0, 0.0, 0.0]
+                val_loss = [0.0]
                 model.eval()
                 with torch.no_grad():
                     for state, policy, valid, value in val_dataloader:
-                        policy_logits, valid_logits, value_pred = model(state)
-                        policy_loss = policy_loss_func(policy_logits, torch.argmax(policy, dim=1))
-                        valid_loss = valid_loss_func(valid_logits, valid)
+                        value_pred = model(state)
                         value_loss = value_loss_func(value_pred, value)
-                        total_loss = ALPHA*policy_loss + BETA*valid_loss + GAMMA*value_loss
-                        val_loss[0] += policy_loss.item() * state.size(0)
-                        val_loss[1] += valid_loss.item() * state.size(0)
-                        val_loss[2] += value_loss.item() * state.size(0)
-                        val_loss[3] += total_loss.item() * state.size(0)
+                        val_loss[0] += value_loss.item() * state.size(0)
                     val_loss = [x / len(val_dataloader.dataset) for x in val_loss]
-                    writer.add_scalar('Loss/val_policy', val_loss[0], i)
-                    writer.add_scalar('Loss/val_valid', val_loss[1], i)
-                    writer.add_scalar('Loss/val_value', val_loss[2], i)
-                    writer.add_scalar('Loss/val_total', val_loss[3], i)
+                    writer.add_scalar('Loss/val_value', val_loss[0], i)
 
-                test_loss = [0.0, 0.0, 0.0, 0.0]
+                test_loss = [0.0]
                 model.eval()
                 with torch.no_grad():
                     for state, policy, valid, value in test_dataloader:
-                        policy_logits, valid_logits, value_pred = model(state)
-                        policy_loss = policy_loss_func(policy_logits, torch.argmax(policy, dim=1))
-                        valid_loss = valid_loss_func(valid_logits, valid)
+                        value_pred = model(state)
                         value_loss = value_loss_func(value_pred, value)
-                        total_loss = ALPHA*policy_loss + BETA*valid_loss + GAMMA*value_loss
-                        test_loss[0] += policy_loss.item() * state.size(0)
-                        test_loss[1] += valid_loss.item() * state.size(0)
-                        test_loss[2] += value_loss.item() * state.size(0)
-                        test_loss[3] += total_loss.item() * state.size(0)
+                        test_loss[0] += value_loss.item() * state.size(0)
                     test_loss = [x / len(test_dataloader.dataset) for x in test_loss]
-                    writer.add_scalar('Loss/test_policy', test_loss[0], i)
-                    writer.add_scalar('Loss/test_valid', test_loss[1], i)
-                    writer.add_scalar('Loss/test_value', test_loss[2], i)
-                    writer.add_scalar('Loss/test_total', test_loss[3], i)
+                    writer.add_scalar('Loss/test_value', test_loss[0], i)
 
                 i += 1
                 torch.save(model, args.model+'.'+str(i))

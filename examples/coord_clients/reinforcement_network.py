@@ -64,24 +64,11 @@ class PathogenNet(torch.nn.Module):
         self.resblocks0 = torch.nn.ModuleList([
             PathogenResidualBlock(RES_INPUT_SIZE) for _ in range(RES_SIZE)
         ])
-        
-        # Policy Head
-        policy_channels = 1
-        self.policy_conv = torch.nn.Conv2d(RES_INPUT_SIZE, policy_channels, kernel_size=1)
-        self.policy_bn = torch.nn.BatchNorm2d(policy_channels)
-        self.policy_fc = torch.nn.Linear(policy_channels * 7 * 7, TOTAL_POS)
 
         # Value Head
         self.value_conv = torch.nn.Conv2d(RES_INPUT_SIZE, 1, kernel_size=1)
         self.value_bn = torch.nn.BatchNorm2d(1)
         self.value_fc = torch.nn.Linear(1 * 7 * 7, 1)
-        
-        # Understanding Head
-        # the prediction of error sub-move for all the positions
-        valid_channels = 1
-        self.valid_conv = torch.nn.Conv2d(RES_INPUT_SIZE, valid_channels, kernel_size=1)
-        self.valid_bn = torch.nn.BatchNorm2d(valid_channels)
-        self.valid_fc = torch.nn.Linear(valid_channels * 7 * 7, TOTAL_POS)
         
     def forward(self, x):
         # Padding the game board and the map to get ready for a Nx6x7x7 tensor
@@ -116,18 +103,4 @@ class PathogenNet(torch.nn.Module):
         value = self.value_fc(value)
         value = torch.nn.functional.tanh(value)
 
-        # The output: valid head
-        valid = self.valid_conv(x)
-        valid = self.valid_bn(valid)
-        valid = torch.nn.functional.relu(valid)
-        valid = torch.flatten(valid, 1)
-        valid = self.valid_fc(valid)
-
-        # The output: policy head
-        policy = self.policy_conv(x)
-        policy = self.policy_bn(policy)
-        policy = torch.nn.functional.relu(policy)
-        policy = torch.flatten(policy, 1)
-        policy = self.policy_fc(policy)
-
-        return policy, valid, value
+        return value
