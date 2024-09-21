@@ -545,6 +545,7 @@ fn get_action<T: Read>(stream: &mut T, buffer: &mut [u8]) -> bool {
 fn handle_client<T: Read + ReaderExtra + Write + WriterExtra>(
     stream: &mut T,
     g: &mut Game,
+    ck: ClientKind,
 ) -> bool {
     let mut buffer = [0; 1]; // to read the 1-byte action from agent
 
@@ -703,7 +704,7 @@ impl ReaderExtra for TcpStream {
     }
 }
 
-#[derive(PartialEq, Eq)]
+#[derive(PartialEq, Eq, Copy, Clone)]
 enum ClientKind {
     CoordClient,
     ActionClient,
@@ -844,7 +845,7 @@ fn load_file_and_play(
                 send_sgf(&mut c[turn % 2].ts, &g);
                 c[turn % 2].is_setup = true;
             }
-            if !handle_client(&mut c[turn % 2].ts, &mut g) {
+            if !handle_client(&mut c[turn % 2].ts, &mut g, c[turn % 2].kind) {
                 // Use `random_move` to continue the play
                 let mut ram = Action::new();
                 _ = ram.random_move(&mut g);
@@ -1121,7 +1122,7 @@ mod tests {
         buf[(DATA_UNIT + 1) * 9 - 1] = "aa".to_env().to_env_encode();
         buf[(DATA_UNIT + 1) * 10 - 1] = "ab".to_env().to_env_encode();
         let mut fake_stream = Cursor::new(buf);
-        assert!(handle_client(&mut fake_stream, &mut g) == true);
+        assert!(handle_client(&mut fake_stream, &mut g, ClientKind::CoordClient) == true);
         let mut buffer = String::new();
         g.history.borrow().to_string(&mut buffer);
         assert_eq!(buffer, s1);
@@ -1355,7 +1356,7 @@ mod tests {
         buf[(DATA_UNIT + 1) * 10 - 1] = "aa".to_env().to_env_encode();
         buf[(DATA_UNIT + 1) * 11 - 1] = "ab".to_env().to_env_encode();
         let mut fake_stream = Cursor::new(buf);
-        assert!(handle_client(&mut fake_stream, &mut g) == true);
+        assert!(handle_client(&mut fake_stream, &mut g, ClientKind::CoordClient) == true);
         let mut buffer = String::new();
         g.history.borrow().to_string(&mut buffer);
         assert_eq!(buffer, s1.replace("[hi]", ""));
@@ -1402,7 +1403,7 @@ mod tests {
         buf[(DATA_UNIT + 1) * 10 - 1] = "aa".to_env().to_env_encode();
         buf[(DATA_UNIT + 1) * 11 - 1] = "ab".to_env().to_env_encode();
         let mut fake_stream = Cursor::new(buf);
-        assert!(handle_client(&mut fake_stream, &mut g) == true);
+        assert!(handle_client(&mut fake_stream, &mut g, ClientKind::CoordClient) == true);
         let mut buffer = String::new();
         g.history.borrow().to_string(&mut buffer);
         assert_eq!(buffer, s1.replace("[bf]", ""));
@@ -1443,7 +1444,7 @@ mod tests {
         buf2[(DATA_UNIT + 1) * 10 - 1] = "aa".to_env().to_env_encode();
         buf2[(DATA_UNIT + 1) * 11 - 1] = "ab".to_env().to_env_encode();
         let mut fake_stream = Cursor::new(buf2);
-        assert!(handle_client(&mut fake_stream, &mut g) == true);
+        assert!(handle_client(&mut fake_stream, &mut g, ClientKind::CoordClient) == true);
         let mut buffer = String::new();
         g.history.borrow().to_string(&mut buffer);
         assert_eq!(buffer, s2.replace("[af]", ""));
@@ -1485,7 +1486,7 @@ mod tests {
         buf[(DATA_UNIT + 1) * 11 - 1] = "aa".to_env().to_env_encode();
         buf[(DATA_UNIT + 1) * 12 - 1] = "ab".to_env().to_env_encode();
         let mut fake_stream = Cursor::new(buf);
-        assert!(handle_client(&mut fake_stream, &mut g) == true);
+        assert!(handle_client(&mut fake_stream, &mut g, ClientKind::CoordClient) == true);
         let mut buffer = String::new();
         g.history.borrow().to_string(&mut buffer);
         assert_eq!(buffer, s1.replace("[dd]", "").replace("[ac]", ""));
@@ -1532,7 +1533,7 @@ mod tests {
         buf[(DATA_UNIT + 1) * 14 - 1] = "aa".to_env().to_env_encode();
         buf[(DATA_UNIT + 1) * 15 - 1] = "aa".to_env().to_env_encode();
         let mut fake_stream = Cursor::new(buf);
-        assert!(handle_client(&mut fake_stream, &mut g) == true);
+        assert!(handle_client(&mut fake_stream, &mut g, ClientKind::CoordClient) == true);
         let mut buffer = String::new();
         g.history.borrow().to_string(&mut buffer);
         assert_eq!(buffer, s1.replace("[aa][aa][aa][aa][aa]", ""));
@@ -1798,7 +1799,7 @@ mod tests {
         buf[SAVE + (DATA_UNIT + 1) * 11 - 1 + SIM] = CLEAR_CODE;
         buf[SAVE + (DATA_UNIT + 1) * 11 - 1 + SIM + SAVE] = "ij".to_map().to_map_encode();
         let mut fake_stream = Cursor::new(buf);
-        assert!(handle_client(&mut fake_stream, &mut g) == true);
+        assert!(handle_client(&mut fake_stream, &mut g, ClientKind::CoordClient) == true);
 
         let buf_after = fake_stream.get_ref();
 
@@ -1940,7 +1941,7 @@ mod tests {
         buf[base_offset + (DATA_UNIT + 1) * 7] = "aa".to_env().to_env_encode();
 
         let mut fake_stream = Cursor::new(buf);
-        assert!(handle_client(&mut fake_stream, &mut g) == true);
+        assert!(handle_client(&mut fake_stream, &mut g, ClientKind::CoordClient) == true);
 
         let buf_after = fake_stream.get_ref();
 
@@ -2164,7 +2165,7 @@ mod tests {
         buf[base_offset + (DATA_UNIT + 1) * 0] = "jh".to_map().to_map_encode();
 
         let mut fake_stream = Cursor::new(buf);
-        assert!(handle_client(&mut fake_stream, &mut g) == true);
+        assert!(handle_client(&mut fake_stream, &mut g, ClientKind::CoordClient) == true);
         let buf_after = fake_stream.get_ref();
 
         // Ix03: The start, sad that I have to check this
@@ -2385,7 +2386,7 @@ mod tests {
         buf[base_offset + DATA_UNIT + SAVE] = 113;
 
         let mut fake_stream = Cursor::new(buf);
-        assert!(handle_client(&mut fake_stream, &mut g) == true);
+        assert!(handle_client(&mut fake_stream, &mut g, ClientKind::CoordClient) == true);
         let buf_after = fake_stream.get_ref();
 
         // Ix03: The start, sad that I have to check this
@@ -2512,7 +2513,7 @@ mod tests {
         base_offset = base_offset + 1;
 
         let mut fake_stream = Cursor::new(buf);
-        assert!(handle_client(&mut fake_stream, &mut g) == true);
+        assert!(handle_client(&mut fake_stream, &mut g, ClientKind::CoordClient) == true);
         let buf_after = fake_stream.get_ref();
 
         // Ix03: The start, sad that I have to check this
