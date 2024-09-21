@@ -162,15 +162,16 @@ class RLSimAgent(Agent):
 
     # result value:
     #    -1: lose
-    #     0: win
-    #     1: not sure yet, need inference
+    #     1: win
+    #     0: not sure yet, need inference
     def update(self, result):
         coef = 1.0 if self.current_node.is_me else -1.0
         w = 0
         if result == 0:
             state = np.frombuffer(self.current_node.state[4:], dtype=np.uint8)
             state = torch.from_numpy(np.copy(state)).float().unsqueeze(0).to(self.device)
-            _, _, w = self.model(state)
+            # _, _, w = self.model(state)
+            w = self.model(state)
         else:
             w = result
         w = float(w) * coef
@@ -374,7 +375,8 @@ class RLSimAgent(Agent):
             self.state = np.frombuffer(self.current_node.state[4:], dtype=np.uint8)
             self.state = torch.from_numpy(np.copy(self.state)).float().unsqueeze(0).to(self.device)
             self.dataset.write(self.state.cpu().numpy().tobytes()) # section 1: state
-            policy, valid, value = self.model(self.state)
+            # policy, valid, value = self.model(self.state)
+            value = self.model(self.state)
             ctp = self.candidates_to_policy()
 
             # Should we make the probability distribution based on the inferenced `policy`?
