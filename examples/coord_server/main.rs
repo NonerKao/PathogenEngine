@@ -587,9 +587,12 @@ fn handle_client<T: Read + ReaderExtra + Write + WriterExtra>(
             "Ix03"
         };
 
-        // I don't think this one has anything to do with saved_action
-        if stream.update_agent(g, &ea, &es) == false {
-            return false;
+        // If this is coord client, update the initial status code.
+        // Otherwise, we have sent either Ix0c or Ix0d.
+        if ck == ClientKind::CoordClient {
+            if stream.update_agent(g, &ea, &es) == false {
+                return false;
+            }
         }
 
         let retry_limit = 3;
@@ -692,6 +695,7 @@ fn next(g: &mut Game, a: &Action) {
 trait WriterExtra {
     fn update_agent(&mut self, g: &Game, a: &Action, s: &'static str) -> bool;
     fn return_query(&mut self, g: &Game, a: &Action) -> bool;
+    fn send_prev_action(&mut self, g: &Game) -> bool;
 }
 
 trait ReaderExtra {
@@ -839,11 +843,16 @@ fn load_file_and_play(
     let result: String = loop {
         if let Phase::Main(x) = g.phase {
             let turn: usize = x.try_into().unwrap();
-            if c[turn % 2].kind == ClientKind::ActionClient && !c[turn % 2].is_setup {
-                // XXX: send sgf
-                c[turn % 2].ts.write("Ix0c".as_bytes());
-                send_sgf(&mut c[turn % 2].ts, &g);
-                c[turn % 2].is_setup = true;
+            if c[turn % 2].kind == ClientKind::ActionClient {
+                if !c[turn % 2].is_setup {
+                    let _ = c[turn % 2].ts.write("Ix0c".as_bytes());
+                    send_sgf(&mut c[turn % 2].ts, &g);
+                    c[turn % 2].is_setup = true;
+                } else {
+                    assert_eq!(c[turn % 2].is_setup, true);
+                    let _ = c[turn % 2].ts.write("Ix0d".as_bytes());
+                    c[turn % 2].ts.send_prev_action(&g);
+                }
             }
             if !handle_client(&mut c[turn % 2].ts, &mut g, c[turn % 2].kind) {
                 // Use `random_move` to continue the play
@@ -1065,6 +1074,16 @@ impl<T: Write> WriterExtra for T {
                 return true;
             }
         }
+    }
+    fn send_prev_action(&mut self, g: &Game) -> bool {
+        let mut buffer = String::new();
+        let prev = &g.history;
+        prev.as_ref().borrow().to_string(&mut buffer);
+        if let Err(e) = self.write(buffer.as_bytes()) {
+            println!("Write failed: {}", e);
+            return false;
+        }
+        return true;
     }
 }
 
@@ -2581,5 +2600,37 @@ mod tests {
         let binding = s0.to_string();
         let sgf: String = binding.chars().filter(|c| !c.is_whitespace()).collect();
         assert_eq!(buf_trimmed, sgf.bytes().collect::<Vec<_>>());
+    }
+
+    #[test]
+    fn test_send_prev_action1() {
+        // From a previously recorded file.
+        let s0 = "(
+        ;FF[4]GM[41]SZ[6]GN[https://boardgamegeek.com/boardgame/369862/pathogen]RE[B+19];C[Setup0]AW[ba][ab][cd][de][cb][cc][ff][bf][be][eb][ec][fa][ad][da][ed][ee][aa];C[Setup0]AB[fb][ac][df][fd][ce][ef][dc][bc][bd][af][ae][db][dd][fe][fc][ca][cf][bb][ea];C[Setup1]AB[bc];C[Setup1]AB[ee];C[Setup1]AB[cd];C[Setup1]AB[db];C[Setup2]AW[ed];C[Setup2]AB[de];C[Setup2]AW[ac];C[Setup2]AB[ea];C[Setup3]AW[hj];B[hi][de][da][de][de][de][de];W[hh][ed][ec][ed][ed][ed][ed][ed];B[gi][da][de][be][da][de][de][da];W[ij][ac][ae][ce][fe][ce][ac][ce][ac][ce];B[ji][be][de][da][be][be][be][be];W[jj][ec][ed][ec][ec][ec][ec][ec];B[jk][ea][ef][ea][ea][ea][ea];W[ji][fe][fd][fc][fe][fe][fd][fd][fd];B[jj][da][de][da][da][da][da];W[hi][fc][fb][db][bb][db][fb][db][db][fc];B[gi][de][be];W[ii][ki][ed][cd][ad][cd][ed][cd][cd][cd];B[jh][be][de][da][be][be];W[jj][bb][bc][bd][bc][bc][bc][bb][bb];B[ik][da][ba][be][ba][ba][ba][ba];W[hj][bd][bc][ac][bc][bc][bc][bc][bd];B[hk][be][bf];W[ij][ad][cd][cc][cd][ad][cd][ad][ad]
+            ;B[kh][bf][be][ba][da][fa][ba][bf][bf][ba]
+                )"
+        .to_string();
+        let s1 = ";B[kh][bf][be][ba][da][fa][ba][bf][bf][ba]";
+        let mut iter = s0.trim().chars().peekable();
+        let t = TreeNode::new(&mut iter, None);
+        let g = Game::init(Some(t));
+
+        const LEN: usize = 100;
+        let mut buf_origin: [u8; LEN] = [0; LEN];
+        let buf = &mut buf_origin[..];
+        let mut fake_stream = Cursor::new(buf);
+        assert!(fake_stream.send_prev_action(&g) == true);
+        let buf_after = fake_stream.get_ref();
+        let buf_trimmed: Vec<u8> = buf_after.iter().cloned().take_while(|&x| x != 0).collect();
+        let mut s1_changed: Vec<u8> = Vec::new();
+
+        // Iterate over each char in the string and push its UTF-8 encoding into the Vec<u8>
+        for c in s1.chars() {
+            // `encode_utf8` converts a `char` into a slice of `u8` in UTF-8 encoding
+            let mut buf = [0; 4]; // A buffer to hold the encoded bytes (max size for UTF-8 encoded char is 4 bytes)
+            s1_changed.extend(c.encode_utf8(&mut buf).as_bytes());
+        }
+
+        assert_eq!(buf_trimmed, s1_changed);
     }
 }
