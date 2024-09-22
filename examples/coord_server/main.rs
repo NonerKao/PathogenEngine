@@ -710,6 +710,7 @@ trait WriterExtra {
     fn update_agent(&mut self, g: &Game, a: &Action, s: &'static str, ck: ClientKind) -> bool;
     fn return_query(&mut self, g: &Game, a: &Action) -> bool;
     fn send_prev_action(&mut self, g: &Game) -> bool;
+    fn send_prev_prev_action(&mut self, g: &Game) -> bool;
 }
 
 trait ReaderExtra {
@@ -751,7 +752,6 @@ fn listen_clients(clients: &mut [Client; 2]) -> std::io::Result<()> {
             match client.ts.read(&mut buf) {
                 Ok(1) => {
                     // One byte received, handle it (you can adjust your logic here)
-                    println!("received: {:?}", buf[0]);
                     if buf[0] == SET_ACTION_CLIENT {
                         client.kind = ClientKind::ActionClient;
                     }
@@ -809,6 +809,11 @@ fn main() -> Result<(), std::io::Error> {
 
                     total_play = total_play + 1;
                     if total_play >= args.batch {
+                        for i in 0..2 {
+                            if c[i].kind == ClientKind::ActionClient {
+                                let _ = c[i].ts.write("Ix0e".as_bytes());
+                            }
+                        }
                         break 'total;
                     }
                 }
@@ -862,8 +867,19 @@ fn load_file_and_play(
                     let _ = c[turn % 2].ts.write("Ix0c".as_bytes());
                     send_sgf(&mut c[turn % 2].ts, &g);
                     c[turn % 2].is_setup = true;
-                } else {
+                } else if turn == 2 {
                     assert_eq!(c[turn % 2].is_setup, true);
+                    let _ = c[turn % 2].ts.write("Ix0d".as_bytes());
+                    c[turn % 2].ts.send_prev_action(&g);
+                } else {
+                    // It's a bit lucky that this does went well.
+                    // It surprises me that the prev_prev_action stacks two
+                    // actions instead of separate them. But it is the good news
+                    // that the append_history... call deals with the first
+                    // action, which is exactly what I forgot.
+                    assert_eq!(c[turn % 2].is_setup, true);
+                    let _ = c[turn % 2].ts.write("Ix0d".as_bytes());
+                    c[turn % 2].ts.send_prev_prev_action(&g);
                     let _ = c[turn % 2].ts.write("Ix0d".as_bytes());
                     c[turn % 2].ts.send_prev_action(&g);
                 }
@@ -875,8 +891,15 @@ fn load_file_and_play(
                 next(&mut g, &ram);
             }
             if g.is_ended() {
-                c[turn % 2].ts.update_agent(&g, &ea, &"Ix04", c[turn % 2].kind);
-                c[1 - turn % 2].ts.update_agent(&g, &ea, &"Ix05", c[1 - turn % 2].kind);
+                c[turn % 2]
+                    .ts
+                    .update_agent(&g, &ea, &"Ix04", c[turn % 2].kind);
+                c[1 - turn % 2]
+                    .ts
+                    .update_agent(&g, &ea, &"Ix05", c[1 - turn % 2].kind);
+                        for i in 0..2 {
+                            c[i].is_setup = false;
+                        }
                 break format!("RE[{}+{}]", if turn % 2 == 0 { "W" } else { "B" }, turn);
             }
         } else {
@@ -931,7 +954,7 @@ impl ReaderExtra for std::io::Cursor<&mut [u8]> {
 impl<T: Write> WriterExtra for T {
     fn update_agent(&mut self, g: &Game, a: &Action, s: &'static str, ck: ClientKind) -> bool {
         if ck == ClientKind::ActionClient {
-            if let Err(_e) =  self.write(s.as_bytes()) {
+            if let Err(_e) = self.write(s.as_bytes()) {
                 return false;
             }
             return true;
@@ -1100,7 +1123,24 @@ impl<T: Write> WriterExtra for T {
         let mut buffer = String::new();
         let prev = &g.history;
         prev.as_ref().borrow().to_string(&mut buffer);
-        if let Err(e) = self.write(buffer.as_bytes()) {
+        const MAX_ACT_LEN: usize = 100;
+        let mut buf_send: [u8; MAX_ACT_LEN] = [0; MAX_ACT_LEN];
+        buf_send[0..buffer.len()].copy_from_slice(buffer.as_bytes());
+        if let Err(e) = self.write(&buf_send) {
+            println!("Write failed: {}", e);
+            return false;
+        }
+        return true;
+    }
+    fn send_prev_prev_action(&mut self, g: &Game) -> bool {
+        let mut buffer = String::new();
+        let binding = g.history.borrow();
+        let pprev = binding.parent.as_ref().unwrap();
+        pprev.borrow().to_string(&mut buffer);
+        const MAX_ACT_LEN: usize = 100;
+        let mut buf_send: [u8; MAX_ACT_LEN] = [0; MAX_ACT_LEN];
+        buf_send[0..buffer.len()].copy_from_slice(buffer.as_bytes());
+        if let Err(e) = self.write(&buf_send) {
             println!("Write failed: {}", e);
             return false;
         }
@@ -1112,7 +1152,7 @@ fn send_sgf<T: Read + ReaderExtra + Write + WriterExtra>(stream: &mut T, g: &Gam
     let root = g.history.borrow().to_root();
     let mut buffer = String::new();
     root.borrow().traverse(&tree::print_node, &mut buffer);
-    const MAX_SGF_LEN: usize = 400;
+    const MAX_SGF_LEN: usize = 500;
     let mut buf_send: [u8; MAX_SGF_LEN] = [0; MAX_SGF_LEN];
     buf_send[0..buffer.len()].copy_from_slice(buffer.as_bytes());
     if let Err(e) = stream.write(&buf_send) {
@@ -2610,7 +2650,7 @@ mod tests {
         let t = TreeNode::new(&mut iter, None);
         let g = Game::init(Some(t));
 
-        const LEN: usize = 400;
+        const LEN: usize = 500;
         let mut buf_origin: [u8; LEN] = [0; LEN];
         let buf = &mut buf_origin[..];
         let mut fake_stream = Cursor::new(buf);

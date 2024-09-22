@@ -2,11 +2,12 @@ use std::env;
 use std::io::{self, Read, Write};
 use std::net::TcpStream;
 
-use pathogen_engine::core::action::Action;
+// use pathogen_engine::core::action::Action;
 use pathogen_engine::core::tree::TreeNode;
 use pathogen_engine::core::*;
 
-const MAX_SGF_LEN: usize = 400;
+const MAX_SGF_LEN: usize = 500;
+const MAX_ACT_LEN: usize = 100;
 fn read_exact_bytes(stream: &mut TcpStream, n: usize, buffer: &mut [u8]) -> io::Result<()> {
     let mut total_read = 0; // Track the total number of bytes read
 
@@ -59,15 +60,15 @@ fn main() -> io::Result<()> {
     // Receive up to 40 bytes from the server
     let mut status = vec![0u8; 4];
 
-    loop {
+    'set: loop {
         read_exact_bytes(&mut stream, 4, &mut status)?;
         let mut sgf_buf: [u8; MAX_SGF_LEN] = [0; MAX_SGF_LEN];
         if status == "Ix0c".as_bytes() {
             // Get sgf
             read_exact_bytes(&mut stream, MAX_SGF_LEN, &mut sgf_buf)?;
-            println!("{:?}", sgf_buf);
         } else if status == "Ix0e".as_bytes() {
             // No more games to play
+            break 'set;
         } else {
             panic!("unexpected status: {:?}", status);
         }
@@ -83,28 +84,72 @@ fn main() -> io::Result<()> {
         };
         let mut iter = sgf.trim().chars().peekable();
         let t = TreeNode::new(&mut iter, None);
-        let g = Game::init(Some(t));
+        let mut g = Game::init(Some(t));
 
-        // Get input from the user in 4-byte format like 0xXX
-        println!("Enter a hexadecimal value (e.g., 0xA1) or 'exit' to quit:");
-        let mut input = String::new();
-        io::stdin().read_line(&mut input)?;
-
-        // Exit condition
-        if input.trim().eq_ignore_ascii_case("exit") {
-            println!("Exiting the client.");
-            break;
-        }
-
-        // Parse input as hexadecimal (expecting format like 0xXX)
-        if let Ok(byte) = u8::from_str_radix(input.trim().trim_start_matches("0x"), 16) {
-            // Send the parsed byte to the server
-            stream.write(&[byte])?;
-            println!("Sent byte {:#04x} to the server.", byte);
-        } else {
-            println!("Invalid input. Please enter a valid hexadecimal value.");
+        let mut c: u8 = 0;
+        'game: loop {
+            read_exact_bytes(&mut stream, 4, &mut status)?;
+            if status == "Ix0d".as_bytes() {
+                let mut action_buf: [u8; MAX_ACT_LEN] = [0; MAX_ACT_LEN];
+                read_exact_bytes(&mut stream, MAX_ACT_LEN, &mut action_buf)?;
+                let action_string = match std::str::from_utf8(&action_buf[..]) {
+                    Ok(a) => {
+                        // Remove trailing null bytes (optional, depending on your needs)
+                        a.trim_end_matches('\0').to_string()
+                    }
+                    Err(_) => {
+                        panic!("The byte array contains invalid UTF-8 data.");
+                    }
+                };
+                g.append_history_with_new_tree(&action_string);
+                let temp_t = g.history.clone();
+                if let Ok(a) = temp_t.borrow().to_action(&g) {
+                    g.commit_action(&a);
+                    g.next();
+                } else {
+                    panic!("A wrong action was sent?");
+                };
+                continue 'game;
+            }
+            if status == "Ix02".as_bytes() || status == "Ix00".as_bytes() {
+                continue 'game;
+            } else if status == "Ix04".as_bytes() {
+                println!("win!");
+                break 'game;
+            } else if status == "Ix05".as_bytes() {
+                println!("lose!");
+                break 'game;
+            } else if status == "Ix01".as_bytes() || status == "Ix0b".as_bytes() {
+                stream.write(&[c])?;
+            } else if status == "Ix03".as_bytes() {
+                // the main play of this round
+                stream.write(&[c])?;
+            } else {
+                // Error?
+                stream.write(&[c])?;
+            }
+            // update the coordinates choice
+            c = next_c(c);
         }
     }
 
     Ok(())
+}
+
+fn next_c(c: u8) -> u8 {
+    let mut ret_c = c + 1;
+    if ret_c >= 125 {
+        ret_c = 0;
+    }
+    return ret_c;
+}
+
+fn prev_c(c: u8) -> u8 {
+    let mut ret_c = c;
+    if ret_c == 0 {
+        ret_c = 124;
+    } else {
+        ret_c = ret_c - 1;
+    }
+    return ret_c;
 }
