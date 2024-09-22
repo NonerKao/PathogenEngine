@@ -332,6 +332,7 @@ fn common_loop<F, T: Read + ReaderExtra + Write + WriterExtra>(
     outer_bound: usize,
     ap: ActionPhase,
     saved: &mut Action,
+    ck: ClientKind,
 ) -> bool
 where
     // Check action.rs add_* calls
@@ -392,7 +393,7 @@ where
             }
 
             let s = do_action(g, a, &func, input, ap <= ActionPhase::Lockdown);
-            if stream.update_agent(g, a, &s) == false {
+            if stream.update_agent(g, a, &s, ck) == false {
                 return false;
             } else {
                 if s.as_bytes()[0] == b'E' {
@@ -415,6 +416,7 @@ fn set_marker_loop<T: Read + ReaderExtra + Write + WriterExtra>(
     a: &mut Action,
     input: &mut [u8],
     saved: &mut Action,
+    ck: ClientKind,
 ) -> bool {
     common_loop(
         stream,
@@ -425,6 +427,7 @@ fn set_marker_loop<T: Read + ReaderExtra + Write + WriterExtra>(
         MAX_STEPS,
         ActionPhase::SetMarkers,
         saved,
+        ck,
     )
 }
 
@@ -434,6 +437,7 @@ fn set_board_move_loop<T: Read + ReaderExtra + Write + WriterExtra>(
     a: &mut Action,
     input: &mut [u8],
     saved: &mut Action,
+    ck: ClientKind,
 ) -> bool {
     common_loop(
         stream,
@@ -444,6 +448,7 @@ fn set_board_move_loop<T: Read + ReaderExtra + Write + WriterExtra>(
         a.steps + 1 - a.trajectory.len(),
         ActionPhase::BoardMove,
         saved,
+        ck,
     )
 }
 
@@ -453,6 +458,7 @@ fn set_character_loop<T: Read + ReaderExtra + Write + WriterExtra>(
     a: &mut Action,
     input: &mut [u8],
     saved: &mut Action,
+    ck: ClientKind,
 ) -> bool {
     common_loop(
         stream,
@@ -463,6 +469,7 @@ fn set_character_loop<T: Read + ReaderExtra + Write + WriterExtra>(
         1,
         ActionPhase::SetCharacter,
         saved,
+        ck,
     )
 }
 
@@ -472,6 +479,7 @@ fn set_lockdown_loop<T: Read + ReaderExtra + Write + WriterExtra>(
     a: &mut Action,
     input: &mut [u8],
     saved: &mut Action,
+    ck: ClientKind,
 ) -> bool {
     if a.action_phase != ActionPhase::Lockdown {
         return true;
@@ -485,6 +493,7 @@ fn set_lockdown_loop<T: Read + ReaderExtra + Write + WriterExtra>(
         1,
         ActionPhase::Lockdown,
         saved,
+        ck,
     )
 }
 
@@ -494,6 +503,7 @@ fn set_map_loop<T: Read + ReaderExtra + Write + WriterExtra>(
     a: &mut Action,
     input: &mut [u8],
     saved: &mut Action,
+    ck: ClientKind,
 ) -> bool {
     // Add the map move first
     common_loop(
@@ -505,6 +515,7 @@ fn set_map_loop<T: Read + ReaderExtra + Write + WriterExtra>(
         1,
         ActionPhase::SetMap,
         saved,
+        ck,
     )
 }
 
@@ -589,10 +600,8 @@ fn handle_client<T: Read + ReaderExtra + Write + WriterExtra>(
 
         // If this is coord client, update the initial status code.
         // Otherwise, we have sent either Ix0c or Ix0d.
-        if ck == ClientKind::CoordClient {
-            if stream.update_agent(g, &ea, &es) == false {
-                return false;
-            }
+        if stream.update_agent(g, &ea, &es, ck) == false {
+            return false;
         }
 
         let retry_limit = 3;
@@ -624,6 +633,7 @@ fn handle_client<T: Read + ReaderExtra + Write + WriterExtra>(
                                 &mut am.action,
                                 &mut buffer,
                                 &mut saved_action,
+                                ck,
                             ),
                             ActionPhase::Lockdown => set_lockdown_loop(
                                 stream,
@@ -631,6 +641,7 @@ fn handle_client<T: Read + ReaderExtra + Write + WriterExtra>(
                                 &mut am.action,
                                 &mut buffer,
                                 &mut saved_action,
+                                ck,
                             ),
                             ActionPhase::SetCharacter => set_character_loop(
                                 stream,
@@ -638,6 +649,7 @@ fn handle_client<T: Read + ReaderExtra + Write + WriterExtra>(
                                 &mut am.action,
                                 &mut buffer,
                                 &mut saved_action,
+                                ck,
                             ),
                             ActionPhase::BoardMove => set_board_move_loop(
                                 stream,
@@ -645,6 +657,7 @@ fn handle_client<T: Read + ReaderExtra + Write + WriterExtra>(
                                 &mut am.action,
                                 &mut buffer,
                                 &mut saved_action,
+                                ck,
                             ),
                             ActionPhase::SetMarkers => set_marker_loop(
                                 stream,
@@ -652,6 +665,7 @@ fn handle_client<T: Read + ReaderExtra + Write + WriterExtra>(
                                 &mut am.action,
                                 &mut buffer,
                                 &mut saved_action,
+                                ck,
                             ),
                             ActionPhase::Done => {
                                 break 'action;
@@ -693,7 +707,7 @@ fn next(g: &mut Game, a: &Action) {
 }
 
 trait WriterExtra {
-    fn update_agent(&mut self, g: &Game, a: &Action, s: &'static str) -> bool;
+    fn update_agent(&mut self, g: &Game, a: &Action, s: &'static str, ck: ClientKind) -> bool;
     fn return_query(&mut self, g: &Game, a: &Action) -> bool;
     fn send_prev_action(&mut self, g: &Game) -> bool;
 }
@@ -861,8 +875,8 @@ fn load_file_and_play(
                 next(&mut g, &ram);
             }
             if g.is_ended() {
-                c[turn % 2].ts.update_agent(&g, &ea, &"Ix04");
-                c[1 - turn % 2].ts.update_agent(&g, &ea, &"Ix05");
+                c[turn % 2].ts.update_agent(&g, &ea, &"Ix04", c[turn % 2].kind);
+                c[1 - turn % 2].ts.update_agent(&g, &ea, &"Ix05", c[1 - turn % 2].kind);
                 break format!("RE[{}+{}]", if turn % 2 == 0 { "W" } else { "B" }, turn);
             }
         } else {
@@ -915,7 +929,14 @@ impl ReaderExtra for std::io::Cursor<&mut [u8]> {
 }
 
 impl<T: Write> WriterExtra for T {
-    fn update_agent(&mut self, g: &Game, a: &Action, s: &'static str) -> bool {
+    fn update_agent(&mut self, g: &Game, a: &Action, s: &'static str, ck: ClientKind) -> bool {
+        if ck == ClientKind::ActionClient {
+            if let Err(_e) =  self.write(s.as_bytes()) {
+                return false;
+            }
+            return true;
+        }
+
         let encoded = encode(g, &a);
         let enc = encoded.as_slice().unwrap();
         let sb = s.as_bytes();
