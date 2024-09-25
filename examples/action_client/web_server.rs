@@ -1,11 +1,10 @@
+use crate::game_state;
 use actix_files as fs;
 use actix_web::{post, web, App, HttpResponse, HttpServer, Responder, Result};
 use clap::Parser;
-use serde_derive::{Serialize, Deserialize};
+use serde_derive::{Deserialize, Serialize};
 use std::fs::File;
 use std::io::Read;
-use std::sync::Arc;
-use std::sync::Mutex;
 use std::sync::mpsc::{Receiver, Sender};
 use std::thread;
 
@@ -40,35 +39,11 @@ struct Args {
     load: String,
 }
 
-#[derive(Serialize, Clone)]
-struct GameState {
-    white_positions: Vec<String>,
-    black_positions: Vec<String>,
-    steps: Vec<Step>,
-}
-#[derive(Serialize, Clone)]
-struct Step {
-    id: u32,
-    pos: String,
-    is_marker: bool,
-    char1: char,
-    marker: i32,
-}
-
-async fn game_state(data: web::Data<AppState>) -> impl Responder {
-    let gs = data.amgs.lock().unwrap();
-    web::Json(gs.clone())
-}
-
 async fn index() -> Result<fs::NamedFile> {
     Ok(fs::NamedFile::open("static/index.html")?)
 }
 
-struct AppState {
-    amgs: Arc<Mutex<GameState>>,
-}
-
-pub fn start_web_server(click_tx: Sender<(u8)>) {
+pub fn start_web_server(click_tx: Sender<u8>) {
     // Clone the click_tx to move into the Actix-web data
     let click_tx_data = web::Data::new(click_tx);
 
@@ -78,6 +53,7 @@ pub fn start_web_server(click_tx: Sender<(u8)>) {
             .app_data(click_tx_data.clone())
             .service(receive_click)
             .route("/", web::get().to(index))
+            .route("/game_state", web::get().to(game_state))
             .service(fs::Files::new("/static", "static").show_files_listing())
     })
     .bind(("127.0.0.1", 8080))
@@ -94,6 +70,7 @@ pub fn start_web_server(click_tx: Sender<(u8)>) {
     let _ = server_handle.join().expect("Server thread panicked");
 }
 
+/*
 #[actix_web::main]
 async fn main_main() -> std::io::Result<()> {
     // Load the record
@@ -268,4 +245,4 @@ async fn main_main() -> std::io::Result<()> {
     .bind("127.0.0.1:8080")?
     .run()
     .await
-}
+} */

@@ -1,7 +1,11 @@
+use actix_web::{post, web, App, HttpResponse, HttpServer, Responder, Result};
+use serde_derive::Serialize;
 use std::env;
 use std::io::{self, Read, Write};
 use std::net::TcpStream;
 use std::sync::mpsc::{self, Receiver, Sender};
+use std::sync::Arc;
+use std::sync::Mutex;
 use std::thread;
 use std::time::Duration;
 
@@ -92,6 +96,13 @@ fn main() -> io::Result<()> {
         let t = TreeNode::new(&mut iter, None);
         let mut g = Game::init(Some(t));
 
+        let mut gs = GameState {
+            white_positions: vec![],
+            black_positions: vec![],
+            steps: vec![],
+        };
+        history_to_web_ui(&g, &mut gs);
+
         let (click_tx, click_rx): (Sender<u8>, Receiver<u8>) = mpsc::channel();
         let web_server_handle = thread::spawn(move || {
             start_web_server(click_tx);
@@ -147,4 +158,171 @@ fn main() -> io::Result<()> {
     }
 
     Ok(())
+}
+
+#[derive(Serialize, Clone)]
+struct GameState {
+    white_positions: Vec<String>,
+    black_positions: Vec<String>,
+    steps: Vec<Step>,
+}
+
+#[derive(Serialize, Clone)]
+struct Step {
+    id: u32,
+    pos: String,
+    is_marker: bool,
+    char1: char,
+    marker: i32,
+}
+
+async fn game_state(data: web::Data<AppState>) -> impl Responder {
+    let gs = data.amgs.lock().unwrap();
+    web::Json(gs.clone())
+}
+
+struct AppState {
+    amgs: Arc<Mutex<GameState>>,
+}
+
+fn history_to_web_ui(g: &Game, gs: &mut GameState) {
+    let setup0_h = g.history.borrow().to_root().borrow().children[0]
+        .borrow()
+        .children[0]
+        .clone();
+    let setup0_u = g.history.borrow().to_root().borrow().children[0]
+        .borrow()
+        .children[0]
+        .borrow()
+        .children[0]
+        .clone();
+    gs.white_positions = setup0_h.borrow().properties[1].value.clone();
+    gs.black_positions = setup0_u.borrow().properties[1].value.clone();
+
+    let mut id = 0;
+    let setup1_0 = setup0_u.borrow().children[0].clone();
+    let setup1_1 = setup1_0.borrow().children[0].clone();
+    let setup1_2 = setup1_1.borrow().children[0].clone();
+    let setup1_3 = setup1_2.borrow().children[0].clone();
+    gs.steps.push(Step {
+        id: id,
+        pos: setup1_0.borrow().properties[1].value[0].clone(),
+        is_marker: true,
+        char1: 'P',
+        marker: -1,
+    });
+    id = id + 1;
+    gs.steps.push(Step {
+        id: id,
+        pos: setup1_1.borrow().properties[1].value[0].clone(),
+        is_marker: true,
+        char1: 'P',
+        marker: -1,
+    });
+    id = id + 1;
+    gs.steps.push(Step {
+        id: id,
+        pos: setup1_2.borrow().properties[1].value[0].clone(),
+        is_marker: true,
+        char1: 'P',
+        marker: -1,
+    });
+    id = id + 1;
+    gs.steps.push(Step {
+        id: id,
+        pos: setup1_3.borrow().properties[1].value[0].clone(),
+        is_marker: true,
+        char1: 'P',
+        marker: -1,
+    });
+    id = id + 1;
+
+    let setup2_0 = setup1_3.borrow().children[0].clone();
+    let setup2_1 = setup2_0.borrow().children[0].clone();
+    let setup2_2 = setup2_1.borrow().children[0].clone();
+    let setup2_3 = setup2_2.borrow().children[0].clone();
+    gs.steps.push(Step {
+        id: id,
+        pos: setup2_0.borrow().properties[1].value[0].clone(),
+        is_marker: false,
+        char1: 'D',
+        marker: 0,
+    });
+    id = id + 1;
+    gs.steps.push(Step {
+        id: id,
+        pos: setup2_1.borrow().properties[1].value[0].clone(),
+        is_marker: false,
+        char1: 'P',
+        marker: 0,
+    });
+    id = id + 1;
+    gs.steps.push(Step {
+        id: id,
+        pos: setup2_2.borrow().properties[1].value[0].clone(),
+        is_marker: false,
+        char1: 'D',
+        marker: 0,
+    });
+    id = id + 1;
+    gs.steps.push(Step {
+        id: id,
+        pos: setup2_3.borrow().properties[1].value[0].clone(),
+        is_marker: false,
+        char1: 'P',
+        marker: 0,
+    });
+    id = id + 1;
+
+    let setup3_0 = setup2_3.borrow().children[0].clone();
+    gs.steps.push(Step {
+        id: id,
+        pos: setup3_0.borrow().properties[1].value[0].clone(),
+        is_marker: false,
+        char1: 'D',
+        marker: 0,
+    });
+    id = id + 1;
+
+    /*let mut curr_node = setup3_0.borrow().children[0].clone();
+    loop {
+        // opening
+        let side = if curr_node.borrow().properties[0].ident == "W" {
+            'D'
+        } else {
+            'P'
+        };
+
+        // core
+        let mut route = vec![];
+        for s in curr_node.borrow().properties[0].value.iter() {
+            let is_marker = route.contains(s);
+            gs.steps.push(Step {
+                id: id,
+                pos: s.clone(),
+                is_marker: is_marker,
+                char1: side,
+                marker: if !is_marker {
+                    0
+                } else if side == 'D' {
+                    1
+                } else {
+                    -1
+                },
+            });
+
+            id = id + 1;
+            if !is_marker {
+                route.push(s.clone());
+            }
+        }
+
+        // closing
+        if curr_node.borrow().children.len() == 0 {
+            break;
+        } else {
+            let temp = curr_node.borrow().children[0].clone();
+            curr_node = temp;
+        }
+    }*/
 }
