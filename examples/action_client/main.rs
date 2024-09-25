@@ -92,7 +92,7 @@ fn main() -> io::Result<()> {
         let t = TreeNode::new(&mut iter, None);
         let mut g = Game::init(Some(t));
 
-        let (click_tx, click_rx): (Sender<(i32, i32)>, Receiver<(i32, i32)>) = mpsc::channel();
+        let (click_tx, click_rx): (Sender<u8>, Receiver<u8>) = mpsc::channel();
         let web_server_handle = thread::spawn(move || {
             start_web_server(click_tx);
         });
@@ -139,8 +139,8 @@ fn main() -> io::Result<()> {
                     // Error?
                 }
 
-                if let Ok((x, y)) = click_rx.recv() {
-                    println!("Received click at ({}, {}) from web interface.", x, y);
+                if let Ok(c) = click_rx.recv() {
+                    println!("Received {} from web interface.", c);
                 }
                 stream.write(&[c])?;
             }

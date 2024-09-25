@@ -7,13 +7,15 @@ document.addEventListener('DOMContentLoaded', () => {
         cell.addEventListener('click', () => {
             const x = parseInt(cell.getAttribute('data-x'));
             const y = parseInt(cell.getAttribute('data-y'));
+            const c = x + 2*y;
+            const payload = JSON.stringify({ coord: c });
 
             fetch('/click', {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json',
                 },
-                body: JSON.stringify({ x, y }),
+                body: payload,
             })
             .then(response => response.text())
             .then(data => {
