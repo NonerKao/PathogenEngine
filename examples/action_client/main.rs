@@ -1,10 +1,16 @@
 use std::env;
 use std::io::{self, Read, Write};
 use std::net::TcpStream;
+use std::sync::mpsc::{self, Receiver, Sender};
+use std::thread;
+use std::time::Duration;
 
 // use pathogen_engine::core::action::Action;
 use pathogen_engine::core::tree::TreeNode;
 use pathogen_engine::core::*;
+
+mod web_server;
+use web_server::start_web_server;
 
 const MAX_SGF_LEN: usize = 500;
 const MAX_ACT_LEN: usize = 100;
@@ -86,6 +92,11 @@ fn main() -> io::Result<()> {
         let t = TreeNode::new(&mut iter, None);
         let mut g = Game::init(Some(t));
 
+        let (click_tx, click_rx): (Sender<(i32, i32)>, Receiver<(i32, i32)>) = mpsc::channel();
+        let web_server_handle = thread::spawn(move || {
+            start_web_server(click_tx);
+        });
+
         let mut c: u8 = 0;
         'game: loop {
             read_exact_bytes(&mut stream, 4, &mut status)?;
@@ -119,13 +130,18 @@ fn main() -> io::Result<()> {
             } else if status == "Ix05".as_bytes() {
                 println!("lose!");
                 break 'game;
-            } else if status == "Ix01".as_bytes() || status == "Ix0b".as_bytes() {
-                stream.write(&[c])?;
-            } else if status == "Ix03".as_bytes() {
-                // the main play of this round
-                stream.write(&[c])?;
             } else {
-                // Error?
+                if status == "Ix01".as_bytes() || status == "Ix0b".as_bytes() {
+                    // the normal middle moves
+                } else if status == "Ix03".as_bytes() {
+                    // the main play of this round
+                } else {
+                    // Error?
+                }
+
+                if let Ok((x, y)) = click_rx.recv() {
+                    println!("Received click at ({}, {}) from web interface.", x, y);
+                }
                 stream.write(&[c])?;
             }
             // update the coordinates choice
@@ -140,16 +156,6 @@ fn next_c(c: u8) -> u8 {
     let mut ret_c = c + 1;
     if ret_c >= 125 {
         ret_c = 0;
-    }
-    return ret_c;
-}
-
-fn prev_c(c: u8) -> u8 {
-    let mut ret_c = c;
-    if ret_c == 0 {
-        ret_c = 124;
-    } else {
-        ret_c = ret_c - 1;
     }
     return ret_c;
 }

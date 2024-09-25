@@ -897,9 +897,9 @@ fn load_file_and_play(
                 c[1 - turn % 2]
                     .ts
                     .update_agent(&g, &ea, &"Ix05", c[1 - turn % 2].kind);
-                        for i in 0..2 {
-                            c[i].is_setup = false;
-                        }
+                for i in 0..2 {
+                    c[i].is_setup = false;
+                }
                 break format!("RE[{}+{}]", if turn % 2 == 0 { "W" } else { "B" }, turn);
             }
         } else {

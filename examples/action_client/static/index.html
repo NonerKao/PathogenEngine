@@ -1,0 +1,40 @@
+<!-- static/index.html -->
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Chess Web Interface</title>
+    <style>
+        #grid {
+            display: grid;
+            grid-template-columns: repeat(2, 100px);
+            grid-template-rows: repeat(2, 100px);
+            gap: 10px;
+            margin: 50px auto;
+            width: max-content;
+        }
+        .cell {
+            background-color: #f0f0f0;
+            border: 1px solid #ccc;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            cursor: pointer;
+            font-size: 24px;
+        }
+        .cell:hover {
+            background-color: #e0e0e0;
+        }
+    </style>
+</head>
+<body>
+    <h1 style="text-align: center;">Chess Web Interface</h1>
+    <div id="grid">
+        <div class="cell" data-x="0" data-y="0">A1</div>
+        <div class="cell" data-x="1" data-y="0">B1</div>
+        <div class="cell" data-x="0" data-y="1">A2</div>
+        <div class="cell" data-x="1" data-y="1">B2</div>
+    </div>
+    <script src="app.js"></script>
+</body>
+</html>
