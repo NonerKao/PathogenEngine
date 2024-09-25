@@ -97,7 +97,6 @@ fn main() -> io::Result<()> {
             start_web_server(click_tx);
         });
 
-        let mut c: u8 = 0;
         'game: loop {
             read_exact_bytes(&mut stream, 4, &mut status)?;
             if status == "Ix0d".as_bytes() {
@@ -141,21 +140,11 @@ fn main() -> io::Result<()> {
 
                 if let Ok(c) = click_rx.recv() {
                     println!("Received {} from web interface.", c);
+                    stream.write(&[c])?;
                 }
-                stream.write(&[c])?;
             }
-            // update the coordinates choice
-            c = next_c(c);
         }
     }
 
     Ok(())
-}
-
-fn next_c(c: u8) -> u8 {
-    let mut ret_c = c + 1;
-    if ret_c >= 125 {
-        ret_c = 0;
-    }
-    return ret_c;
 }
