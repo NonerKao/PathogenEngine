@@ -1,4 +1,4 @@
-use crate::game_state;
+use crate::{game_state, AppState};
 use actix_files as fs;
 use actix_web::{post, web, App, HttpResponse, HttpServer, Responder, Result};
 use clap::Parser;
@@ -7,6 +7,7 @@ use std::fs::File;
 use std::io::Read;
 use std::sync::mpsc::{Receiver, Sender};
 use std::thread;
+use std::time::Duration;
 
 use pathogen_engine::core::tree::*;
 use pathogen_engine::core::*;
@@ -43,14 +44,17 @@ async fn index() -> Result<fs::NamedFile> {
     Ok(fs::NamedFile::open("static/index.html")?)
 }
 
-pub fn start_web_server(click_tx: Sender<u8>) {
+pub fn start_web_server(click_tx: Sender<u8>, setup_state: web::Data<AppState>) {
     // Clone the click_tx to move into the Actix-web data
     let click_tx_data = web::Data::new(click_tx);
+
+    thread::sleep(Duration::from_secs(15));
 
     // Start the Actix system
     let server = HttpServer::new(move || {
         App::new()
             .app_data(click_tx_data.clone())
+            .app_data(setup_state.clone())
             .service(receive_click)
             .route("/", web::get().to(index))
             .route("/game_state", web::get().to(game_state))

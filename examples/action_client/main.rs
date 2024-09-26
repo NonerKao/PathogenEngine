@@ -102,10 +102,13 @@ fn main() -> io::Result<()> {
             steps: vec![],
         };
         history_to_web_ui(&g, &mut gs);
+        let setup_state = web::Data::new(AppState {
+            amgs: Arc::new(Mutex::new(gs)),
+        });
 
         let (click_tx, click_rx): (Sender<u8>, Receiver<u8>) = mpsc::channel();
         let web_server_handle = thread::spawn(move || {
-            start_web_server(click_tx);
+            start_web_server(click_tx, setup_state.clone());
         });
 
         'game: loop {
