@@ -51,7 +51,16 @@ document.addEventListener("DOMContentLoaded", () => {
                     .then(response => response.json())
                     .then(data => {
                         data.steps.forEach(s => {
-                            steps.push(s);
+                            if (s.id > 9 + current_id) {
+                                steps.push(s);
+                                if (current_id == -1) {
+                                    const [_, [tcol, trow]] = convertPosition(steps[0].pos);
+                                    drawMap(trow, tcol, 'P');
+                                } else {
+                                    applyStepForward();
+                                }
+                                current_id++;
+                            }
                         });
                     });
             }

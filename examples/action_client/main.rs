@@ -1,4 +1,4 @@
-use actix_web::{post, web, App, HttpResponse, HttpServer, Responder, Result};
+use actix_web::{web, Responder};
 use serde_derive::Serialize;
 use std::env;
 use std::io::{self, Read, Write};
@@ -7,10 +7,8 @@ use std::sync::mpsc::{self, Receiver, Sender};
 use std::sync::Arc;
 use std::sync::Mutex;
 use std::thread;
-use std::time::Duration;
 
 // use pathogen_engine::core::action::Action;
-use pathogen_engine::core::status_code::str_to_full_msg;
 use pathogen_engine::core::tree::TreeNode;
 use pathogen_engine::core::*;
 
@@ -103,16 +101,17 @@ fn main() -> io::Result<()> {
             black_positions: vec![],
             steps: vec![],
         };
-        history_to_web_ui(&g, &mut gs);
+        setup_to_web_ui(&g, &mut gs);
+        let shared_amgs = Arc::new(Mutex::new(gs));
         let setup_state = web::Data::new(AppState {
-            amgs: Arc::new(Mutex::new(gs)),
+            amgs: shared_amgs.clone(),
         });
 
         let (click_tx, click_rx): (
             Sender<(u8, Sender<StatusCode>)>,
             Receiver<(u8, Sender<StatusCode>)>,
         ) = mpsc::channel();
-        let web_server_handle = thread::spawn(move || {
+        let _web_server_handle = thread::spawn(move || {
             start_web_server(click_tx, setup_state.clone());
         });
 
@@ -131,6 +130,7 @@ fn main() -> io::Result<()> {
                     }
                 };
                 g.append_history_with_new_tree(&action_string);
+                one_standard_move_to_web_ui(&g, shared_amgs.clone());
                 let temp_t = g.history.clone();
                 if let Ok(a) = temp_t.borrow().to_action(&g) {
                     g.commit_action(&a);
@@ -164,7 +164,7 @@ fn main() -> io::Result<()> {
                         stream.write(&[c])?;
                         read_exact_bytes(&mut stream, 4, &mut status)?;
                         let s = format!("{:?}", status);
-                        status_tx.send(StatusCode { status: s });
+                        let _ = status_tx.send(StatusCode { status: s });
                     }
                     continue 'turn;
                 }
@@ -193,7 +193,6 @@ struct Step {
 
 async fn update_state(data: web::Data<AppState>) -> impl Responder {
     let gs = data.amgs.lock().unwrap();
-    println!("Yes");
     web::Json(gs.clone())
 }
 
@@ -206,7 +205,7 @@ struct AppState {
     amgs: Arc<Mutex<GameState>>,
 }
 
-fn history_to_web_ui(g: &Game, gs: &mut GameState) {
+fn setup_to_web_ui(g: &Game, gs: &mut GameState) {
     let setup0_h = g.history.borrow().to_root().borrow().children[0]
         .borrow()
         .children[0]
@@ -303,47 +302,42 @@ fn history_to_web_ui(g: &Game, gs: &mut GameState) {
         char1: 'D',
         marker: 0,
     });
-    id = id + 1;
+}
+fn one_standard_move_to_web_ui(g: &Game, amgs: Arc<Mutex<GameState>>) {
+    let mut gs = amgs.lock().unwrap();
+    let mut id: u32 = gs.steps.len().try_into().unwrap();
+    let curr_node = g.history.clone();
+    // opening
+    let side = if curr_node.borrow().properties[0].ident == "W" {
+        'D'
+    } else {
+        'P'
+    };
 
-    /*let mut curr_node = setup3_0.borrow().children[0].clone();
-    loop {
-        // opening
-        let side = if curr_node.borrow().properties[0].ident == "W" {
-            'D'
-        } else {
-            'P'
-        };
+    // core
+    let mut route = vec![];
+    for s in curr_node.borrow().properties[0].value.iter() {
+        let is_marker = route.contains(s);
+        gs.steps.push(Step {
+            id: id,
+            pos: s.clone(),
+            is_marker: is_marker,
+            char1: side,
+            marker: if !is_marker {
+                0
+            } else if side == 'D' {
+                1
+            } else {
+                -1
+            },
+        });
 
-        // core
-        let mut route = vec![];
-        for s in curr_node.borrow().properties[0].value.iter() {
-            let is_marker = route.contains(s);
-            gs.steps.push(Step {
-                id: id,
-                pos: s.clone(),
-                is_marker: is_marker,
-                char1: side,
-                marker: if !is_marker {
-                    0
-                } else if side == 'D' {
-                    1
-                } else {
-                    -1
-                },
-            });
-
-            id = id + 1;
-            if !is_marker {
-                route.push(s.clone());
-            }
+        id = id + 1;
+        if !is_marker {
+            route.push(s.clone());
         }
+    }
 
-        // closing
-        if curr_node.borrow().children.len() == 0 {
-            break;
-        } else {
-            let temp = curr_node.borrow().children[0].clone();
-            curr_node = temp;
-        }
-    }*/
+    // closing
+    assert_eq!(curr_node.borrow().children.len(), 0);
 }

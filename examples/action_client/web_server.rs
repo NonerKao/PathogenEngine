@@ -1,16 +1,10 @@
-use crate::{update_state, game_state, AppState};
+use crate::{game_state, update_state, AppState};
 use actix_files as fs;
 use actix_web::{post, web, App, HttpResponse, HttpServer, Responder, Result};
 use clap::Parser;
 use serde_derive::{Deserialize, Serialize};
-use std::fs::File;
-use std::io::Read;
 use std::sync::mpsc::{self, Receiver, Sender};
 use std::thread;
-use std::time::Duration;
-
-use pathogen_engine::core::tree::*;
-use pathogen_engine::core::*;
 
 #[derive(Deserialize)]
 struct ClickData {
@@ -29,7 +23,7 @@ async fn receive_click(
     click_tx: web::Data<Sender<(u8, Sender<StatusCode>)>>,
 ) -> impl Responder {
     let c = data.coord;
-    let (status_tx, mut status_rx): (Sender<StatusCode>, Receiver<StatusCode>) = mpsc::channel();
+    let (status_tx, status_rx): (Sender<StatusCode>, Receiver<StatusCode>) = mpsc::channel();
     // Send the coordinates back to main.rs
     if let Err(e) = click_tx.send((c, status_tx)) {
         eprintln!("Failed to send click data to main: {}", e);
