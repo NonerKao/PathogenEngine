@@ -1,12 +1,15 @@
 use actix_web::{web, Responder};
 use serde_derive::Serialize;
+use std::cell::RefCell;
 use std::env;
 use std::io::{self, Read, Write};
 use std::net::TcpStream;
+use std::rc::Rc;
 use std::sync::mpsc::{self, Receiver, Sender};
 use std::sync::Arc;
 use std::sync::Mutex;
 use std::thread;
+use std::time::{Duration, Instant};
 
 // use pathogen_engine::core::action::Action;
 use pathogen_engine::core::tree::TreeNode;
@@ -61,11 +64,9 @@ fn main() -> io::Result<()> {
 
     // Connect to the server
     let mut stream = TcpStream::connect(address)?;
-    println!("Connected to the server.");
 
     // Send the initial byte 0xc8: SET_ACTION_CLIENT
     stream.write(&[0xc8])?;
-    println!("Sent byte 0xc8 to the server.");
 
     // Receive up to 40 bytes from the server
     let mut status = vec![0u8; 4];
@@ -107,12 +108,20 @@ fn main() -> io::Result<()> {
             amgs: shared_amgs.clone(),
         });
 
+        let ns = StatusString {
+            status: String::new(),
+        };
+        let shared_amss = Arc::new(Mutex::new(ns));
+        let next_status = web::Data::new(NextStatus {
+            amss: shared_amss.clone(),
+        });
+
         let (click_tx, click_rx): (
             Sender<(u8, Sender<StatusCode>)>,
             Receiver<(u8, Sender<StatusCode>)>,
         ) = mpsc::channel();
         let _web_server_handle = thread::spawn(move || {
-            start_web_server(click_tx, setup_state.clone());
+            start_web_server(click_tx, setup_state.clone(), next_status.clone());
         });
 
         'game: loop {
@@ -145,22 +154,22 @@ fn main() -> io::Result<()> {
                 if status == "Ix02".as_bytes() || status == "Ix00".as_bytes() {
                     continue 'game;
                 } else if status == "Ix04".as_bytes() {
-                    println!("win!");
+                    update_next_status(shared_amss.clone(), "Win!");
                     break 'game;
                 } else if status == "Ix05".as_bytes() {
-                    println!("lose!");
+                    update_next_status(shared_amss.clone(), "Lose!");
                     break 'game;
                 } else {
                     if status == "Ix01".as_bytes() || status == "Ix0b".as_bytes() {
                         // the normal middle moves
                     } else if status == "Ix03".as_bytes() {
                         // the main play of this round
+                        update_next_status(shared_amss.clone(), "Ready");
                     } else {
                         // Error?
                     }
 
                     if let Ok((c, status_tx)) = click_rx.recv() {
-                        println!("Received {} from web interface.", c);
                         stream.write(&[c])?;
                         read_exact_bytes(&mut stream, 4, &mut status)?;
                         let s = format!("{:?}", status);
@@ -169,8 +178,9 @@ fn main() -> io::Result<()> {
                     continue 'turn;
                 }
             }
-        }
-    }
+        } // 'game
+        std::thread::sleep(Duration::from_millis(1000));
+    } // 'set, but actually not supported for web
 
     Ok(())
 }
@@ -199,6 +209,25 @@ async fn update_state(data: web::Data<AppState>) -> impl Responder {
 async fn game_state(data: web::Data<AppState>) -> impl Responder {
     let gs = data.amgs.lock().unwrap();
     web::Json(gs.clone())
+}
+
+async fn get_next_status(data: web::Data<NextStatus>) -> impl Responder {
+    let ss = data.amss.lock().unwrap();
+    web::Json(ss.clone())
+}
+
+#[derive(Serialize, Clone)]
+struct StatusString {
+    status: String,
+}
+
+struct NextStatus {
+    amss: Arc<Mutex<StatusString>>,
+}
+
+fn update_next_status(amss: Arc<Mutex<StatusString>>, s: &'static str) {
+    let mut ns = amss.lock().unwrap();
+    ns.status = s.to_string();
 }
 
 struct AppState {
@@ -302,12 +331,22 @@ fn setup_to_web_ui(g: &Game, gs: &mut GameState) {
         char1: 'D',
         marker: 0,
     });
+
+    if setup3_0.borrow().children.len() > 0 {
+        let curr_node = setup3_0.borrow().children[0].clone();
+        decode_standard_move(gs, curr_node.clone());
+    }
 }
+
 fn one_standard_move_to_web_ui(g: &Game, amgs: Arc<Mutex<GameState>>) {
     let mut gs = amgs.lock().unwrap();
-    let mut id: u32 = gs.steps.len().try_into().unwrap();
     let curr_node = g.history.clone();
+    decode_standard_move(&mut gs, curr_node.clone());
+}
+
+fn decode_standard_move(gs: &mut GameState, curr_node: Rc<RefCell<TreeNode>>) {
     // opening
+    let mut id: u32 = gs.steps.len().try_into().unwrap();
     let side = if curr_node.borrow().properties[0].ident == "W" {
         'D'
     } else {

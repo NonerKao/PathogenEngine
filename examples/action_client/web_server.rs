@@ -1,4 +1,4 @@
-use crate::{game_state, update_state, AppState};
+use crate::{game_state, get_next_status, update_state, AppState, NextStatus};
 use actix_files as fs;
 use actix_web::{post, web, App, HttpResponse, HttpServer, Responder, Result};
 use clap::Parser;
@@ -52,6 +52,7 @@ async fn index() -> Result<fs::NamedFile> {
 pub fn start_web_server(
     click_tx: Sender<(u8, Sender<StatusCode>)>,
     setup_state: web::Data<AppState>,
+    next_status: web::Data<NextStatus>,
 ) {
     // Clone the click_tx to move into the Actix-web data
     let click_tx_data = web::Data::new(click_tx);
@@ -61,10 +62,12 @@ pub fn start_web_server(
         App::new()
             .app_data(click_tx_data.clone())
             .app_data(setup_state.clone())
+            .app_data(next_status.clone())
             .service(receive_click)
             .route("/", web::get().to(index))
             .route("/update_state", web::get().to(update_state))
             .route("/game_state", web::get().to(game_state))
+            .route("/next_status", web::get().to(get_next_status))
             .service(fs::Files::new("/static", "static").show_files_listing())
     })
     .bind(("127.0.0.1", 8080))

@@ -63,6 +63,14 @@ document.addEventListener("DOMContentLoaded", () => {
                             }
                         });
                     });
+                fetch('/next_status')
+                    .then(response => response.json())
+                    .then(data => {
+                        statusBlock.textContent = `Status: ${data.status}`;
+                    })
+                    .catch((error) => {
+                        console.error('Error:', error);
+                    });
             }
             
         })
@@ -268,6 +276,13 @@ document.addEventListener("DOMContentLoaded", () => {
             data.steps.forEach(s => {
                 if (s.id > 8 /* setup1(0~3) + setup2(4~7) + setup3(8) */) {
                     steps.push(s);
+                    if (current_id == -1) {
+                        const [_, [tcol, trow]] = convertPosition(steps[0].pos);
+                        drawMap(trow, tcol, 'P');
+                    } else {
+                        applyStepForward();
+                    }
+                    current_id++;
                 } else {
                     addSetup(s);
                 }
