@@ -191,6 +191,12 @@ struct Step {
     marker: i32,
 }
 
+async fn update_state(data: web::Data<AppState>) -> impl Responder {
+    let gs = data.amgs.lock().unwrap();
+    println!("Yes");
+    web::Json(gs.clone())
+}
+
 async fn game_state(data: web::Data<AppState>) -> impl Responder {
     let gs = data.amgs.lock().unwrap();
     web::Json(gs.clone())

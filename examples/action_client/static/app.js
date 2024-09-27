@@ -40,8 +40,22 @@ document.addEventListener("DOMContentLoaded", () => {
         })
         .then(response => response.text())
         .then(data => {
-            console.log('Server response:', data);
-            statusBlock.textContent = `Status: ${data}`;
+            // Convert the array of ASCII codes to a string
+            const statusArray = JSON.parse(data);
+            const statusString = JSON.parse(statusArray.status); // This is tricky
+            const asciiString = String.fromCharCode(...statusString);
+            // console.log(asciiString); // Outputs: "Ix02"
+            statusBlock.textContent = `Status: ${asciiString}`;
+            if (asciiString == "Ix02" || asciiString == "Ix00") {
+                fetch('/update_state')
+                    .then(response => response.json())
+                    .then(data => {
+                        data.steps.forEach(s => {
+                            steps.push(s);
+                        });
+                    });
+            }
+            
         })
         .catch((error) => {
             console.error('Error:', error);
@@ -63,8 +77,12 @@ document.addEventListener("DOMContentLoaded", () => {
         })
         .then(response => response.text())
         .then(data => {
-            console.log('Server response:', data);
-            statusBlock.textContent = `Status: ${data}`;
+            // Convert the array of ASCII codes to a string
+            const statusArray = JSON.parse(data);
+            const statusString = JSON.parse(statusArray.status);
+            const asciiString = String.fromCharCode(...statusString);
+            // console.log(asciiString); // Outputs: "Ix02"
+            statusBlock.textContent = `Status: ${asciiString}`;
         })
         .catch((error) => {
             console.error('Error:', error);

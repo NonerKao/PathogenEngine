@@ -1,4 +1,4 @@
-use crate::{game_state, AppState};
+use crate::{update_state, game_state, AppState};
 use actix_files as fs;
 use actix_web::{post, web, App, HttpResponse, HttpServer, Responder, Result};
 use clap::Parser;
@@ -69,6 +69,7 @@ pub fn start_web_server(
             .app_data(setup_state.clone())
             .service(receive_click)
             .route("/", web::get().to(index))
+            .route("/update_state", web::get().to(update_state))
             .route("/game_state", web::get().to(game_state))
             .service(fs::Files::new("/static", "static").show_files_listing())
     })
