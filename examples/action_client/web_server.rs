@@ -5,7 +5,7 @@ use clap::Parser;
 use serde_derive::{Deserialize, Serialize};
 use std::fs::File;
 use std::io::Read;
-use std::sync::mpsc::{Receiver, Sender};
+use std::sync::mpsc::{self, Receiver, Sender};
 use std::thread;
 use std::time::Duration;
 
@@ -17,19 +17,30 @@ struct ClickData {
     coord: u8,
 }
 
+#[derive(Serialize)]
+pub struct StatusCode {
+    pub status: String,
+}
+
 // Handler for receiving click coordinates
 #[post("/click")]
 async fn receive_click(
     data: web::Json<ClickData>,
-    click_tx: web::Data<Sender<u8>>,
+    click_tx: web::Data<Sender<(u8, Sender<StatusCode>)>>,
 ) -> impl Responder {
     let c = data.coord;
+    let (status_tx, mut status_rx): (Sender<StatusCode>, Receiver<StatusCode>) = mpsc::channel();
     // Send the coordinates back to main.rs
-    if let Err(e) = click_tx.send(c) {
+    if let Err(e) = click_tx.send((c, status_tx)) {
         eprintln!("Failed to send click data to main: {}", e);
         return HttpResponse::InternalServerError().body("Failed to process click");
     }
-    HttpResponse::Ok().body("Click received")
+
+    if let Ok(game_response) = status_rx.recv() {
+        return HttpResponse::Ok().json(game_response);
+    }
+
+    HttpResponse::InternalServerError().body("Error processing the move")
 }
 
 #[derive(Parser, Debug)]
@@ -44,11 +55,12 @@ async fn index() -> Result<fs::NamedFile> {
     Ok(fs::NamedFile::open("static/index.html")?)
 }
 
-pub fn start_web_server(click_tx: Sender<u8>, setup_state: web::Data<AppState>) {
+pub fn start_web_server(
+    click_tx: Sender<(u8, Sender<StatusCode>)>,
+    setup_state: web::Data<AppState>,
+) {
     // Clone the click_tx to move into the Actix-web data
     let click_tx_data = web::Data::new(click_tx);
-
-    thread::sleep(Duration::from_secs(15));
 
     // Start the Actix system
     let server = HttpServer::new(move || {

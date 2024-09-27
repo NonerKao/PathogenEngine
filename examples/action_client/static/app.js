@@ -1,4 +1,5 @@
 document.addEventListener("DOMContentLoaded", () => {
+    const statusBlock = document.getElementById("status-block");
     const grid6x6 = document.getElementById("grid-6x6");
     const grid5x5 = document.getElementById("grid-5x5");
 
@@ -40,6 +41,7 @@ document.addEventListener("DOMContentLoaded", () => {
         .then(response => response.text())
         .then(data => {
             console.log('Server response:', data);
+            statusBlock.textContent = `Status: ${data}`;
         })
         .catch((error) => {
             console.error('Error:', error);
@@ -62,6 +64,7 @@ document.addEventListener("DOMContentLoaded", () => {
         .then(response => response.text())
         .then(data => {
             console.log('Server response:', data);
+            statusBlock.textContent = `Status: ${data}`;
         })
         .catch((error) => {
             console.error('Error:', error);

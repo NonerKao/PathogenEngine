@@ -10,11 +10,13 @@ use std::thread;
 use std::time::Duration;
 
 // use pathogen_engine::core::action::Action;
+use pathogen_engine::core::status_code::str_to_full_msg;
 use pathogen_engine::core::tree::TreeNode;
 use pathogen_engine::core::*;
 
 mod web_server;
 use web_server::start_web_server;
+use web_server::StatusCode;
 
 const MAX_SGF_LEN: usize = 500;
 const MAX_ACT_LEN: usize = 100;
@@ -106,7 +108,10 @@ fn main() -> io::Result<()> {
             amgs: Arc::new(Mutex::new(gs)),
         });
 
-        let (click_tx, click_rx): (Sender<u8>, Receiver<u8>) = mpsc::channel();
+        let (click_tx, click_rx): (
+            Sender<(u8, Sender<StatusCode>)>,
+            Receiver<(u8, Sender<StatusCode>)>,
+        ) = mpsc::channel();
         let web_server_handle = thread::spawn(move || {
             start_web_server(click_tx, setup_state.clone());
         });
@@ -135,26 +140,33 @@ fn main() -> io::Result<()> {
                 };
                 continue 'game;
             }
-            if status == "Ix02".as_bytes() || status == "Ix00".as_bytes() {
-                continue 'game;
-            } else if status == "Ix04".as_bytes() {
-                println!("win!");
-                break 'game;
-            } else if status == "Ix05".as_bytes() {
-                println!("lose!");
-                break 'game;
-            } else {
-                if status == "Ix01".as_bytes() || status == "Ix0b".as_bytes() {
-                    // the normal middle moves
-                } else if status == "Ix03".as_bytes() {
-                    // the main play of this round
-                } else {
-                    // Error?
-                }
 
-                if let Ok(c) = click_rx.recv() {
-                    println!("Received {} from web interface.", c);
-                    stream.write(&[c])?;
+            'turn: loop {
+                if status == "Ix02".as_bytes() || status == "Ix00".as_bytes() {
+                    continue 'game;
+                } else if status == "Ix04".as_bytes() {
+                    println!("win!");
+                    break 'game;
+                } else if status == "Ix05".as_bytes() {
+                    println!("lose!");
+                    break 'game;
+                } else {
+                    if status == "Ix01".as_bytes() || status == "Ix0b".as_bytes() {
+                        // the normal middle moves
+                    } else if status == "Ix03".as_bytes() {
+                        // the main play of this round
+                    } else {
+                        // Error?
+                    }
+
+                    if let Ok((c, status_tx)) = click_rx.recv() {
+                        println!("Received {} from web interface.", c);
+                        stream.write(&[c])?;
+                        read_exact_bytes(&mut stream, 4, &mut status)?;
+                        let s = format!("{:?}", status);
+                        status_tx.send(StatusCode { status: s });
+                    }
+                    continue 'turn;
                 }
             }
         }
